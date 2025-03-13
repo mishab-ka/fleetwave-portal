@@ -7,6 +7,8 @@ import Footer from "@/components/Footer";
 import UserProfile from "@/components/UserProfile";
 import DocumentsSection from "@/components/DocumentsSection";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Button } from "@/components/ui/button";
+import { FilePlus } from "lucide-react";
 
 const Profile = () => {
   const { isAuthenticated, loading } = useAuth();
@@ -27,11 +29,24 @@ const Profile = () => {
     );
   }
 
+  const handleSubmitReport = () => {
+    navigate("/submit-report");
+  };
+
   return (
     <div className="min-h-screen bg-white">
       <Navbar />
       <main className="container mx-auto px-4 py-8 max-w-5xl">
-        <h1 className="text-3xl font-bold mb-6 text-fleet-purple">Your Profile</h1>
+        <div className="flex justify-between items-center mb-6">
+          <h1 className="text-3xl font-bold text-fleet-purple">Your Profile</h1>
+          <Button 
+            onClick={handleSubmitReport}
+            className="bg-green-600 hover:bg-green-700"
+          >
+            <FilePlus className="mr-2 h-5 w-5" />
+            Submit Daily Report
+          </Button>
+        </div>
         
         <Tabs defaultValue="profile" className="w-full">
           <TabsList className="mb-6">

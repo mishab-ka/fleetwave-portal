@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -139,7 +138,7 @@ const AuthForms = () => {
               id: data.user.id,
               name: signupForm.name,
               email: signupForm.email,
-              dob: new Date().toISOString().split('T')[0], // Using current date as placeholder
+              dob: new Date().toISOString(),
               online: true,
             },
           ]);
