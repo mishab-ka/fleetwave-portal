@@ -4,64 +4,27 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
-import { supabase } from "@/integrations/supabase/client";
-import { toast } from "sonner";
-import { 
-  Card, 
-  CardContent, 
-  CardHeader, 
-  CardTitle, 
-  CardDescription, 
-  CardFooter 
-} from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { 
-  Form, 
-  FormControl, 
-  FormDescription, 
-  FormField, 
-  FormItem, 
-  FormLabel, 
-  FormMessage 
-} from "@/components/ui/form";
-import { z } from "zod";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { useForm } from "react-hook-form";
-import { Tables } from "@/integrations/supabase/types";
-import { Upload, Loader2, CheckCircle } from "lucide-react";
-
-// Define the form schema
-const formSchema = z.object({
-  total_trips: z.string().min(1, { message: "Total trips is required" }).transform(val => parseInt(val, 10)),
-  total_earnings: z.string().min(1, { message: "Total earnings is required" }).transform(val => parseFloat(val)),
-  total_cashcollect: z.string().min(1, { message: "Total cash collection is required" }).transform(val => parseFloat(val)),
-  rent_paid: z.string().min(1, { message: "Rent paid is required" }).transform(val => parseFloat(val)),
-  remarks: z.string().optional()
-});
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
+import { FileUp } from "lucide-react";
 
 const SubmitReport = () => {
   const { user, isAuthenticated, loading } = useAuth();
   const navigate = useNavigate();
-  const [profileData, setProfileData] = useState<Tables<"users"> | null>(null);
-  const [loadingProfile, setLoadingProfile] = useState(true);
   const [submitting, setSubmitting] = useState(false);
-  const [uploadingUberScreenshot, setUploadingUberScreenshot] = useState(false);
-  const [uploadingRentScreenshot, setUploadingRentScreenshot] = useState(false);
-  const [uberScreenshotUrl, setUberScreenshotUrl] = useState<string | null>(null);
-  const [rentScreenshotUrl, setRentScreenshotUrl] = useState<string | null>(null);
-
-  // Set up the form
-  const form = useForm<z.infer<typeof formSchema>>({
-    resolver: zodResolver(formSchema),
-    defaultValues: {
-      total_trips: "",
-      total_earnings: "",
-      total_cashcollect: "",
-      rent_paid: "",
-      remarks: ""
-    }
+  const [userData, setUserData] = useState<any>(null);
+  const [uberScreenshot, setUberScreenshot] = useState<File | null>(null);
+  const [rentScreenshot, setRentScreenshot] = useState<File | null>(null);
+  const [formData, setFormData] = useState({
+    total_trips: 0,
+    total_earnings: 0,
+    total_cashcollect: 0,
+    rent_paid: 0,
+    remarks: "",
   });
 
   // Redirect if not authenticated
@@ -71,130 +34,119 @@ const SubmitReport = () => {
     }
   }, [isAuthenticated, loading, navigate]);
 
-  // Fetch user profile data
+  // Fetch user data
   useEffect(() => {
-    const fetchUserProfile = async () => {
-      try {
-        if (!user) return;
-        
-        const { data, error } = await supabase
-          .from("users")
-          .select("*")
-          .eq("id", user.id)
-          .maybeSingle();
-        
-        if (error) throw error;
-        
-        setProfileData(data);
-      } catch (error) {
-        console.error("Error fetching user profile:", error);
-        toast.error("Failed to load profile data");
-      } finally {
-        setLoadingProfile(false);
+    const fetchUserData = async () => {
+      if (user) {
+        try {
+          const { data, error } = await supabase
+            .from("users")
+            .select("*")
+            .eq("id", user.id)
+            .single();
+
+          if (error) throw error;
+          setUserData(data);
+        } catch (error) {
+          console.error("Error fetching user data:", error);
+          toast.error("Failed to load user data");
+        }
       }
     };
 
-    fetchUserProfile();
+    fetchUserData();
   }, [user]);
 
-  const handleFileUpload = async (
-    e: React.ChangeEvent<HTMLInputElement>, 
-    fileType: "uber_screenshot" | "rent_screenshot"
-  ) => {
-    try {
-      if (!e.target.files || e.target.files.length === 0 || !user) {
-        return;
-      }
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    const { name, value } = e.target;
+    
+    // For number inputs, convert string to number
+    if (["total_trips", "total_earnings", "total_cashcollect", "rent_paid"].includes(name)) {
+      setFormData({
+        ...formData,
+        [name]: parseFloat(value) || 0,
+      });
+    } else {
+      setFormData({
+        ...formData,
+        [name]: value,
+      });
+    }
+  };
 
-      const file = e.target.files[0];
-      const fileExt = file.name.split('.').pop();
-      const fileName = `${user.id}_${fileType}_${Date.now()}.${fileExt}`;
-      const filePath = `fleet_reports/${fileName}`;
-
-      if (fileType === "uber_screenshot") {
-        setUploadingUberScreenshot(true);
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>, type: "uber" | "rent") => {
+    if (e.target.files && e.target.files[0]) {
+      if (type === "uber") {
+        setUberScreenshot(e.target.files[0]);
       } else {
-        setUploadingRentScreenshot(true);
-      }
-
-      // Upload file to storage
-      const { error: uploadError } = await supabase.storage
-        .from('uploads')
-        .upload(filePath, file, { upsert: true });
-
-      if (uploadError) throw uploadError;
-
-      // Get public URL
-      const { data: publicUrlData } = supabase.storage
-        .from('uploads')
-        .getPublicUrl(filePath);
-
-      // Set the URL based on file type
-      if (fileType === "uber_screenshot") {
-        setUberScreenshotUrl(publicUrlData.publicUrl);
-      } else {
-        setRentScreenshotUrl(publicUrlData.publicUrl);
-      }
-
-      toast.success(`${fileType === "uber_screenshot" ? "Uber" : "Rent"} screenshot uploaded successfully!`);
-    } catch (error) {
-      console.error(`Error uploading ${fileType}:`, error);
-      toast.error(`Failed to upload ${fileType === "uber_screenshot" ? "Uber" : "Rent"} screenshot`);
-    } finally {
-      if (fileType === "uber_screenshot") {
-        setUploadingUberScreenshot(false);
-      } else {
-        setUploadingRentScreenshot(false);
+        setRentScreenshot(e.target.files[0]);
       }
     }
   };
 
-  const onSubmit = async (values: z.infer<typeof formSchema>) => {
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!userData) {
+      toast.error("User data not available");
+      return;
+    }
+    
+    setSubmitting(true);
+    
     try {
-      if (!user || !profileData) {
-        toast.error("User profile data is missing");
-        return;
+      let uberScreenshotUrl = null;
+      let rentScreenshotUrl = null;
+      
+      // Upload uber screenshot if provided
+      if (uberScreenshot) {
+        const fileName = `${user?.id}/reports/${Date.now()}_uber_screenshot.${uberScreenshot.name.split('.').pop()}`;
+        const { data: uberData, error: uberError } = await supabase.storage
+          .from("uploads")
+          .upload(fileName, uberScreenshot);
+          
+        if (uberError) throw uberError;
+        uberScreenshotUrl = fileName;
       }
-
-      if (!profileData.vehicle_number) {
-        toast.error("You don't have a vehicle assigned. Please contact support.");
-        return;
+      
+      // Upload rent screenshot if provided
+      if (rentScreenshot) {
+        const fileName = `${user?.id}/reports/${Date.now()}_rent_screenshot.${rentScreenshot.name.split('.').pop()}`;
+        const { data: rentData, error: rentError } = await supabase.storage
+          .from("uploads")
+          .upload(fileName, rentScreenshot);
+          
+        if (rentError) throw rentError;
+        rentScreenshotUrl = fileName;
       }
-
-      setSubmitting(true);
-
-      // Prepare data for submission
-      const reportData = {
-        user_id: user.id,
-        vehicle_number: profileData.vehicle_number,
-        driver_name: profileData.name,
-        total_trips: values.total_trips,
-        total_earnings: values.total_earnings,
-        total_cashcollect: values.total_cashcollect,
-        rent_paid: values.rent_paid,
-        remarks: values.remarks || null,
+      
+      // Create report record
+      const { data, error } = await supabase.from("fleet_reports").insert({
+        user_id: user?.id,
+        driver_name: userData.name,
+        vehicle_number: userData.vehicle_number || "Not Assigned",
+        total_trips: formData.total_trips,
+        total_earnings: formData.total_earnings,
+        total_cashcollect: formData.total_cashcollect,
+        rent_paid: formData.rent_paid,
+        remarks: formData.remarks,
         uber_screenshot: uberScreenshotUrl,
         rent_screenshot: rentScreenshotUrl,
-      };
-
-      // Submit the report
-      const { error } = await supabase
-        .from('fleet_reports')
-        .insert(reportData);
-
+      });
+      
       if (error) throw error;
-
+      
       toast.success("Daily report submitted successfully!");
       navigate("/profile");
     } catch (error) {
       console.error("Error submitting report:", error);
-      toast.error("Failed to submit report");
+      toast.error("Failed to submit report. Please try again.");
     } finally {
       setSubmitting(false);
     }
   };
 
-  if (loading || loadingProfile) {
+  if (loading || !userData) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-fleet-purple"></div>
@@ -203,224 +155,160 @@ const SubmitReport = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-white">
       <Navbar />
       <main className="container mx-auto px-4 py-8 max-w-3xl">
-        <h1 className="text-3xl font-bold mb-6 text-fleet-purple">Submit Daily Report</h1>
+        <h1 className="text-3xl font-bold text-fleet-purple mb-6">Submit Daily Report</h1>
         
-        <Card>
-          <CardHeader>
-            <CardTitle>Daily Earnings Report</CardTitle>
-            <CardDescription>
-              Submit your daily earnings and trip details
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {profileData && (
-              <div className="mb-6 grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-gray-100 rounded-lg">
-                <div>
-                  <p className="text-sm font-medium text-gray-500">Driver Name</p>
-                  <p className="text-lg font-semibold">{profileData.name}</p>
-                </div>
-                <div>
-                  <p className="text-sm font-medium text-gray-500">Vehicle Number</p>
-                  <p className="text-lg font-semibold">{profileData.vehicle_number || "Not Assigned"}</p>
+        <div className="bg-white shadow-md rounded-lg p-6">
+          <form onSubmit={handleSubmit}>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+              <div>
+                <Label htmlFor="driver_name">Driver Name</Label>
+                <Input
+                  id="driver_name"
+                  value={userData.name || ""}
+                  disabled
+                  className="bg-gray-100"
+                />
+              </div>
+              
+              <div>
+                <Label htmlFor="vehicle_number">Vehicle Number</Label>
+                <Input
+                  id="vehicle_number"
+                  value={userData.vehicle_number || "Not Assigned"}
+                  disabled
+                  className="bg-gray-100"
+                />
+              </div>
+            </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+              <div>
+                <Label htmlFor="total_trips">Total Trips</Label>
+                <Input
+                  id="total_trips"
+                  name="total_trips"
+                  type="number"
+                  placeholder="Enter number of trips"
+                  value={formData.total_trips}
+                  onChange={handleInputChange}
+                  required
+                />
+              </div>
+              
+              <div>
+                <Label htmlFor="total_earnings">Total Earnings (₹)</Label>
+                <Input
+                  id="total_earnings"
+                  name="total_earnings"
+                  type="number"
+                  placeholder="Enter total earnings"
+                  value={formData.total_earnings}
+                  onChange={handleInputChange}
+                  required
+                />
+              </div>
+            </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+              <div>
+                <Label htmlFor="total_cashcollect">Total Cash Collected (₹)</Label>
+                <Input
+                  id="total_cashcollect"
+                  name="total_cashcollect"
+                  type="number"
+                  placeholder="Enter cash collected"
+                  value={formData.total_cashcollect}
+                  onChange={handleInputChange}
+                  required
+                />
+              </div>
+              
+              <div>
+                <Label htmlFor="rent_paid">Rent Paid (₹)</Label>
+                <Input
+                  id="rent_paid"
+                  name="rent_paid"
+                  type="number"
+                  placeholder="Enter rent paid"
+                  value={formData.rent_paid}
+                  onChange={handleInputChange}
+                  required
+                />
+              </div>
+            </div>
+            
+            <div className="mb-6">
+              <Label htmlFor="remarks">Remarks (Optional)</Label>
+              <Textarea
+                id="remarks"
+                name="remarks"
+                placeholder="Any additional notes or comments"
+                value={formData.remarks}
+                onChange={handleInputChange}
+                rows={3}
+              />
+            </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+              <div>
+                <Label htmlFor="uber_screenshot">Uber Screenshot</Label>
+                <div className="mt-1 flex items-center">
+                  <label className="w-full flex items-center justify-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 cursor-pointer">
+                    <FileUp className="mr-2 h-5 w-5 text-gray-400" />
+                    {uberScreenshot ? uberScreenshot.name : "Upload Uber Screenshot"}
+                    <input
+                      id="uber_screenshot"
+                      name="uber_screenshot"
+                      type="file"
+                      accept="image/*"
+                      onChange={(e) => handleFileChange(e, "uber")}
+                      className="sr-only"
+                    />
+                  </label>
                 </div>
               </div>
-            )}
-
-            <Form {...form}>
-              <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <FormField
-                    control={form.control}
-                    name="total_trips"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Total Trips</FormLabel>
-                        <FormControl>
-                          <Input type="number" placeholder="Enter total trips" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  
-                  <FormField
-                    control={form.control}
-                    name="total_earnings"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Total Earnings (₹)</FormLabel>
-                        <FormControl>
-                          <Input type="number" step="0.01" placeholder="Enter total earnings" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  
-                  <FormField
-                    control={form.control}
-                    name="total_cashcollect"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Total Cash Collection (₹)</FormLabel>
-                        <FormControl>
-                          <Input type="number" step="0.01" placeholder="Enter cash collected" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  
-                  <FormField
-                    control={form.control}
-                    name="rent_paid"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Rent Paid (₹)</FormLabel>
-                        <FormControl>
-                          <Input type="number" step="0.01" placeholder="Enter rent paid" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
-                
-                <FormField
-                  control={form.control}
-                  name="remarks"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Remarks (Optional)</FormLabel>
-                      <FormControl>
-                        <Textarea placeholder="Any additional information or comments" {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div>
-                    <FormLabel>Uber Screenshot</FormLabel>
-                    <div className="mt-2">
-                      {uberScreenshotUrl ? (
-                        <div className="flex items-center gap-2">
-                          <CheckCircle className="h-5 w-5 text-green-500" />
-                          <span className="text-green-600 font-medium">Uploaded</span>
-                          <a 
-                            href={uberScreenshotUrl} 
-                            target="_blank" 
-                            rel="noopener noreferrer"
-                            className="text-sm text-fleet-purple hover:underline ml-2"
-                          >
-                            View Image
-                          </a>
-                        </div>
-                      ) : (
-                        <Button 
-                          type="button"
-                          variant="outline" 
-                          className="w-full bg-white hover:bg-gray-50 border-dashed"
-                          disabled={uploadingUberScreenshot}
-                          asChild
-                        >
-                          <label className="cursor-pointer">
-                            <input
-                              type="file"
-                              className="hidden"
-                              accept="image/*"
-                              onChange={(e) => handleFileUpload(e, "uber_screenshot")}
-                            />
-                            {uploadingUberScreenshot ? (
-                              <span className="flex items-center justify-center">
-                                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                                Uploading...
-                              </span>
-                            ) : (
-                              <span className="flex items-center justify-center">
-                                <Upload className="h-4 w-4 mr-2" />
-                                Upload Uber Screenshot
-                              </span>
-                            )}
-                          </label>
-                        </Button>
-                      )}
-                    </div>
-                  </div>
-                  
-                  <div>
-                    <FormLabel>Rent Payment Screenshot</FormLabel>
-                    <div className="mt-2">
-                      {rentScreenshotUrl ? (
-                        <div className="flex items-center gap-2">
-                          <CheckCircle className="h-5 w-5 text-green-500" />
-                          <span className="text-green-600 font-medium">Uploaded</span>
-                          <a 
-                            href={rentScreenshotUrl} 
-                            target="_blank" 
-                            rel="noopener noreferrer"
-                            className="text-sm text-fleet-purple hover:underline ml-2"
-                          >
-                            View Image
-                          </a>
-                        </div>
-                      ) : (
-                        <Button 
-                          type="button"
-                          variant="outline" 
-                          className="w-full bg-white hover:bg-gray-50 border-dashed"
-                          disabled={uploadingRentScreenshot}
-                          asChild
-                        >
-                          <label className="cursor-pointer">
-                            <input
-                              type="file"
-                              className="hidden"
-                              accept="image/*"
-                              onChange={(e) => handleFileUpload(e, "rent_screenshot")}
-                            />
-                            {uploadingRentScreenshot ? (
-                              <span className="flex items-center justify-center">
-                                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                                Uploading...
-                              </span>
-                            ) : (
-                              <span className="flex items-center justify-center">
-                                <Upload className="h-4 w-4 mr-2" />
-                                Upload Rent Receipt
-                              </span>
-                            )}
-                          </label>
-                        </Button>
-                      )}
-                    </div>
-                  </div>
-                </div>
               
-                <CardFooter className="px-0 pt-6">
-                  <Button 
-                    type="submit" 
-                    className="w-full bg-fleet-purple hover:bg-purple-700"
-                    disabled={submitting || !profileData?.vehicle_number}
-                  >
-                    {submitting ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Submitting...
-                      </>
-                    ) : (
-                      "Submit Daily Report"
-                    )}
-                  </Button>
-                </CardFooter>
-              </form>
-            </Form>
-          </CardContent>
-        </Card>
+              <div>
+                <Label htmlFor="rent_screenshot">Rent Screenshot</Label>
+                <div className="mt-1 flex items-center">
+                  <label className="w-full flex items-center justify-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 cursor-pointer">
+                    <FileUp className="mr-2 h-5 w-5 text-gray-400" />
+                    {rentScreenshot ? rentScreenshot.name : "Upload Rent Screenshot"}
+                    <input
+                      id="rent_screenshot"
+                      name="rent_screenshot"
+                      type="file"
+                      accept="image/*"
+                      onChange={(e) => handleFileChange(e, "rent")}
+                      className="sr-only"
+                    />
+                  </label>
+                </div>
+              </div>
+            </div>
+            
+            <div className="flex justify-end">
+              <Button 
+                type="button" 
+                variant="outline" 
+                onClick={() => navigate("/profile")}
+                className="mr-2"
+                disabled={submitting}
+              >
+                Cancel
+              </Button>
+              <Button 
+                type="submit"
+                disabled={submitting}
+              >
+                {submitting ? "Submitting..." : "Submit Report"}
+              </Button>
+            </div>
+          </form>
+        </div>
       </main>
       <Footer />
     </div>
