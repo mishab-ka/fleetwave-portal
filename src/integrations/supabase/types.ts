@@ -55,7 +55,22 @@ export type Database = {
           user_id?: string | null
           vehicle_number?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "fleet_reports_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fleet_reports_vehicle_number_fkey"
+            columns: ["vehicle_number"]
+            isOneToOne: false
+            referencedRelation: "vehicles"
+            referencedColumns: ["vehicle_number"]
+          },
+        ]
       }
       users: {
         Row: {
