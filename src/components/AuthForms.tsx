@@ -1,19 +1,25 @@
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import { EyeIcon, EyeOffIcon, Loader2 } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import { useNavigate } from "react-router-dom";
 
 const AuthForms = () => {
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [session, setSession] = useState(null);
+  const navigate = useNavigate();
+  
   const [loginForm, setLoginForm] = useState({
     email: "",
     password: "",
   });
+  
   const [signupForm, setSignupForm] = useState({
     name: "",
     email: "",
@@ -21,6 +27,28 @@ const AuthForms = () => {
     phone: "",
     company: "",
   });
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      if (session) {
+        // Redirect to dashboard or profile page if already logged in
+        navigate("/");
+      }
+    });
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+      if (session) {
+        // Redirect to dashboard or profile page when logged in
+        navigate("/");
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, [navigate]);
 
   const handleLoginChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
@@ -32,26 +60,104 @@ const AuthForms = () => {
     setSignupForm((prev) => ({ ...prev, [name]: value }));
   };
 
-  const handleLoginSubmit = (e: React.FormEvent) => {
+  const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
 
-    // Simulate login process
-    setTimeout(() => {
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: loginForm.email,
+        password: loginForm.password,
+      });
+
+      if (error) {
+        toast.error(error.message);
+      } else {
+        toast.success("Successfully logged in!");
+        
+        // Update user table if necessary
+        if (data.user) {
+          // Check if user exists in our users table
+          const { data: userData } = await supabase
+            .from("users")
+            .select("*")
+            .eq("id", data.user.id)
+            .single();
+            
+          if (!userData) {
+            // Create user profile if it doesn't exist
+            await supabase.from("users").insert([
+              {
+                id: data.user.id,
+                name: data.user.user_metadata?.name || "User",
+                email: data.user.email,
+                online: true,
+              },
+            ]);
+          } else {
+            // Update online status
+            await supabase
+              .from("users")
+              .update({ online: true })
+              .eq("id", data.user.id);
+          }
+        }
+      }
+    } catch (err) {
+      console.error(err);
+      toast.error("An unexpected error occurred.");
+    } finally {
       setLoading(false);
-      toast.success("Successfully logged in!");
-    }, 1500);
+    }
   };
 
-  const handleSignupSubmit = (e: React.FormEvent) => {
+  const handleSignupSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
 
-    // Simulate signup process
-    setTimeout(() => {
+    try {
+      // Register the user with Supabase Auth
+      const { data, error } = await supabase.auth.signUp({
+        email: signupForm.email,
+        password: signupForm.password,
+        options: {
+          data: {
+            name: signupForm.name,
+            phone: signupForm.phone,
+            company: signupForm.company,
+          },
+        },
+      });
+
+      if (error) {
+        toast.error(error.message);
+      } else {
+        // Create a profile in the users table
+        if (data.user) {
+          const { error: profileError } = await supabase.from("users").insert([
+            {
+              id: data.user.id,
+              name: signupForm.name,
+              email: signupForm.email,
+              dob: new Date().toISOString().split('T')[0], // Using current date as placeholder
+              online: true,
+            },
+          ]);
+
+          if (profileError) {
+            console.error("Error creating profile:", profileError);
+            toast.error("Account created but profile setup failed. Please contact support.");
+          } else {
+            toast.success("Account created successfully! Please check your email to confirm your registration.");
+          }
+        }
+      }
+    } catch (err) {
+      console.error(err);
+      toast.error("An unexpected error occurred.");
+    } finally {
       setLoading(false);
-      toast.success("Account created successfully!");
-    }, 1500);
+    }
   };
 
   return (
@@ -149,6 +255,9 @@ const AuthForms = () => {
               <Button
                 variant="outline"
                 className="flex items-center justify-center gap-2"
+                onClick={() => {
+                  toast.info("Google login is not implemented yet");
+                }}
               >
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
@@ -179,6 +288,9 @@ const AuthForms = () => {
               <Button
                 variant="outline"
                 className="flex items-center justify-center gap-2"
+                onClick={() => {
+                  toast.info("Facebook login is not implemented yet");
+                }}
               >
                 <svg
                   xmlns="http://www.w3.org/2000/svg"

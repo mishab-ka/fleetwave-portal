@@ -10,9 +10,6 @@ import { Dialog, DialogContent, DialogTrigger } from "@/components/ui/dialog";
 import AuthForms from "@/components/AuthForms";
 import { Button } from "@/components/ui/button";
 
-// Framer Motion is needed for animations
-<lov-add-dependency>framer-motion@latest</lov-add-dependency>
-
 const Index = () => {
   // Add scroll animation behavior
   useEffect(() => {

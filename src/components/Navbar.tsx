@@ -1,155 +1,182 @@
 
-import React, { useState, useEffect } from "react";
-import { Link } from "react-router-dom";
-import { cn } from "@/lib/utils";
-import { Menu, X } from "lucide-react";
+import React, { useState } from "react";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogTrigger } from "@/components/ui/dialog";
+import AuthForms from "@/components/AuthForms";
+import { useAuth } from "@/context/AuthContext";
+import { toast } from "sonner";
 
 const Navbar = () => {
-  const [isOpen, setIsOpen] = useState(false);
-  const [scrolled, setScrolled] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const { user, signOut, isAuthenticated } = useAuth();
 
-  useEffect(() => {
-    const handleScroll = () => {
-      const offset = window.scrollY;
-      if (offset > 50) {
-        setScrolled(true);
-      } else {
-        setScrolled(false);
-      }
-    };
-
-    window.addEventListener("scroll", handleScroll);
-    return () => {
-      window.removeEventListener("scroll", handleScroll);
-    };
-  }, []);
+  const handleSignOut = async () => {
+    try {
+      await signOut();
+      toast.success("Successfully logged out");
+    } catch (error) {
+      toast.error("Error signing out");
+    }
+  };
 
   return (
-    <header
-      className={cn(
-        "fixed top-0 left-0 right-0 z-50 transition-all duration-300 ease-in-out py-4 px-6 md:px-10 lg:px-20",
-        scrolled
-          ? "bg-white/90 backdrop-blur-md shadow-sm"
-          : "bg-transparent"
-      )}
-    >
-      <div className="container mx-auto">
-        <div className="flex items-center justify-between">
-          <Link to="/" className="flex items-center space-x-2">
-            <div className="w-10 h-10 rounded-md bg-fleet-purple flex items-center justify-center text-white font-bold text-xl">
-              F
+    <nav className="bg-white border-b border-gray-100 py-2 px-4 md:px-6 lg:px-8">
+      <div className="max-w-7xl mx-auto flex justify-between items-center h-16">
+        <div className="flex items-center gap-2">
+          <div className="text-2xl font-bold text-fleet-purple">TawaaqFleet</div>
+        </div>
+
+        {/* Desktop nav links */}
+        <div className="hidden md:flex md:items-center md:space-x-8">
+          <a href="#" className="text-gray-700 hover:text-fleet-purple transition-colors">
+            Home
+          </a>
+          <a href="#features" className="text-gray-700 hover:text-fleet-purple transition-colors">
+            Features
+          </a>
+          <a href="#how-it-works" className="text-gray-700 hover:text-fleet-purple transition-colors">
+            How It Works
+          </a>
+          <a href="#contact" className="text-gray-700 hover:text-fleet-purple transition-colors">
+            Contact
+          </a>
+        </div>
+
+        {/* Auth buttons */}
+        <div className="hidden md:flex md:items-center md:space-x-4">
+          {isAuthenticated ? (
+            <div className="flex items-center gap-4">
+              <span className="text-gray-700">Welcome, {user?.user_metadata?.name || user?.email}</span>
+              <Button 
+                variant="outline" 
+                className="border-fleet-purple text-fleet-purple hover:bg-fleet-purple hover:text-white"
+                onClick={handleSignOut}
+              >
+                Sign Out
+              </Button>
             </div>
-            <span className="text-xl font-bold">FleetWave</span>
-          </Link>
+          ) : (
+            <Dialog>
+              <DialogTrigger asChild>
+                <Button 
+                  variant="outline" 
+                  className="border-fleet-purple text-fleet-purple hover:bg-fleet-purple hover:text-white"
+                >
+                  Sign In
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="sm:max-w-md p-6">
+                <AuthForms />
+              </DialogContent>
+            </Dialog>
+          )}
+        </div>
 
-          {/* Desktop Navigation */}
-          <nav className="hidden md:flex items-center space-x-8">
-            <Link
-              to="/"
-              className="text-foreground/90 hover:text-fleet-purple transition-colors font-medium"
-            >
-              Home
-            </Link>
-            <Link
-              to="#features"
-              className="text-foreground/90 hover:text-fleet-purple transition-colors font-medium"
-            >
-              Features
-            </Link>
-            <Link
-              to="#how-it-works"
-              className="text-foreground/90 hover:text-fleet-purple transition-colors font-medium"
-            >
-              How It Works
-            </Link>
-            <Link
-              to="#contact"
-              className="text-foreground/90 hover:text-fleet-purple transition-colors font-medium"
-            >
-              Contact
-            </Link>
-          </nav>
-
-          {/* CTA Buttons */}
-          <div className="hidden md:flex items-center space-x-4">
-            <Button
-              variant="outline"
-              className="border-fleet-purple text-fleet-purple hover:bg-fleet-purple/10"
-            >
-              Login
-            </Button>
-            <Button className="bg-fleet-purple hover:bg-fleet-purpleDark transition-colors">
-              Sign Up
-            </Button>
-          </div>
-
-          {/* Mobile Menu Button */}
+        {/* Mobile menu button */}
+        <div className="md:hidden">
           <button
-            onClick={() => setIsOpen(!isOpen)}
-            className="md:hidden text-fleet-dark focus:outline-none"
-            aria-label="Toggle menu"
+            type="button"
+            className="inline-flex items-center justify-center p-2 rounded-md text-gray-400 hover:text-gray-500 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-fleet-purple"
+            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
           >
-            {isOpen ? (
-              <X className="w-6 h-6" />
+            <span className="sr-only">Open main menu</span>
+            {mobileMenuOpen ? (
+              <svg
+                className="block h-6 w-6"
+                xmlns="http://www.w3.org/2000/svg"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M6 18L18 6M6 6l12 12"
+                />
+              </svg>
             ) : (
-              <Menu className="w-6 h-6" />
+              <svg
+                className="block h-6 w-6"
+                xmlns="http://www.w3.org/2000/svg"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M4 6h16M4 12h16M4 18h16"
+                />
+              </svg>
             )}
           </button>
         </div>
-
-        {/* Mobile Navigation */}
-        {isOpen && (
-          <div className="md:hidden absolute top-20 inset-x-0 bg-white shadow-lg rounded-b-2xl p-4 border-t animate-fade-in">
-            <nav className="flex flex-col space-y-4 py-2">
-              <Link
-                to="/"
-                className="text-foreground/90 hover:text-fleet-purple px-4 py-2 rounded-md transition-colors font-medium"
-                onClick={() => setIsOpen(false)}
-              >
-                Home
-              </Link>
-              <Link
-                to="#features"
-                className="text-foreground/90 hover:text-fleet-purple px-4 py-2 rounded-md transition-colors font-medium"
-                onClick={() => setIsOpen(false)}
-              >
-                Features
-              </Link>
-              <Link
-                to="#how-it-works"
-                className="text-foreground/90 hover:text-fleet-purple px-4 py-2 rounded-md transition-colors font-medium"
-                onClick={() => setIsOpen(false)}
-              >
-                How It Works
-              </Link>
-              <Link
-                to="#contact"
-                className="text-foreground/90 hover:text-fleet-purple px-4 py-2 rounded-md transition-colors font-medium"
-                onClick={() => setIsOpen(false)}
-              >
-                Contact
-              </Link>
-              <div className="flex space-x-2 pt-2 border-t">
-                <Button
-                  variant="outline"
-                  className="flex-1 border-fleet-purple text-fleet-purple hover:bg-fleet-purple/10"
-                  onClick={() => setIsOpen(false)}
-                >
-                  Login
-                </Button>
-                <Button
-                  className="flex-1 bg-fleet-purple hover:bg-fleet-purpleDark transition-colors"
-                  onClick={() => setIsOpen(false)}
-                >
-                  Sign Up
-                </Button>
-              </div>
-            </nav>
-          </div>
-        )}
       </div>
-    </header>
+
+      {/* Mobile menu */}
+      {mobileMenuOpen && (
+        <div className="md:hidden bg-white p-4 space-y-3">
+          <a
+            href="#"
+            className="block text-gray-700 hover:text-fleet-purple transition-colors"
+            onClick={() => setMobileMenuOpen(false)}
+          >
+            Home
+          </a>
+          <a
+            href="#features"
+            className="block text-gray-700 hover:text-fleet-purple transition-colors"
+            onClick={() => setMobileMenuOpen(false)}
+          >
+            Features
+          </a>
+          <a
+            href="#how-it-works"
+            className="block text-gray-700 hover:text-fleet-purple transition-colors"
+            onClick={() => setMobileMenuOpen(false)}
+          >
+            How It Works
+          </a>
+          <a
+            href="#contact"
+            className="block text-gray-700 hover:text-fleet-purple transition-colors"
+            onClick={() => setMobileMenuOpen(false)}
+          >
+            Contact
+          </a>
+          
+          {isAuthenticated ? (
+            <div className="pt-2 border-t border-gray-200">
+              <p className="text-sm text-gray-500 mb-2">Signed in as {user?.user_metadata?.name || user?.email}</p>
+              <Button 
+                variant="outline" 
+                size="sm"
+                className="w-full border-fleet-purple text-fleet-purple hover:bg-fleet-purple hover:text-white"
+                onClick={handleSignOut}
+              >
+                Sign Out
+              </Button>
+            </div>
+          ) : (
+            <Dialog>
+              <DialogTrigger asChild>
+                <Button 
+                  className="w-full mt-2 bg-fleet-purple hover:bg-fleet-purpleDark text-white"
+                  onClick={() => setMobileMenuOpen(false)}
+                >
+                  Sign In
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="sm:max-w-md p-6">
+                <AuthForms />
+              </DialogContent>
+            </Dialog>
+          )}
+        </div>
+      )}
+    </nav>
   );
 };
 
