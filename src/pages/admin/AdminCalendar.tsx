@@ -4,7 +4,6 @@ import { format, startOfWeek, addDays, subWeeks, addWeeks, isSameDay, parseISO }
 import { supabase } from '@/integrations/supabase/client';
 import AdminLayout from '@/components/AdminLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Calendar } from '@/components/ui/calendar';
 import { Button } from '@/components/ui/button';
 import { ChevronLeft, ChevronRight, Filter } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
@@ -24,12 +23,11 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover';
 
-// Define the types for our rent data
 type User = Tables<'users'>;
 type FleetReport = Tables<'fleet_reports'>;
 type RentHistory = Tables<'rent_history'>;
+type ShiftHistory = Tables<'shift_history'>;
 
-// Combined type for calendar display data
 type RentStatusData = {
   date: string;
   userId: string;
@@ -88,14 +86,10 @@ const AdminCalendar = () => {
   const fetchCalendarData = async () => {
     setLoading(true);
     try {
-      // Calculate start and end dates for the current week view
       const weekStart = startOfWeek(addWeeks(currentDate, weekOffset), { weekStartsOn: 1 });
-      
-      // Format dates for query
       const startDate = format(weekStart, 'yyyy-MM-dd');
-      const endDate = format(addDays(weekStart, 13), 'yyyy-MM-dd');
+      const endDate = format(addDays(weekStart, 6), 'yyyy-MM-dd');
       
-      // Build query for fleet reports
       let query = supabase
         .from('fleet_reports')
         .select(`
@@ -106,7 +100,6 @@ const AdminCalendar = () => {
         .gte('rent_date', startDate)
         .lte('rent_date', endDate);
       
-      // Apply filters if selected
       if (selectedDriver !== 'all') {
         query = query.eq('user_id', selectedDriver);
       }
@@ -115,59 +108,47 @@ const AdminCalendar = () => {
         query = query.eq('shift', selectedShift);
       }
       
-      // Execute query
       const { data: reportsData, error: reportsError } = await query;
 
       if (reportsError) throw reportsError;
 
-      // Process the data for the calendar
-      const processedData: RentStatusData[] = [];
-      
-      if (reportsData && reportsData.length > 0) {
-        reportsData.forEach(report => {
-          // Determine status based on paid status and submission time
-          let status: 'paid' | 'overdue' | 'pending' | 'leave' = 'pending';
+      const processedData: RentStatusData[] = reportsData?.map(report => {
+        let status: 'paid' | 'overdue' | 'pending' | 'leave' = 'pending';
+        
+        if (report.rent_paid_status === true) {
+          status = 'paid';
+        } else {
+          const submissionDate = report.created_at ? new Date(report.created_at) : null;
+          const rentDate = new Date(report.rent_date);
           
-          if (report.rent_paid_status === true) {
-            status = 'paid';
+          if (submissionDate) {
+            const hourDifference = (submissionDate.getTime() - rentDate.getTime()) / (1000 * 60 * 60);
+            if (report.shift === 'morning' && hourDifference > 24) {
+              status = 'overdue';
+            } else if (report.shift === 'night' && hourDifference > 12) {
+              status = 'overdue';
+            }
           } else {
-            // Calculate if overdue based on shift and submission time
-            // Assuming rent is overdue if not submitted within 12 hours after shift end
-            const submissionDate = report.created_at ? new Date(report.created_at) : null;
-            const rentDate = new Date(report.rent_date);
-            
-            // Morning shift: 4 AM to 4 PM, submit by 4 AM next day
-            // Night shift: 4 PM to 4 AM, submit by 4 PM same day
-            if (submissionDate) {
-              const hourDifference = (submissionDate.getTime() - rentDate.getTime()) / (1000 * 60 * 60);
-              if (report.shift === 'morning' && hourDifference > 24) {
-                status = 'overdue';
-              } else if (report.shift === 'night' && hourDifference > 12) {
-                status = 'overdue';
-              }
-            } else {
-              // If no submission date but past due date, mark as overdue
-              const now = new Date();
-              const dayDifference = (now.getTime() - rentDate.getTime()) / (1000 * 60 * 60 * 24);
-              if (dayDifference > 1) {
-                status = 'overdue';
-              }
+            const now = new Date();
+            const dayDifference = (now.getTime() - rentDate.getTime()) / (1000 * 60 * 60 * 24);
+            if (dayDifference > 1) {
+              status = 'overdue';
             }
           }
+        }
 
-          processedData.push({
-            date: report.rent_date,
-            userId: report.user_id,
-            driverName: report.driver_name,
-            vehicleNumber: report.vehicle_number,
-            status,
-            shift: report.shift,
-            submissionTime: report.created_at,
-            earnings: report.total_earnings,
-            notes: report.remarks,
-          });
-        });
-      }
+        return {
+          date: report.rent_date,
+          userId: report.user_id,
+          driverName: report.driver_name,
+          vehicleNumber: report.vehicle_number,
+          status,
+          shift: report.shift,
+          submissionTime: report.created_at,
+          earnings: report.total_earnings,
+          notes: report.remarks,
+        };
+      }) || [];
 
       setCalendarData(processedData);
     } catch (error) {
@@ -180,7 +161,7 @@ const AdminCalendar = () => {
   const getWeekDays = () => {
     const weekStart = startOfWeek(addWeeks(currentDate, weekOffset), { weekStartsOn: 1 });
     const days = [];
-    for (let i = 0; i < 14; i++) {
+    for (let i = 0; i < 7; i++) {
       days.push(addDays(weekStart, i));
     }
     return days;
@@ -205,11 +186,7 @@ const AdminCalendar = () => {
       entry => entry.userId === driverId && entry.date === dateStr
     );
     
-    if (driverEntries.length === 0) return null;
-    
-    // Return the first entry's status for simplicity
-    // In a real app, you might want to handle multiple entries differently
-    return driverEntries[0];
+    return driverEntries.length > 0 ? driverEntries[0] : null;
   };
 
   const filteredDrivers = drivers.filter(driver => {
@@ -242,9 +219,8 @@ const AdminCalendar = () => {
   const weekDays = getWeekDays();
 
   return (
-    <AdminLayout title="Rent Calendar">
+    <AdminLayout title="Weekly Rent Calendar">
       <div className="space-y-6">
-        {/* Filters and navigation */}
         <div className="flex flex-wrap gap-4 justify-between items-center">
           <div className="flex flex-wrap gap-2 items-center">
             <Button 
@@ -269,7 +245,7 @@ const AdminCalendar = () => {
               <ChevronRight className="h-4 w-4" />
             </Button>
             <span className="text-sm font-medium">
-              {format(weekDays[0], 'MMM d')} - {format(weekDays[13], 'MMM d, yyyy')}
+              {format(weekDays[0], 'MMM d')} - {format(weekDays[6], 'MMM d, yyyy')}
             </span>
           </div>
           
@@ -317,31 +293,19 @@ const AdminCalendar = () => {
           </div>
         </div>
         
-        {/* Status legend */}
         <div className="flex flex-wrap gap-4 justify-start">
-          <div className="flex items-center">
-            <span className={`w-3 h-3 rounded-full bg-green-500 mr-2`}></span>
-            <span className="text-sm">Paid {statusEmojis.paid}</span>
-          </div>
-          <div className="flex items-center">
-            <span className={`w-3 h-3 rounded-full bg-red-500 mr-2`}></span>
-            <span className="text-sm">Overdue {statusEmojis.overdue}</span>
-          </div>
-          <div className="flex items-center">
-            <span className={`w-3 h-3 rounded-full bg-yellow-500 mr-2`}></span>
-            <span className="text-sm">Pending {statusEmojis.pending}</span>
-          </div>
-          <div className="flex items-center">
-            <span className={`w-3 h-3 rounded-full bg-blue-500 mr-2`}></span>
-            <span className="text-sm">Leave {statusEmojis.leave}</span>
-          </div>
+          {Object.entries(statusColors).map(([status, color]) => (
+            <div key={status} className="flex items-center">
+              <span className={`w-3 h-3 rounded-full ${color} mr-2`}></span>
+              <span className="text-sm">{status.charAt(0).toUpperCase() + status.slice(1)} {statusEmojis[status as keyof typeof statusEmojis]}</span>
+            </div>
+          ))}
         </div>
         
-        {/* Calendar grid */}
         <div className="overflow-x-auto">
           <Card>
             <CardHeader>
-              <CardTitle>Rent Due Calendar</CardTitle>
+              <CardTitle>Weekly Rent Status</CardTitle>
             </CardHeader>
             <CardContent>
               {loading ? (
@@ -350,7 +314,6 @@ const AdminCalendar = () => {
                 </div>
               ) : (
                 <div className="grid grid-cols-7 gap-2 min-w-[700px]">
-                  {/* Header row - Dates */}
                   {weekDays.map((day, index) => (
                     <div 
                       key={index}
@@ -365,7 +328,6 @@ const AdminCalendar = () => {
                     </div>
                   ))}
                   
-                  {/* Driver rows */}
                   {filteredDrivers.length === 0 ? (
                     <div className="col-span-7 py-8 text-center text-muted-foreground">
                       No drivers found matching your criteria
@@ -423,67 +385,6 @@ const AdminCalendar = () => {
               )}
             </CardContent>
           </Card>
-        </div>
-        
-        {/* Mobile view - Calendar cards */}
-        <div className="md:hidden mt-6 space-y-4">
-          <h3 className="text-lg font-medium">Daily Status</h3>
-          
-          {weekDays.map((day, dayIndex) => (
-            <Card key={dayIndex} className="overflow-hidden">
-              <CardHeader className="p-4 bg-muted">
-                <CardTitle className="text-base">
-                  {format(day, 'EEEE, MMMM d, yyyy')}
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="p-4 space-y-3">
-                {filteredDrivers.length === 0 ? (
-                  <p className="text-muted-foreground text-center py-2">
-                    No drivers found
-                  </p>
-                ) : (
-                  filteredDrivers.map((driver) => {
-                    const status = getStatusForCell(day, driver.id || '');
-                    return (
-                      <div 
-                        key={`mobile-${driver.id}-${dayIndex}`}
-                        className="flex justify-between items-center py-2 border-b last:border-0"
-                      >
-                        <div>
-                          <div className="font-medium">{driver.name || driver.driver_id}</div>
-                          <div className="text-xs text-muted-foreground">
-                            {driver.vehicle_number || 'No vehicle'} | {driver.shift || 'No shift'}
-                          </div>
-                        </div>
-                        
-                        {status ? (
-                          <Popover>
-                            <PopoverTrigger asChild>
-                              <Button 
-                                variant="ghost" 
-                                size="sm"
-                                className={`
-                                  ${statusColors[status.status]} bg-opacity-20
-                                  hover:bg-opacity-30
-                                `}
-                              >
-                                {statusEmojis[status.status]} {status.status.charAt(0).toUpperCase() + status.status.slice(1)}
-                              </Button>
-                            </PopoverTrigger>
-                            <PopoverContent>
-                              <RentStatusTooltip data={status} />
-                            </PopoverContent>
-                          </Popover>
-                        ) : (
-                          <Badge variant="outline">No data</Badge>
-                        )}
-                      </div>
-                    );
-                  })
-                )}
-              </CardContent>
-            </Card>
-          ))}
         </div>
       </div>
     </AdminLayout>
