@@ -11,7 +11,8 @@ import {
   Settings,
   LogOut,
   Menu,
-  Calendar
+  Calendar,
+  ChevronLeft
 } from 'lucide-react';
 import { Button } from './ui/button';
 import { Sheet, SheetContent, SheetTrigger } from './ui/sheet';
@@ -27,6 +28,7 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children, title }) => {
   const { isAdmin, loading } = useAdmin();
   const navigate = useNavigate();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isCollapsed, setIsCollapsed] = useState(false);
 
   useEffect(() => {
     if (!loading && !isAdmin) {
@@ -34,6 +36,21 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children, title }) => {
       navigate('/');
     }
   }, [isAdmin, loading, navigate]);
+
+  useEffect(() => {
+    // Load sidebar state from localStorage
+    const savedState = localStorage.getItem('admin-sidebar-state');
+    if (savedState) {
+      setIsCollapsed(savedState === 'collapsed');
+    }
+  }, []);
+
+  const toggleSidebar = () => {
+    const newState = !isCollapsed;
+    setIsCollapsed(newState);
+    // Save state to localStorage
+    localStorage.setItem('admin-sidebar-state', newState ? 'collapsed' : 'expanded');
+  };
 
   if (loading) {
     return (
@@ -63,8 +80,16 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children, title }) => {
 
   const NavContent = () => (
     <div className="flex flex-col h-full">
-      <div className="p-4 border-b">
-        <h2 className="text-xl font-bold text-fleet-purple">Admin Portal</h2>
+      <div className="p-4 border-b flex justify-between items-center">
+        <h2 className={`text-xl font-bold text-fleet-purple ${isCollapsed ? 'hidden' : 'block'}`}>Admin Portal</h2>
+        <Button 
+          variant="ghost" 
+          size="icon" 
+          onClick={toggleSidebar}
+          className="md:flex hidden"
+        >
+          <ChevronLeft className={`h-5 w-5 transition-transform duration-200 ${isCollapsed ? 'rotate-180' : ''}`} />
+        </Button>
       </div>
       <nav className="flex-1 overflow-y-auto py-4">
         <ul className="space-y-1">
@@ -80,9 +105,10 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children, title }) => {
                     ? 'bg-fleet-purple text-white'
                     : 'text-gray-700 hover:bg-gray-100'
                 }`}
+                title={isCollapsed ? item.label : undefined}
               >
                 <span className="mr-3">{item.icon}</span>
-                {item.label}
+                {!isCollapsed && <span>{item.label}</span>}
               </button>
             </li>
           ))}
@@ -91,11 +117,11 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children, title }) => {
       <div className="p-4 border-t">
         <Button
           variant="outline"
-          className="w-full flex items-center justify-center"
+          className={`w-full flex items-center justify-center ${isCollapsed ? 'p-2' : ''}`}
           onClick={handleLogout}
         >
-          <LogOut size={18} className="mr-2" />
-          Logout
+          <LogOut size={18} className={isCollapsed ? '' : 'mr-2'} />
+          {!isCollapsed && 'Logout'}
         </Button>
       </div>
     </div>
@@ -104,7 +130,11 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children, title }) => {
   return (
     <div className="min-h-screen bg-gray-100 flex">
       {/* Desktop Sidebar */}
-      <div className="hidden md:flex bg-white w-64 shadow-lg flex-col">
+      <div 
+        className={`hidden md:flex bg-white shadow-lg flex-col transition-all duration-300 ease-in-out ${
+          isCollapsed ? 'w-16' : 'w-64'
+        }`}
+      >
         <NavContent />
       </div>
 
