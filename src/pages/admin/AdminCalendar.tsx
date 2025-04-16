@@ -1,11 +1,16 @@
+
 import React, { useState, useEffect } from 'react';
-import { format, startOfWeek, addDays } from 'date-fns';
+import { format, startOfWeek, addDays, addWeeks, parseISO } from 'date-fns';
 import { supabase } from '@/integrations/supabase/client';
 import AdminLayout from '@/components/AdminLayout';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { CalendarHeader } from '@/components/admin/calendar/CalendarHeader';
 import { RentCalendarGrid } from '@/components/admin/calendar/RentCalendarGrid';
+import { useIsMobile } from '@/hooks/use-mobile';
+
+// Define the RentStatus type to fix the TypeScript error
+type RentStatus = 'paid' | 'overdue' | 'pending' | 'leave' | 'offline';
 
 const AdminCalendar = () => {
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -16,6 +21,7 @@ const AdminCalendar = () => {
   const [selectedShift, setSelectedShift] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [weekOffset, setWeekOffset] = useState(0);
+  const isMobile = useIsMobile();
 
   useEffect(() => {
     fetchDrivers();
@@ -41,7 +47,7 @@ const AdminCalendar = () => {
     try {
       const weekStart = startOfWeek(addWeeks(currentDate, weekOffset), { weekStartsOn: 1 });
       const startDate = format(weekStart, 'yyyy-MM-dd');
-      const endDate = format(addDays(weekStart, 6), 'yyyy-MM-dd');
+      const endDate = format(addDays(weekStart, isMobile ? 1 : 6), 'yyyy-MM-dd');
       
       let query = supabase
         .from('fleet_reports')
@@ -73,7 +79,7 @@ const AdminCalendar = () => {
             userId: report.user_id,
             driverName: report.driver_name,
             vehicleNumber: report.vehicle_number,
-            status: 'offline',
+            status: 'offline' as RentStatus,
             shift: report.shift,
             submissionTime: report.created_at,
             earnings: report.total_earnings,
@@ -88,7 +94,7 @@ const AdminCalendar = () => {
             userId: report.user_id,
             driverName: report.driver_name,
             vehicleNumber: report.vehicle_number,
-            status: 'leave',
+            status: 'leave' as RentStatus,
             shift: report.shift,
             submissionTime: report.created_at,
             earnings: report.total_earnings,
@@ -146,14 +152,16 @@ const AdminCalendar = () => {
   return (
     <AdminLayout title="Rent Due Calendar">
       <div className="space-y-4">
-        <div className="flex justify-end">
-          <Input
-            placeholder="Search drivers..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="max-w-xs"
-          />
-        </div>
+        {!isMobile && (
+          <div className="flex justify-end">
+            <Input
+              placeholder="Search drivers..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="max-w-xs"
+            />
+          </div>
+        )}
 
         <Card>
           <CardContent className="p-6">
@@ -174,12 +182,14 @@ const AdminCalendar = () => {
                   }}
                   selectedShift={selectedShift}
                   onShiftChange={setSelectedShift}
+                  isMobile={isMobile}
                 />
                 <RentCalendarGrid
                   currentDate={currentDate}
                   weekOffset={weekOffset}
                   filteredDrivers={filteredDrivers}
                   calendarData={calendarData}
+                  isMobile={isMobile}
                 />
               </>
             )}

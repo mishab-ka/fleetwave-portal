@@ -12,6 +12,7 @@ interface RentCalendarGridProps {
   weekOffset: number;
   filteredDrivers: any[];
   calendarData: any[];
+  isMobile?: boolean;
 }
 
 export const RentCalendarGrid = ({
@@ -19,8 +20,12 @@ export const RentCalendarGrid = ({
   weekOffset,
   filteredDrivers,
   calendarData,
+  isMobile = false,
 }: RentCalendarGridProps) => {
-  const weekDays = Array.from({ length: 7 }, (_, i) => 
+  // Determine number of days to display based on device
+  const daysToShow = isMobile ? 2 : 7;
+  
+  const weekDays = Array.from({ length: daysToShow }, (_, i) => 
     addDays(startOfWeek(addDays(currentDate, weekOffset * 7), { weekStartsOn: 1 }), i)
   );
 
@@ -40,6 +45,56 @@ export const RentCalendarGrid = ({
     }
   };
 
+  if (isMobile) {
+    return (
+      <ScrollArea className="h-[calc(100vh-280px)]">
+        <div className="space-y-6">
+          {weekDays.map((day, dayIndex) => (
+            <div key={dayIndex} className="border rounded-md overflow-hidden">
+              <div className={cn(
+                "p-3 text-center font-medium border-b",
+                isSameDay(day, new Date()) && "bg-accent"
+              )}>
+                {format(day, 'EEEE, d MMM')}
+              </div>
+              
+              <div className="divide-y">
+                {filteredDrivers.map((driver) => {
+                  const rentData = getStatusForDay(driver.id, day);
+                  return rentData ? (
+                    <div 
+                      key={`${driver.id}-${format(day, 'yyyy-MM-dd')}`}
+                      className={cn(
+                        "p-3 flex items-center justify-between",
+                        rentData && getStatusColor(rentData.status)
+                      )}
+                    >
+                      <div className="text-sm">
+                        <div className="font-medium">{driver.name}</div>
+                        <div className="text-xs text-muted-foreground">
+                          {driver.vehicle_number} • {driver.shift || 'N/A'}
+                        </div>
+                      </div>
+                      <RentStatusBadge status={rentData.status} />
+                    </div>
+                  ) : null;
+                })}
+                
+                {/* If no drivers have data for this day */}
+                {filteredDrivers.filter(driver => getStatusForDay(driver.id, day)).length === 0 && (
+                  <div className="p-4 text-center text-sm text-muted-foreground">
+                    No rent data for this day
+                  </div>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      </ScrollArea>
+    );
+  }
+
+  // Desktop view with table
   return (
     <ScrollArea className="h-[calc(100vh-300px)]">
       <div className="rounded-md border">

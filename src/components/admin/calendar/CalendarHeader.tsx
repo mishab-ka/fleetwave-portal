@@ -13,6 +13,7 @@ interface CalendarHeaderProps {
   onTodayClick: () => void;
   selectedShift: string;
   onShiftChange: (value: string) => void;
+  isMobile?: boolean;
 }
 
 export const CalendarHeader = ({
@@ -23,9 +24,10 @@ export const CalendarHeader = ({
   onTodayClick,
   selectedShift,
   onShiftChange,
+  isMobile = false,
 }: CalendarHeaderProps) => {
   const weekStart = startOfWeek(addDays(currentDate, weekOffset * 7), { weekStartsOn: 1 });
-  const weekEnd = addDays(weekStart, 6);
+  const weekEnd = addDays(weekStart, isMobile ? 1 : 6);
 
   return (
     <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between mb-6">
@@ -40,7 +42,10 @@ export const CalendarHeader = ({
           <ChevronRight className="h-4 w-4" />
         </Button>
         <span className="text-sm font-medium">
-          {format(weekStart, 'MMM d')} - {format(weekEnd, 'MMM d, yyyy')}
+          {isMobile 
+            ? `${format(weekStart, 'd MMM')} - ${format(weekEnd, 'd MMM')}`
+            : `${format(weekStart, 'MMM d')} - ${format(weekEnd, 'MMM d, yyyy')}`
+          }
         </span>
       </div>
       
