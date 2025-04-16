@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { useAdmin } from '@/context/AdminContext';
@@ -24,7 +24,7 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children, title }) => {
   const { isAdmin, loading } = useAdmin();
   const navigate = useNavigate();
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (!loading && !isAdmin) {
       toast.error('You do not have admin privileges');
       navigate('/');
@@ -37,6 +37,11 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children, title }) => {
         <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-fleet-purple"></div>
       </div>
     );
+  }
+
+  // Only render the admin layout if user is admin
+  if (!isAdmin) {
+    return null;
   }
 
   const navItems = [

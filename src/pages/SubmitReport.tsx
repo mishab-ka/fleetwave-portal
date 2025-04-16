@@ -56,7 +56,7 @@ const SubmitReport = () => {
   const { user } = useAuth();
   const [profileData, setProfileData] = useState<Tables<"users"> | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isSubmitting, setSubmitting] = useState(false);
   const navigate = useNavigate();
 
   const form = useForm<FormData>({
@@ -110,43 +110,47 @@ const SubmitReport = () => {
     );
   }
 
-  const handleSubmit = async (data: FormData) => {
-    if (!user) return;
-    setIsSubmitting(true);
-
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setSubmitting(true);
+    
     try {
+      if (!user) {
+        toast.error('You need to be logged in to submit a report');
+        return;
+      }
+      
       const reportData = {
         user_id: user.id,
         driver_name: profileData?.name || user.email,
-        vehicle_number: data.vehicle_number,
+        vehicle_number: form.getValues('vehicle_number'),
         submission_date: new Date().toISOString().split('T')[0],
         rent_date: new Date().toISOString().split('T')[0],
-        shift: data.shift,
-        total_trips: data.total_trips,
-        total_earnings: data.total_earnings,
-        total_cashcollect: data.total_cashcollect,
-        rent_paid_amount: data.rent_paid_amount,
-        rent_paid_status: data.rent_paid_status,
-        remarks: data.remarks,
-        // Match the property names with the database schema
-        uber_screenshot: data.uber_screenshot,
-        payment_screenshot: data.payment_screenshot,
+        shift: form.getValues('shift'),
+        total_trips: form.getValues('total_trips'),
+        total_earnings: form.getValues('total_earnings'),
+        total_cashcollect: form.getValues('total_cashcollect'),
+        rent_paid_amount: form.getValues('rent_paid_amount'),
+        rent_paid_status: form.getValues('rent_paid_status'),
+        remarks: form.getValues('remarks'),
+        uber_screenshot: form.getValues('uber_screenshot'),
+        payment_screenshot: form.getValues('payment_screenshot'),
       };
-
+      
       const { error } = await supabase
         .from('fleet_reports')
-        .insert([reportData]);
-
+        .insert(reportData);
+        
       if (error) throw error;
-
+      
       reset();
       toast.success('Report submitted successfully!');
       navigate('/profile');
     } catch (error) {
       console.error('Error submitting report:', error);
-      toast.error('Failed to submit report');
+      toast.error('Failed to submit report. Please try again.');
     } finally {
-      setIsSubmitting(false);
+      setSubmitting(false);
     }
   };
 

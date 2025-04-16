@@ -34,24 +34,22 @@ export const AdminProvider = ({ children }: { children: React.ReactNode }) => {
 
         if (error) throw error;
 
-        // Check if user role is admin
+        // Check if user role is admin or the special email
         const isUserAdmin = data?.role === 'admin' || user.email === 'mishabrock8@gmail.com';
         setIsAdmin(isUserAdmin);
         
-        if (!isUserAdmin) {
+        if (!isUserAdmin && user.email === 'mishabrock8@gmail.com') {
           // Set the user to admin if email is mishabrock8@gmail.com
-          if (user.email === 'mishabrock8@gmail.com') {
-            const { error: updateError } = await supabase
-              .from('users')
-              .update({ role: 'admin' })
-              .eq('id', user.id);
-              
-            if (updateError) {
-              console.error('Error updating role:', updateError);
-            } else {
-              setIsAdmin(true);
-              toast.success('Admin role granted');
-            }
+          const { error: updateError } = await supabase
+            .from('users')
+            .update({ role: 'admin' })
+            .eq('id', user.id);
+            
+          if (updateError) {
+            console.error('Error updating role:', updateError);
+          } else {
+            setIsAdmin(true);
+            toast.success('Admin role granted');
           }
         }
       } catch (error) {
