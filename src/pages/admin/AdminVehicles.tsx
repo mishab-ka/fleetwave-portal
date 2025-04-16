@@ -8,16 +8,9 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { PlusCircle, Edit, Car } from 'lucide-react';
 import { toast } from 'sonner';
+import { Tables } from '@/integrations/supabase/types';
 
-interface Vehicle {
-  id: number;
-  vehicle_number: string;
-  fleet_name: string | null;
-  total_trips: number | null;
-  online: boolean | null;
-  Deposit_Amount: number | null;
-  created_at: string | null;
-}
+type Vehicle = Tables<"vehicles">;
 
 const AdminVehicles = () => {
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
@@ -45,7 +38,9 @@ const AdminVehicles = () => {
     }
   };
   
-  const toggleVehicleStatus = async (id: number, currentStatus: boolean | null) => {
+  const toggleVehicleStatus = async (id: string | null, currentStatus: boolean | null) => {
+    if (!id) return;
+    
     try {
       const { error } = await supabase
         .from('vehicles')
@@ -138,11 +133,11 @@ const AdminVehicles = () => {
                     </TableRow>
                   ) : (
                     vehicles.map((vehicle) => (
-                      <TableRow key={vehicle.id}>
+                      <TableRow key={vehicle.id || vehicle.vehicle_number}>
                         <TableCell className="font-medium">{vehicle.vehicle_number}</TableCell>
                         <TableCell>{vehicle.fleet_name || 'N/A'}</TableCell>
                         <TableCell>{vehicle.total_trips || 0}</TableCell>
-                        <TableCell>₹{vehicle.Deposit_Amount?.toLocaleString() || '0'}</TableCell>
+                        <TableCell>₹{vehicle.deposit?.toLocaleString() || '0'}</TableCell>
                         <TableCell>
                           <Badge 
                             variant={vehicle.online ? 'success' : 'destructive'}

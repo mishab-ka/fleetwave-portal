@@ -8,21 +8,9 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Eye, CheckCircle, XCircle, Download } from 'lucide-react';
 import { toast } from 'sonner';
+import { Tables } from '@/integrations/supabase/types';
 
-interface Report {
-  id: number;
-  driver_name: string;
-  vehicle_number: string;
-  total_trips: number;
-  total_earnings: number;
-  total_cashcollect: number;
-  rent_paid: number;
-  submission_date: string;
-  uber_screenshot: string | null;
-  rent_screenshot: string | null;
-  status: string | null;
-  remarks: string | null;
-}
+type Report = Tables<"fleet_reports">;
 
 const AdminReports = () => {
   const [reports, setReports] = useState<Report[]>([]);
@@ -50,7 +38,7 @@ const AdminReports = () => {
     }
   };
   
-  const updateReportStatus = async (id: number, newStatus: string) => {
+  const updateReportStatus = async (id: string, newStatus: string) => {
     try {
       const { error } = await supabase
         .from('fleet_reports')
@@ -128,13 +116,13 @@ const AdminReports = () => {
                         <TableCell className="font-medium">{report.driver_name}</TableCell>
                         <TableCell>{report.vehicle_number}</TableCell>
                         <TableCell>{report.total_trips}</TableCell>
-                        <TableCell>₹{report.total_earnings.toLocaleString()}</TableCell>
-                        <TableCell>₹{report.total_cashcollect.toLocaleString()}</TableCell>
-                        <TableCell>₹{report.rent_paid.toLocaleString()}</TableCell>
+                        <TableCell>₹{report.total_earnings?.toLocaleString() || '0'}</TableCell>
+                        <TableCell>₹{report.total_cashcollect?.toLocaleString() || '0'}</TableCell>
+                        <TableCell>₹{report.rent_paid_amount?.toLocaleString() || '0'}</TableCell>
                         <TableCell>
                           <div className="flex space-x-1">
                             {report.uber_screenshot ? <CheckCircle className="h-4 w-4 text-green-500" /> : <XCircle className="h-4 w-4 text-red-500" />}
-                            {report.rent_screenshot ? <CheckCircle className="h-4 w-4 text-green-500" /> : <XCircle className="h-4 w-4 text-red-500" />}
+                            {report.payment_screenshot ? <CheckCircle className="h-4 w-4 text-green-500" /> : <XCircle className="h-4 w-4 text-red-500" />}
                           </div>
                         </TableCell>
                         <TableCell>{getStatusBadge(report.status)}</TableCell>

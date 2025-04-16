@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -85,14 +86,19 @@ const AuthForms = () => {
             
           if (!userData) {
             // Create user profile if it doesn't exist
-            await supabase.from("users").insert([
-              {
-                id: data.user.id,
-                name: data.user.user_metadata?.name || "User",
-                email: data.user.email,
-                online: true,
-              },
-            ]);
+            // Generate a unique driver ID
+            const driverId = `D${Math.floor(100000 + Math.random() * 900000)}`;
+            const today = new Date().toISOString();
+            
+            await supabase.from("users").insert({
+              id: data.user.id,
+              name: data.user.user_metadata?.name || "User",
+              email_id: data.user.email,
+              online: true,
+              driver_id: driverId,
+              joining_date: today,
+              phone_number: data.user.user_metadata?.phone || "0000000000"
+            });
           } else {
             // Update online status
             await supabase
@@ -133,15 +139,19 @@ const AuthForms = () => {
       } else {
         // Create a profile in the users table
         if (data.user) {
-          const { error: profileError } = await supabase.from("users").insert([
-            {
-              id: data.user.id,
-              name: signupForm.name,
-              email: signupForm.email,
-              dob: new Date().toISOString(),
-              online: true,
-            },
-          ]);
+          // Generate a unique driver ID
+          const driverId = `D${Math.floor(100000 + Math.random() * 900000)}`;
+          const today = new Date().toISOString();
+          
+          const { error: profileError } = await supabase.from("users").insert({
+            id: data.user.id,
+            name: signupForm.name,
+            email_id: signupForm.email,
+            joining_date: today,
+            driver_id: driverId,
+            phone_number: signupForm.phone || "0000000000",
+            online: true
+          });
 
           if (profileError) {
             console.error("Error creating profile:", profileError);

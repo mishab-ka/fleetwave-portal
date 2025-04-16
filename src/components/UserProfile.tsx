@@ -71,13 +71,13 @@ const UserProfile = () => {
               <AvatarImage src={profileData.profile_photo} alt={profileData.name} />
             ) : (
               <AvatarFallback className="bg-fleet-purple text-white text-xl">
-                {getInitials(profileData.name)}
+                {getInitials(profileData.name || "")}
               </AvatarFallback>
             )}
           </Avatar>
           <div>
             <h2 className="text-2xl font-bold">{profileData.name}</h2>
-            <p className="text-gray-500">{profileData.email}</p>
+            <p className="text-gray-500">{profileData.email_id}</p>
           </div>
         </CardTitle>
       </CardHeader>
@@ -89,7 +89,7 @@ const UserProfile = () => {
           </div>
           <div>
             <h3 className="text-sm font-medium text-gray-500">Date of Birth</h3>
-            <p className="text-lg">{new Date(profileData.dob).toLocaleDateString()}</p>
+            <p className="text-lg">{new Date(profileData.joining_date).toLocaleDateString()}</p>
           </div>
           <div>
             <h3 className="text-sm font-medium text-gray-500">Vehicle</h3>

@@ -23,7 +23,7 @@ const SubmitReport = () => {
     total_trips: 0,
     total_earnings: 0,
     total_cashcollect: 0,
-    rent_paid: 0,
+    rent_paid_amount: 0,
     remarks: "",
   });
 
@@ -61,7 +61,7 @@ const SubmitReport = () => {
     const { name, value } = e.target;
     
     // For number inputs, convert string to number
-    if (["total_trips", "total_earnings", "total_cashcollect", "rent_paid"].includes(name)) {
+    if (["total_trips", "total_earnings", "total_cashcollect", "rent_paid_amount"].includes(name)) {
       setFormData({
         ...formData,
         [name]: parseFloat(value) || 0,
@@ -128,10 +128,14 @@ const SubmitReport = () => {
         total_trips: formData.total_trips,
         total_earnings: formData.total_earnings,
         total_cashcollect: formData.total_cashcollect,
-        rent_paid: formData.rent_paid,
+        rent_paid_amount: formData.rent_paid_amount,
         remarks: formData.remarks,
         uber_screenshot: uberScreenshotUrl,
-        rent_screenshot: rentScreenshotUrl,
+        payment_screenshot: rentScreenshotUrl,
+        rent_paid_status: formData.rent_paid_amount > 0,
+        shift: userData.shift || "morning",
+        submission_date: new Date().toISOString().split('T')[0],
+        rent_date: new Date().toISOString().split('T')[0]
       });
       
       if (error) throw error;

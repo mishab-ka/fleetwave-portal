@@ -9,20 +9,9 @@ import { Button } from '@/components/ui/button';
 import { Eye, CheckCircle, XCircle } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { toast } from 'sonner';
+import { Tables } from '@/integrations/supabase/types';
 
-interface Driver {
-  id: string;
-  name: string;
-  email: string;
-  profile_photo: string | null;
-  vehicle_number: string | null;
-  is_verified: boolean | null;
-  license: string | null;
-  aadhar: string | null;
-  pan: string | null;
-  shift: string | null;
-  online: boolean | null;
-}
+type Driver = Tables<"users">;
 
 const AdminDrivers = () => {
   const [drivers, setDrivers] = useState<Driver[]>([]);
@@ -107,11 +96,11 @@ const AdminDrivers = () => {
                         <TableCell>
                           <Avatar>
                             <AvatarImage src={driver.profile_photo || undefined} />
-                            <AvatarFallback>{driver.name.charAt(0)}</AvatarFallback>
+                            <AvatarFallback>{driver.name?.charAt(0) || 'U'}</AvatarFallback>
                           </Avatar>
                         </TableCell>
                         <TableCell className="font-medium">{driver.name}</TableCell>
-                        <TableCell>{driver.email}</TableCell>
+                        <TableCell>{driver.email_id}</TableCell>
                         <TableCell>{driver.vehicle_number || 'Not assigned'}</TableCell>
                         <TableCell>
                           {driver.shift ? (
