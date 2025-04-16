@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { format, startOfWeek, addDays, addWeeks, parseISO } from 'date-fns';
 import { supabase } from '@/integrations/supabase/client';
@@ -10,8 +9,8 @@ import { RentCalendarGrid } from '@/components/admin/calendar/RentCalendarGrid';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { toast } from 'sonner';
+import { cn } from '@/lib/utils';
 
-// Define the RentStatus type to fix the TypeScript error
 type RentStatus = 'paid' | 'overdue' | 'pending' | 'leave' | 'offline' | 'not_joined';
 
 const AdminCalendar = () => {
@@ -74,7 +73,6 @@ const AdminCalendar = () => {
       if (reportsError) throw reportsError;
 
       const processedData: any[] = reportsData?.map(report => {
-        // Check if user is offline
         if (!report.users.online) {
           return {
             date: report.rent_date,
@@ -89,7 +87,6 @@ const AdminCalendar = () => {
           };
         }
 
-        // Check if user is on leave
         if (report.remarks?.toLowerCase().includes('leave')) {
           return {
             date: report.rent_date,
@@ -104,7 +101,6 @@ const AdminCalendar = () => {
           };
         }
 
-        // Handle rent status based on fleet_reports status
         let status: RentStatus;
         switch (report.status?.toLowerCase()) {
           case 'approved':
@@ -143,14 +139,12 @@ const AdminCalendar = () => {
   };
 
   const filteredDrivers = drivers.filter(driver => {
-    // First filter by search query
     if (searchQuery && !((driver.name && driver.name.toLowerCase().includes(searchQuery.toLowerCase())) ||
       (driver.driver_id && driver.driver_id.toLowerCase().includes(searchQuery.toLowerCase())) ||
       (driver.vehicle_number && driver.vehicle_number.toLowerCase().includes(searchQuery.toLowerCase())))) {
       return false;
     }
     
-    // Filter online drivers
     if (!driver.online) {
       return false;
     }
@@ -158,7 +152,6 @@ const AdminCalendar = () => {
     return true;
   });
 
-  // Get drivers for specific shift tabs
   const getShiftFilteredDrivers = (shiftType: string) => {
     return filteredDrivers.filter(driver => driver.shift === shiftType);
   };
@@ -167,12 +160,10 @@ const AdminCalendar = () => {
   const nightShiftDrivers = getShiftFilteredDrivers('night');
   const fullDayShiftDrivers = getShiftFilteredDrivers('24hr');
 
-  // Group data by shift
   const morningShiftData = calendarData.filter(data => data.shift === 'morning');
   const nightShiftData = calendarData.filter(data => data.shift === 'night');
   const fullDayShiftData = calendarData.filter(data => data.shift === '24hr');
 
-  // Create legend for status indicators
   const statusLegend = [
     { status: 'paid', label: 'Paid' },
     { status: 'pending', label: 'Pending Verification' },
@@ -184,7 +175,6 @@ const AdminCalendar = () => {
   return (
     <AdminLayout title="Rent Due Calendar">
       <div className="space-y-4">
-        {/* Status indicators legend */}
         <div className="flex flex-wrap gap-3 mb-4">
           {statusLegend.map((item) => (
             <div key={item.status} className="flex items-center gap-2">
