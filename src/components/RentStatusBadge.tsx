@@ -2,6 +2,7 @@
 import React from 'react';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
+import { Check, Clock, AlertTriangle, Sun, UserOff } from 'lucide-react';
 
 type RentStatus = 'paid' | 'overdue' | 'pending' | 'leave' | 'offline';
 
@@ -11,15 +12,16 @@ interface RentStatusBadgeProps {
 }
 
 const statusConfig = {
-  paid: { emoji: '✅', bg: 'bg-green-500', text: 'Paid' },
-  overdue: { emoji: '❌', bg: 'bg-red-500', text: 'Overdue' },
-  pending: { emoji: '⏳', bg: 'bg-yellow-500', text: 'Pending' },
-  leave: { emoji: '☀️', bg: 'bg-blue-500', text: 'Leave' },
-  offline: { emoji: '🔴', bg: 'bg-gray-500', text: 'Offline' },
+  paid: { icon: Check, bg: 'bg-green-500', text: 'Paid' },
+  overdue: { icon: AlertTriangle, bg: 'bg-red-500', text: 'Overdue' },
+  pending: { icon: Clock, bg: 'bg-yellow-500', text: 'Pending' },
+  leave: { icon: Sun, bg: 'bg-blue-500', text: 'Leave' },
+  offline: { icon: UserOff, bg: 'bg-gray-500', text: 'Offline' },
 };
 
 export const RentStatusBadge = ({ status, className }: RentStatusBadgeProps) => {
   const config = statusConfig[status];
+  const IconComponent = config.icon;
   
   return (
     <Badge 
@@ -31,7 +33,7 @@ export const RentStatusBadge = ({ status, className }: RentStatusBadgeProps) => 
         className
       )}
     >
-      <span>{config.emoji}</span>
+      <IconComponent className="h-3 w-3" />
       <span className="hidden sm:inline">{config.text}</span>
     </Badge>
   );

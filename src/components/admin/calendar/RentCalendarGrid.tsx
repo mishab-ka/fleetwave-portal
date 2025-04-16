@@ -37,13 +37,17 @@ export const RentCalendarGrid = ({
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'paid': return 'bg-emerald-50';
+      case 'paid': return 'bg-green-50';
       case 'pending': return 'bg-yellow-50';
       case 'overdue': return 'bg-red-50';
-      case 'leave': return 'bg-gray-50';
+      case 'leave': return 'bg-blue-50';
+      case 'offline': return 'bg-gray-50';
       default: return '';
     }
   };
+
+  // Filter to show only online drivers
+  const onlineDrivers = filteredDrivers.filter(driver => driver.online);
 
   if (isMobile) {
     return (
@@ -59,7 +63,7 @@ export const RentCalendarGrid = ({
               </div>
               
               <div className="divide-y">
-                {filteredDrivers.map((driver) => {
+                {onlineDrivers.map((driver) => {
                   const rentData = getStatusForDay(driver.id, day);
                   return rentData ? (
                     <div 
@@ -81,7 +85,7 @@ export const RentCalendarGrid = ({
                 })}
                 
                 {/* If no drivers have data for this day */}
-                {filteredDrivers.filter(driver => getStatusForDay(driver.id, day)).length === 0 && (
+                {onlineDrivers.filter(driver => getStatusForDay(driver.id, day)).length === 0 && (
                   <div className="p-4 text-center text-sm text-muted-foreground">
                     No rent data for this day
                   </div>
@@ -119,7 +123,7 @@ export const RentCalendarGrid = ({
             </TableRow>
           </TableHeader>
           <TableBody>
-            {filteredDrivers.map((driver) => (
+            {onlineDrivers.map((driver) => (
               <TableRow key={driver.id}>
                 <TableCell className="font-medium sticky left-0 bg-background z-10 border-r">
                   <div className="space-y-1">
