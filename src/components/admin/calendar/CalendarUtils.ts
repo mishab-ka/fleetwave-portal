@@ -1,4 +1,3 @@
-
 import { format, parseISO, isAfter, addMinutes, isBefore, addDays, startOfDay } from 'date-fns';
 
 export type RentStatus = 'paid' | 'overdue' | 'pending' | 'leave' | 'offline' | 'not_joined';
@@ -107,10 +106,10 @@ export const processReportData = (report: any): ReportData => {
     
     if (report.shift === 'morning') {
       // Morning shift deadline: 4 PM same day + 30 min grace
-      deadlineForShift = addMinutes(new Date(rentDate.setHours(16, 0, 0, 0)), 30);
+      deadlineForShift = addMinutes(new Date(new Date(rentDate).setHours(16, 0, 0, 0)), 30);
     } else {
       // Night or 24hr shift deadline: 4 AM next day + 30 min grace
-      deadlineForShift = addMinutes(new Date(addDays(rentDate, 1).setHours(4, 0, 0, 0)), 30);
+      deadlineForShift = addMinutes(new Date(addDays(new Date(rentDate), 1).setHours(4, 0, 0, 0)), 30);
     }
       
     if (isAfter(currentDate, deadlineForShift)) {
@@ -152,13 +151,13 @@ export const determineOverdueStatus = (date: string, shift: string, joiningDate?
   let deadlineTime: Date;
   if (shift === 'morning') {
     // Morning shift: deadline is 4 PM (16:00) same day + 30 min grace
-    deadlineTime = addMinutes(new Date(checkDate.setHours(16, 0, 0, 0)), 30);
+    deadlineTime = addMinutes(new Date(new Date(checkDate).setHours(16, 0, 0, 0)), 30);
   } else if (shift === 'night') {
     // Night shift: deadline is 4 AM (04:00) next day + 30 min grace
-    deadlineTime = addMinutes(new Date(addDays(checkDate, 1).setHours(4, 0, 0, 0)), 30);
+    deadlineTime = addMinutes(new Date(addDays(new Date(checkDate), 1).setHours(4, 0, 0, 0)), 30);
   } else {
     // 24hr shift: deadline is 4 AM (04:00) next day + 30 min grace
-    deadlineTime = addMinutes(new Date(addDays(checkDate, 1).setHours(4, 0, 0, 0)), 30);
+    deadlineTime = addMinutes(new Date(addDays(new Date(checkDate), 1).setHours(4, 0, 0, 0)), 30);
   }
   
   // If current date is past the deadline and no report, it's overdue
@@ -167,7 +166,7 @@ export const determineOverdueStatus = (date: string, shift: string, joiningDate?
   }
   
   // Otherwise it's just not submitted yet
-  return 'not_joined';
+  return 'pending';
 };
 
 // Get status color for UI
