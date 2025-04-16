@@ -1,4 +1,3 @@
-
 import React, { useEffect, useState } from 'react';
 import AdminLayout from '@/components/AdminLayout';
 import { supabase } from '@/integrations/supabase/client';
@@ -69,6 +68,73 @@ const AdminReports = () => {
     }
   };
   
+  const renderMobileCard = (report: Report) => (
+    <Card key={report.id} className="mb-4">
+      <CardContent className="p-4">
+        <div className="space-y-3">
+          <div className="flex justify-between items-start">
+            <div>
+              <p className="font-medium">{report.driver_name}</p>
+              <p className="text-sm text-gray-500">
+                {new Date(report.submission_date).toLocaleDateString()}
+              </p>
+            </div>
+            {getStatusBadge(report.status)}
+          </div>
+          
+          <div className="grid grid-cols-2 gap-2 text-sm">
+            <div>
+              <p className="text-gray-500">Vehicle</p>
+              <p>{report.vehicle_number}</p>
+            </div>
+            <div>
+              <p className="text-gray-500">Trips</p>
+              <p>{report.total_trips}</p>
+            </div>
+            <div>
+              <p className="text-gray-500">Earnings</p>
+              <p>₹{report.total_earnings?.toLocaleString() || '0'}</p>
+            </div>
+            <div>
+              <p className="text-gray-500">Cash Collected</p>
+              <p>₹{report.total_cashcollect?.toLocaleString() || '0'}</p>
+            </div>
+          </div>
+          
+          <div className="flex items-center justify-between pt-2">
+            <div className="flex space-x-1">
+              {report.uber_screenshot ? <CheckCircle className="h-4 w-4 text-green-500" /> : <XCircle className="h-4 w-4 text-red-500" />}
+              {report.payment_screenshot ? <CheckCircle className="h-4 w-4 text-green-500" /> : <XCircle className="h-4 w-4 text-red-500" />}
+            </div>
+            <div className="flex space-x-1">
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                className="text-green-600"
+                onClick={() => updateReportStatus(report.id, 'approved')}
+                disabled={report.status === 'approved'}
+              >
+                <CheckCircle className="h-4 w-4" />
+              </Button>
+              <Button 
+                variant="ghost" 
+                size="sm"
+                className="text-red-600"
+                onClick={() => updateReportStatus(report.id, 'rejected')}
+                disabled={report.status === 'rejected'}
+              >
+                <XCircle className="h-4 w-4" />
+              </Button>
+              <Button variant="ghost" size="sm">
+                <Eye className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+
   return (
     <AdminLayout title="Reports Management">
       <div className="flex justify-end mb-6">
@@ -77,89 +143,111 @@ const AdminReports = () => {
         </Button>
       </div>
       
-      <Card>
-        <CardContent className="p-6">
-          {loading ? (
-            <div className="flex items-center justify-center h-64">
-              <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-fleet-purple"></div>
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Date</TableHead>
-                    <TableHead>Driver</TableHead>
-                    <TableHead>Vehicle</TableHead>
-                    <TableHead>Trips</TableHead>
-                    <TableHead>Earnings</TableHead>
-                    <TableHead>Cash Collected</TableHead>
-                    <TableHead>Rent Paid</TableHead>
-                    <TableHead>Screenshots</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {reports.length === 0 ? (
+      <div className="md:hidden">
+        {loading ? (
+          <div className="flex items-center justify-center h-64">
+            <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-fleet-purple"></div>
+          </div>
+        ) : (
+          <div>
+            {reports.length === 0 ? (
+              <Card>
+                <CardContent className="p-6 text-center">
+                  No reports found
+                </CardContent>
+              </Card>
+            ) : (
+              reports.map(renderMobileCard)
+            )}
+          </div>
+        )}
+      </div>
+
+      <div className="hidden md:block">
+        <Card>
+          <CardContent className="p-6">
+            {loading ? (
+              <div className="flex items-center justify-center h-64">
+                <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-fleet-purple"></div>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
                     <TableRow>
-                      <TableCell colSpan={10} className="text-center py-8">
-                        No reports found
-                      </TableCell>
+                      <TableHead>Date</TableHead>
+                      <TableHead>Driver</TableHead>
+                      <TableHead>Vehicle</TableHead>
+                      <TableHead>Trips</TableHead>
+                      <TableHead>Earnings</TableHead>
+                      <TableHead>Cash Collected</TableHead>
+                      <TableHead>Rent Paid</TableHead>
+                      <TableHead>Screenshots</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead className="text-right">Actions</TableHead>
                     </TableRow>
-                  ) : (
-                    reports.map((report) => (
-                      <TableRow key={report.id}>
-                        <TableCell>
-                          {new Date(report.submission_date).toLocaleDateString()}
-                        </TableCell>
-                        <TableCell className="font-medium">{report.driver_name}</TableCell>
-                        <TableCell>{report.vehicle_number}</TableCell>
-                        <TableCell>{report.total_trips}</TableCell>
-                        <TableCell>₹{report.total_earnings?.toLocaleString() || '0'}</TableCell>
-                        <TableCell>₹{report.total_cashcollect?.toLocaleString() || '0'}</TableCell>
-                        <TableCell>₹{report.rent_paid_amount?.toLocaleString() || '0'}</TableCell>
-                        <TableCell>
-                          <div className="flex space-x-1">
-                            {report.uber_screenshot ? <CheckCircle className="h-4 w-4 text-green-500" /> : <XCircle className="h-4 w-4 text-red-500" />}
-                            {report.payment_screenshot ? <CheckCircle className="h-4 w-4 text-green-500" /> : <XCircle className="h-4 w-4 text-red-500" />}
-                          </div>
-                        </TableCell>
-                        <TableCell>{getStatusBadge(report.status)}</TableCell>
-                        <TableCell className="text-right">
-                          <div className="flex justify-end space-x-1">
-                            <Button 
-                              variant="ghost" 
-                              size="sm" 
-                              className="text-green-600"
-                              onClick={() => updateReportStatus(report.id, 'approved')}
-                              disabled={report.status === 'approved'}
-                            >
-                              <CheckCircle className="h-4 w-4" />
-                            </Button>
-                            <Button 
-                              variant="ghost" 
-                              size="sm"
-                              className="text-red-600"
-                              onClick={() => updateReportStatus(report.id, 'rejected')}
-                              disabled={report.status === 'rejected'}
-                            >
-                              <XCircle className="h-4 w-4" />
-                            </Button>
-                            <Button variant="ghost" size="sm">
-                              <Eye className="h-4 w-4" />
-                            </Button>
-                          </div>
+                  </TableHeader>
+                  <TableBody>
+                    {reports.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={10} className="text-center py-8">
+                          No reports found
                         </TableCell>
                       </TableRow>
-                    ))
-                  )}
-                </TableBody>
-              </Table>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+                    ) : (
+                      reports.map((report) => (
+                        <TableRow key={report.id}>
+                          <TableCell>
+                            {new Date(report.submission_date).toLocaleDateString()}
+                          </TableCell>
+                          <TableCell className="font-medium">{report.driver_name}</TableCell>
+                          <TableCell>{report.vehicle_number}</TableCell>
+                          <TableCell>{report.total_trips}</TableCell>
+                          <TableCell>₹{report.total_earnings?.toLocaleString() || '0'}</TableCell>
+                          <TableCell>₹{report.total_cashcollect?.toLocaleString() || '0'}</TableCell>
+                          <TableCell>₹{report.rent_paid_amount?.toLocaleString() || '0'}</TableCell>
+                          <TableCell>
+                            <div className="flex space-x-1">
+                              {report.uber_screenshot ? <CheckCircle className="h-4 w-4 text-green-500" /> : <XCircle className="h-4 w-4 text-red-500" />}
+                              {report.payment_screenshot ? <CheckCircle className="h-4 w-4 text-green-500" /> : <XCircle className="h-4 w-4 text-red-500" />}
+                            </div>
+                          </TableCell>
+                          <TableCell>{getStatusBadge(report.status)}</TableCell>
+                          <TableCell className="text-right">
+                            <div className="flex justify-end space-x-1">
+                              <Button 
+                                variant="ghost" 
+                                size="sm" 
+                                className="text-green-600"
+                                onClick={() => updateReportStatus(report.id, 'approved')}
+                                disabled={report.status === 'approved'}
+                              >
+                                <CheckCircle className="h-4 w-4" />
+                              </Button>
+                              <Button 
+                                variant="ghost" 
+                                size="sm"
+                                className="text-red-600"
+                                onClick={() => updateReportStatus(report.id, 'rejected')}
+                                disabled={report.status === 'rejected'}
+                              >
+                                <XCircle className="h-4 w-4" />
+                              </Button>
+                              <Button variant="ghost" size="sm">
+                                <Eye className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
     </AdminLayout>
   );
 };
