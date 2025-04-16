@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -20,8 +21,6 @@ type Vehicle = {
   id: string;
   assigned_driver_1?: string | null;
   assigned_driver_2?: string | null;
-  users_driver1?: { id: string; name: string; } | null;
-  users_driver2?: { id: string; name: string; } | null;
 };
 
 export const DriverDetailsModal = ({ isOpen, onClose, driverId, onDriverUpdate }: DriverDetailsModalProps) => {
@@ -64,29 +63,44 @@ export const DriverDetailsModal = ({ isOpen, onClose, driverId, onDriverUpdate }
 
   const fetchVehicles = async () => {
     try {
+      // Get all vehicles with their assigned drivers
       const { data, error } = await supabase
         .from('vehicles')
         .select(`
           id,
           vehicle_number,
           assigned_driver_1,
-          assigned_driver_2,
-          users!users_assigned_driver_1_fkey(id, name),
-          users!users_assigned_driver_2_fkey(id, name)
+          assigned_driver_2
         `);
 
       if (error) throw error;
 
-      const formattedVehicles = data.map((vehicle: any) => ({
-        id: vehicle.id,
-        vehicle_number: vehicle.vehicle_number,
-        assigned_driver_1: vehicle.assigned_driver_1,
-        assigned_driver_2: vehicle.assigned_driver_2,
-        users_driver1: vehicle.users && vehicle.users.length > 0 ? vehicle.users[0] : null,
-        users_driver2: vehicle.users_assigned_driver_2_fkey && vehicle.users_assigned_driver_2_fkey.length > 0 ? vehicle.users_assigned_driver_2_fkey[0] : null
+      // Fetch driver details separately to avoid the relationship issues
+      const driverIds = data
+        .flatMap(vehicle => [vehicle.assigned_driver_1, vehicle.assigned_driver_2])
+        .filter(id => id !== null && id !== undefined);
+
+      const { data: driversData, error: driversError } = await supabase
+        .from('users')
+        .select('id, name')
+        .in('id', driverIds);
+
+      if (driversError) throw driversError;
+
+      // Create a map of driver IDs to names for easy lookup
+      const driverMap = {};
+      driversData.forEach(driver => {
+        driverMap[driver.id] = driver.name;
+      });
+
+      // Add driver names to the vehicles data
+      const vehiclesWithDrivers = data.map(vehicle => ({
+        ...vehicle,
+        driver1_name: vehicle.assigned_driver_1 ? driverMap[vehicle.assigned_driver_1] : null,
+        driver2_name: vehicle.assigned_driver_2 ? driverMap[vehicle.assigned_driver_2] : null
       }));
 
-      setVehicles(formattedVehicles);
+      setVehicles(vehiclesWithDrivers);
     } catch (error) {
       console.error('Error fetching vehicles:', error);
       toast.error('Failed to load vehicles');
@@ -161,8 +175,8 @@ export const DriverDetailsModal = ({ isOpen, onClose, driverId, onDriverUpdate }
           selectedVehicleData.assigned_driver_1 !== driverId && 
           selectedVehicleData.assigned_driver_2 !== driverId) {
         
-        const driver1Name = selectedVehicleData.users_driver1?.name || 'Unknown';
-        const driver2Name = selectedVehicleData.users_driver2?.name || 'Unknown';
+        const driver1Name = selectedVehicleData.driver1_name || 'Unknown';
+        const driver2Name = selectedVehicleData.driver2_name || 'Unknown';
         
         toast.error(`Vehicle already has 2 drivers assigned: ${driver1Name} and ${driver2Name}`);
         return;

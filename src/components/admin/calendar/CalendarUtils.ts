@@ -78,13 +78,19 @@ export const processReportData = (report: any): ReportData => {
     
     if (report.shift === 'morning') {
       // Morning shift (4AM to 4PM): must submit by 4 PM same day
-      deadlineTime = new Date(rentDate.setHours(16, 0, 0, 0)); // 4 PM
+      const dateObj = new Date(rentDate);
+      dateObj.setHours(16, 0, 0, 0);
+      deadlineTime = dateObj; // 4 PM
     } else if (report.shift === 'night') {
       // Night shift (4PM to 4AM): must submit by 4 AM next day
-      deadlineTime = new Date(addDays(rentDate, 1).setHours(4, 0, 0, 0)); // 4 AM next day
+      const nextDay = addDays(new Date(rentDate), 1);
+      nextDay.setHours(4, 0, 0, 0);
+      deadlineTime = nextDay; // 4 AM next day
     } else {
       // 24hr shift: must submit by 4 AM next day
-      deadlineTime = new Date(addDays(rentDate, 1).setHours(4, 0, 0, 0)); // 4 AM next day
+      const nextDay = addDays(new Date(rentDate), 1);
+      nextDay.setHours(4, 0, 0, 0);
+      deadlineTime = nextDay; // 4 AM next day
     }
     
     // Add 30 minutes grace period
@@ -106,10 +112,14 @@ export const processReportData = (report: any): ReportData => {
     
     if (report.shift === 'morning') {
       // Morning shift deadline: 4 PM same day + 30 min grace
-      deadlineForShift = addMinutes(new Date(new Date(rentDate).setHours(16, 0, 0, 0)), 30);
+      const dateObj = new Date(rentDate);
+      dateObj.setHours(16, 0, 0, 0);
+      deadlineForShift = addMinutes(dateObj, 30);
     } else {
       // Night or 24hr shift deadline: 4 AM next day + 30 min grace
-      deadlineForShift = addMinutes(new Date(addDays(new Date(rentDate), 1).setHours(4, 0, 0, 0)), 30);
+      const nextDay = addDays(new Date(rentDate), 1);
+      nextDay.setHours(4, 0, 0, 0);
+      deadlineForShift = addMinutes(nextDay, 30);
     }
       
     if (isAfter(currentDate, deadlineForShift)) {
@@ -151,13 +161,19 @@ export const determineOverdueStatus = (date: string, shift: string, joiningDate?
   let deadlineTime: Date;
   if (shift === 'morning') {
     // Morning shift: deadline is 4 PM (16:00) same day + 30 min grace
-    deadlineTime = addMinutes(new Date(new Date(checkDate).setHours(16, 0, 0, 0)), 30);
+    const deadlineDate = new Date(checkDate);
+    deadlineDate.setHours(16, 0, 0, 0);
+    deadlineTime = addMinutes(deadlineDate, 30);
   } else if (shift === 'night') {
     // Night shift: deadline is 4 AM (04:00) next day + 30 min grace
-    deadlineTime = addMinutes(new Date(addDays(new Date(checkDate), 1).setHours(4, 0, 0, 0)), 30);
+    const nextDay = addDays(new Date(checkDate), 1);
+    nextDay.setHours(4, 0, 0, 0);
+    deadlineTime = addMinutes(nextDay, 30);
   } else {
     // 24hr shift: deadline is 4 AM (04:00) next day + 30 min grace
-    deadlineTime = addMinutes(new Date(addDays(new Date(checkDate), 1).setHours(4, 0, 0, 0)), 30);
+    const nextDay = addDays(new Date(checkDate), 1);
+    nextDay.setHours(4, 0, 0, 0);
+    deadlineTime = addMinutes(nextDay, 30);
   }
   
   // If current date is past the deadline and no report, it's overdue
