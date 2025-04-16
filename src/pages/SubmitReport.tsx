@@ -110,8 +110,7 @@ const SubmitReport = () => {
     );
   }
 
-  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
+  const onSubmit = async (data: FormData) => {
     setSubmitting(true);
     
     try {
@@ -123,18 +122,18 @@ const SubmitReport = () => {
       const reportData = {
         user_id: user.id,
         driver_name: profileData?.name || user.email,
-        vehicle_number: form.getValues('vehicle_number'),
+        vehicle_number: data.vehicle_number,
         submission_date: new Date().toISOString().split('T')[0],
         rent_date: new Date().toISOString().split('T')[0],
-        shift: form.getValues('shift'),
-        total_trips: form.getValues('total_trips'),
-        total_earnings: form.getValues('total_earnings'),
-        total_cashcollect: form.getValues('total_cashcollect'),
-        rent_paid_amount: form.getValues('rent_paid_amount'),
-        rent_paid_status: form.getValues('rent_paid_status'),
-        remarks: form.getValues('remarks'),
-        uber_screenshot: form.getValues('uber_screenshot'),
-        payment_screenshot: form.getValues('payment_screenshot'),
+        shift: data.shift,
+        total_trips: data.total_trips,
+        total_earnings: data.total_earnings,
+        total_cashcollect: data.total_cashcollect,
+        rent_paid_amount: data.rent_paid_amount,
+        rent_paid_status: data.rent_paid_status === 'paid',
+        remarks: data.remarks,
+        uber_screenshot: data.uber_screenshot,
+        payment_screenshot: data.payment_screenshot,
       };
       
       const { error } = await supabase
@@ -162,7 +161,7 @@ const SubmitReport = () => {
         </CardHeader>
         <CardContent>
           <Form {...form}>
-            <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-6">
+            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
               <FormField
                 control={form.control}
                 name="vehicle_number"
