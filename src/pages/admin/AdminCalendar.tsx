@@ -8,6 +8,8 @@ import { Input } from '@/components/ui/input';
 import { CalendarHeader } from '@/components/admin/calendar/CalendarHeader';
 import { RentCalendarGrid } from '@/components/admin/calendar/RentCalendarGrid';
 import { useIsMobile } from '@/hooks/use-mobile';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { toast } from 'sonner';
 
 // Define the RentStatus type to fix the TypeScript error
 type RentStatus = 'paid' | 'overdue' | 'pending' | 'leave' | 'offline';
@@ -83,7 +85,7 @@ const AdminCalendar = () => {
             shift: report.shift,
             submissionTime: report.created_at,
             earnings: report.total_earnings,
-            notes: `Offline since ${format(parseISO(report.users.offline_from_date), 'PP')}`,
+            notes: `Offline since ${report.users.offline_from_date ? format(parseISO(report.users.offline_from_date), 'PP') : 'unknown date'}`,
           };
         }
 
@@ -134,6 +136,7 @@ const AdminCalendar = () => {
       setCalendarData(processedData);
     } catch (error) {
       console.error('Error fetching calendar data:', error);
+      toast.error('Failed to load calendar data');
     } finally {
       setLoading(false);
     }
@@ -149,6 +152,11 @@ const AdminCalendar = () => {
     );
   });
 
+  // Group data by shift
+  const morningShiftData = calendarData.filter(data => data.shift === 'morning');
+  const nightShiftData = calendarData.filter(data => data.shift === 'night');
+  const fullDayShiftData = calendarData.filter(data => data.shift === '24hr');
+
   return (
     <AdminLayout title="Rent Due Calendar">
       <div className="space-y-4">
@@ -163,38 +171,157 @@ const AdminCalendar = () => {
           </div>
         )}
 
-        <Card>
-          <CardContent className="p-6">
-            {loading ? (
-              <div className="flex items-center justify-center h-64">
-                <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-fleet-purple"></div>
-              </div>
-            ) : (
-              <>
-                <CalendarHeader
-                  currentDate={currentDate}
-                  weekOffset={weekOffset}
-                  onPreviousWeek={() => setWeekOffset(weekOffset - 1)}
-                  onNextWeek={() => setWeekOffset(weekOffset + 1)}
-                  onTodayClick={() => {
-                    setWeekOffset(0);
-                    setCurrentDate(new Date());
-                  }}
-                  selectedShift={selectedShift}
-                  onShiftChange={setSelectedShift}
-                  isMobile={isMobile}
-                />
-                <RentCalendarGrid
-                  currentDate={currentDate}
-                  weekOffset={weekOffset}
-                  filteredDrivers={filteredDrivers}
-                  calendarData={calendarData}
-                  isMobile={isMobile}
-                />
-              </>
-            )}
-          </CardContent>
-        </Card>
+        <Tabs defaultValue="all" className="w-full">
+          <TabsList className="w-full mb-4 grid grid-cols-4">
+            <TabsTrigger value="all">All Shifts</TabsTrigger>
+            <TabsTrigger value="morning">Morning</TabsTrigger>
+            <TabsTrigger value="night">Night</TabsTrigger>
+            <TabsTrigger value="fullday">24 Hours</TabsTrigger>
+          </TabsList>
+          
+          <TabsContent value="all">
+            <Card>
+              <CardContent className="p-6">
+                {loading ? (
+                  <div className="flex items-center justify-center h-64">
+                    <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-fleet-purple"></div>
+                  </div>
+                ) : (
+                  <>
+                    <CalendarHeader
+                      currentDate={currentDate}
+                      weekOffset={weekOffset}
+                      onPreviousWeek={() => setWeekOffset(weekOffset - 1)}
+                      onNextWeek={() => setWeekOffset(weekOffset + 1)}
+                      onTodayClick={() => {
+                        setWeekOffset(0);
+                        setCurrentDate(new Date());
+                      }}
+                      selectedShift={selectedShift}
+                      onShiftChange={setSelectedShift}
+                      isMobile={isMobile}
+                    />
+                    <RentCalendarGrid
+                      currentDate={currentDate}
+                      weekOffset={weekOffset}
+                      filteredDrivers={filteredDrivers}
+                      calendarData={calendarData}
+                      isMobile={isMobile}
+                    />
+                  </>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="morning">
+            <Card>
+              <CardContent className="p-6">
+                {loading ? (
+                  <div className="flex items-center justify-center h-64">
+                    <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-fleet-purple"></div>
+                  </div>
+                ) : (
+                  <>
+                    <CalendarHeader
+                      currentDate={currentDate}
+                      weekOffset={weekOffset}
+                      onPreviousWeek={() => setWeekOffset(weekOffset - 1)}
+                      onNextWeek={() => setWeekOffset(weekOffset + 1)}
+                      onTodayClick={() => {
+                        setWeekOffset(0);
+                        setCurrentDate(new Date());
+                      }}
+                      selectedShift="morning"
+                      onShiftChange={() => {}}
+                      isMobile={isMobile}
+                      hideShiftSelector
+                    />
+                    <RentCalendarGrid
+                      currentDate={currentDate}
+                      weekOffset={weekOffset}
+                      filteredDrivers={filteredDrivers}
+                      calendarData={morningShiftData}
+                      isMobile={isMobile}
+                    />
+                  </>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="night">
+            <Card>
+              <CardContent className="p-6">
+                {loading ? (
+                  <div className="flex items-center justify-center h-64">
+                    <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-fleet-purple"></div>
+                  </div>
+                ) : (
+                  <>
+                    <CalendarHeader
+                      currentDate={currentDate}
+                      weekOffset={weekOffset}
+                      onPreviousWeek={() => setWeekOffset(weekOffset - 1)}
+                      onNextWeek={() => setWeekOffset(weekOffset + 1)}
+                      onTodayClick={() => {
+                        setWeekOffset(0);
+                        setCurrentDate(new Date());
+                      }}
+                      selectedShift="night"
+                      onShiftChange={() => {}}
+                      isMobile={isMobile}
+                      hideShiftSelector
+                    />
+                    <RentCalendarGrid
+                      currentDate={currentDate}
+                      weekOffset={weekOffset}
+                      filteredDrivers={filteredDrivers}
+                      calendarData={nightShiftData}
+                      isMobile={isMobile}
+                    />
+                  </>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="fullday">
+            <Card>
+              <CardContent className="p-6">
+                {loading ? (
+                  <div className="flex items-center justify-center h-64">
+                    <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-fleet-purple"></div>
+                  </div>
+                ) : (
+                  <>
+                    <CalendarHeader
+                      currentDate={currentDate}
+                      weekOffset={weekOffset}
+                      onPreviousWeek={() => setWeekOffset(weekOffset - 1)}
+                      onNextWeek={() => setWeekOffset(weekOffset + 1)}
+                      onTodayClick={() => {
+                        setWeekOffset(0);
+                        setCurrentDate(new Date());
+                      }}
+                      selectedShift="24hr"
+                      onShiftChange={() => {}}
+                      isMobile={isMobile}
+                      hideShiftSelector
+                    />
+                    <RentCalendarGrid
+                      currentDate={currentDate}
+                      weekOffset={weekOffset}
+                      filteredDrivers={filteredDrivers}
+                      calendarData={fullDayShiftData}
+                      isMobile={isMobile}
+                    />
+                  </>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+        </Tabs>
       </div>
     </AdminLayout>
   );

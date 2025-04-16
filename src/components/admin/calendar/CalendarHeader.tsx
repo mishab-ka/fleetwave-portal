@@ -14,6 +14,7 @@ interface CalendarHeaderProps {
   selectedShift: string;
   onShiftChange: (value: string) => void;
   isMobile?: boolean;
+  hideShiftSelector?: boolean;
 }
 
 export const CalendarHeader = ({
@@ -25,6 +26,7 @@ export const CalendarHeader = ({
   selectedShift,
   onShiftChange,
   isMobile = false,
+  hideShiftSelector = false,
 }: CalendarHeaderProps) => {
   const weekStart = startOfWeek(addDays(currentDate, weekOffset * 7), { weekStartsOn: 1 });
   const weekEnd = addDays(weekStart, isMobile ? 1 : 6);
@@ -49,17 +51,19 @@ export const CalendarHeader = ({
         </span>
       </div>
       
-      <Select value={selectedShift} onValueChange={onShiftChange}>
-        <SelectTrigger className="w-[150px] h-9">
-          <SelectValue placeholder="Select Shift" />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="all">All Shifts</SelectItem>
-          <SelectItem value="morning">Morning</SelectItem>
-          <SelectItem value="night">Night</SelectItem>
-          <SelectItem value="24hr">24 Hours</SelectItem>
-        </SelectContent>
-      </Select>
+      {!hideShiftSelector && (
+        <Select value={selectedShift} onValueChange={onShiftChange}>
+          <SelectTrigger className="w-[150px] h-9">
+            <SelectValue placeholder="Select Shift" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Shifts</SelectItem>
+            <SelectItem value="morning">Morning</SelectItem>
+            <SelectItem value="night">Night</SelectItem>
+            <SelectItem value="24hr">24 Hours</SelectItem>
+          </SelectContent>
+        </Select>
+      )}
     </div>
   );
 };
