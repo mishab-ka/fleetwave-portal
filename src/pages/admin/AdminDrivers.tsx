@@ -245,7 +245,7 @@ const AdminDrivers = () => {
       <DriverDetailsModal 
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
-        driver={selectedDriver}
+        driverId={selectedDriver?.id}
         onDriverUpdate={fetchDrivers}
       />
     </AdminLayout>

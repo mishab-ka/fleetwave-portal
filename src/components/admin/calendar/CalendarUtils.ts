@@ -1,4 +1,5 @@
-import { format, parseISO, isAfter, addMinutes, isBefore, addDays } from 'date-fns';
+
+import { format, parseISO, isAfter, addMinutes, isBefore, addDays, startOfDay } from 'date-fns';
 
 export type RentStatus = 'paid' | 'overdue' | 'pending' | 'leave' | 'offline' | 'not_joined';
 
@@ -77,15 +78,18 @@ export const processReportData = (report: any): ReportData => {
     let deadlineTime: Date;
     
     if (report.shift === 'morning') {
-      // Morning shift: must submit by 4 PM same day + 30 min grace
-      deadlineTime = addMinutes(new Date(rentDate.setHours(16, 0, 0, 0)), 30);
+      // Morning shift (4AM to 4PM): must submit by 4 PM same day
+      deadlineTime = new Date(rentDate.setHours(16, 0, 0, 0)); // 4 PM
     } else if (report.shift === 'night') {
-      // Night shift: must submit by 4 AM next day + 30 min grace
-      deadlineTime = addMinutes(new Date(addDays(rentDate, 1).setHours(4, 0, 0, 0)), 30);
+      // Night shift (4PM to 4AM): must submit by 4 AM next day
+      deadlineTime = new Date(addDays(rentDate, 1).setHours(4, 0, 0, 0)); // 4 AM next day
     } else {
-      // 24hr shift: must submit by 4 AM next day + 30 min grace
-      deadlineTime = addMinutes(new Date(addDays(rentDate, 1).setHours(4, 0, 0, 0)), 30);
+      // 24hr shift: must submit by 4 AM next day
+      deadlineTime = new Date(addDays(rentDate, 1).setHours(4, 0, 0, 0)); // 4 AM next day
     }
+    
+    // Add 30 minutes grace period
+    deadlineTime = addMinutes(deadlineTime, 30);
     
     if (isAfter(submissionTime, deadlineTime)) {
       status = 'overdue';
@@ -99,9 +103,15 @@ export const processReportData = (report: any): ReportData => {
   
   // Only check for overdue if joining date is before or equal to rent date
   if (joiningDate && !isBefore(rentDate, joiningDate) && isBefore(rentDate, currentDate) && status !== 'paid' && status !== 'leave') {
-    const deadlineForShift = report.shift === 'morning' 
-      ? addMinutes(new Date(rentDate.setHours(16, 0, 0, 0)), 30)
-      : addMinutes(new Date(addDays(rentDate, 1).setHours(4, 0, 0, 0)), 30);
+    let deadlineForShift: Date;
+    
+    if (report.shift === 'morning') {
+      // Morning shift deadline: 4 PM same day + 30 min grace
+      deadlineForShift = addMinutes(new Date(rentDate.setHours(16, 0, 0, 0)), 30);
+    } else {
+      // Night or 24hr shift deadline: 4 AM next day + 30 min grace
+      deadlineForShift = addMinutes(new Date(addDays(rentDate, 1).setHours(4, 0, 0, 0)), 30);
+    }
       
     if (isAfter(currentDate, deadlineForShift)) {
       status = 'overdue';
@@ -125,25 +135,34 @@ export const processReportData = (report: any): ReportData => {
 // Determine status for a date with no reports
 export const determineOverdueStatus = (date: string, shift: string, joiningDate?: string): RentStatus => {
   // If no joining date or joining date is after the current date, return not_joined
-  if (!joiningDate || isAfter(parseISO(date), parseISO(joiningDate))) {
+  if (!joiningDate) {
     return 'not_joined';
   }
   
   const currentDate = new Date();
   const checkDate = parseISO(date);
+  const joinDate = parseISO(joiningDate);
+  
+  // If joining date is after the check date, return not_joined
+  if (isAfter(joinDate, checkDate)) {
+    return 'not_joined';
+  }
   
   // Calculate deadline based on shift
   let deadlineTime: Date;
   if (shift === 'morning') {
-    // Morning shift: deadline is 4 PM same day + 30 min grace
+    // Morning shift: deadline is 4 PM (16:00) same day + 30 min grace
     deadlineTime = addMinutes(new Date(checkDate.setHours(16, 0, 0, 0)), 30);
+  } else if (shift === 'night') {
+    // Night shift: deadline is 4 AM (04:00) next day + 30 min grace
+    deadlineTime = addMinutes(new Date(addDays(checkDate, 1).setHours(4, 0, 0, 0)), 30);
   } else {
-    // Night or 24hr shift: deadline is 4 AM next day + 30 min grace
+    // 24hr shift: deadline is 4 AM (04:00) next day + 30 min grace
     deadlineTime = addMinutes(new Date(addDays(checkDate, 1).setHours(4, 0, 0, 0)), 30);
   }
   
   // If current date is past the deadline and no report, it's overdue
-  if (isAfter(currentDate, deadlineTime) && isBefore(checkDate, currentDate)) {
+  if (isAfter(currentDate, deadlineTime) && isBefore(startOfDay(checkDate), startOfDay(currentDate))) {
     return 'overdue';
   }
   
