@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { format, parseISO } from 'date-fns';
 import { supabase } from '@/integrations/supabase/client';
@@ -14,7 +13,7 @@ import { cn } from '@/lib/utils';
 import { DateRangeFilter } from '@/components/admin/calendar/DateRangeFilter';
 import { DriverDetailModal } from '@/components/admin/calendar/DriverDetailModal';
 import { useCalendarDateRange } from '@/hooks/useCalendarDateRange';
-import { processReportData, ReportData, getStatusColor, getStatusLabel, shouldIncludeDriver } from '@/components/admin/calendar/CalendarUtils';
+import { processReportData, ReportData, getStatusColor, getStatusLabel, shouldIncludeDriver, RentStatus } from '@/components/admin/calendar/CalendarUtils';
 
 const AdminCalendar = () => {
   const [calendarData, setCalendarData] = useState<ReportData[]>([]);

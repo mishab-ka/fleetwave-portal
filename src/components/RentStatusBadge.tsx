@@ -22,7 +22,7 @@ const statusConfig = {
 };
 
 export const RentStatusBadge = ({ status, className, showText = true }: RentStatusBadgeProps) => {
-  const config = statusConfig[status];
+  const config = statusConfig[status] || statusConfig.not_joined;
   const IconComponent = config.icon;
   
   return (

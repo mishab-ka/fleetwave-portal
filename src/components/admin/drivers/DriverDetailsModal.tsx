@@ -1,289 +1,318 @@
 
 import React, { useState, useEffect } from 'react';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
-import { Separator } from '@/components/ui/separator';
+import { format } from 'date-fns';
 import { toast } from 'sonner';
-import { AlertTriangle, Info } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
-import { Tables } from '@/integrations/supabase/types';
-
-type Driver = Tables<"users">;
-type Vehicle = Tables<"vehicles">;
 
 interface DriverDetailsModalProps {
   isOpen: boolean;
   onClose: () => void;
-  driver: Driver | null;
-  onDriverUpdate: () => void;
+  driverId?: string;
+  onSave?: () => void;
 }
 
-const DriverDetailsModal: React.FC<DriverDetailsModalProps> = ({ isOpen, onClose, driver, onDriverUpdate }) => {
-  const [name, setName] = useState('');
-  const [email, setEmail] = useState('');
-  const [isOnline, setIsOnline] = useState(false);
-  const [shift, setShift] = useState('');
-  const [vehicleNumber, setVehicleNumber] = useState('');
-  const [loading, setLoading] = useState(false);
+type Vehicle = {
+  vehicle_number: string;
+  id: string;
+  assigned_driver_1?: string | null;
+  assigned_driver_2?: string | null;
+  users_driver1?: { id: string; name: string; } | null;
+  users_driver2?: { id: string; name: string; } | null;
+};
+
+export const DriverDetailsModal = ({ isOpen, onClose, driverId, onSave }: DriverDetailsModalProps) => {
+  const [driver, setDriver] = useState<any>(null);
+  const [loading, setLoading] = useState<boolean>(false);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
-  const [assignmentError, setAssignmentError] = useState('');
-  const [assignedDrivers, setAssignedDrivers] = useState<{id: string, name: string}[]>([]);
+  const [isOnline, setIsOnline] = useState<boolean>(false);
+  const [selectedShift, setSelectedShift] = useState<string>('');
+  const [selectedVehicle, setSelectedVehicle] = useState<string>('');
+  const [isProcessing, setIsProcessing] = useState<boolean>(false);
 
   useEffect(() => {
-    if (driver) {
-      setName(driver.name || '');
-      setEmail(driver.email_id || '');
-      setIsOnline(driver.online || false);
-      setShift(driver.shift || '');
-      setVehicleNumber(driver.vehicle_number || '');
+    if (driverId && isOpen) {
+      fetchDriverDetails();
+      fetchVehicles();
     }
-    fetchVehicles();
-  }, [driver]);
+  }, [driverId, isOpen]);
 
-  const fetchVehicles = async () => {
+  const fetchDriverDetails = async () => {
+    setLoading(true);
     try {
       const { data, error } = await supabase
-        .from('vehicles')
+        .from('users')
         .select('*')
-        .order('vehicle_number');
-      
-      if (error) throw error;
-      setVehicles(data || []);
-    } catch (error) {
-      console.error('Error fetching vehicles:', error);
-      toast.error('Failed to load vehicles data');
-    }
-  };
-
-  const checkVehicleAssignment = async (selectedVehicle: string) => {
-    if (!selectedVehicle) {
-      setAssignmentError('');
-      setAssignedDrivers([]);
-      return true;
-    }
-
-    try {
-      const { data, error } = await supabase
-        .from('vehicles')
-        .select('assigned_driver_1, assigned_driver_2, users!users_assigned_driver_1_fkey(id, name), users!users_assigned_driver_2_fkey(id, name)')
-        .eq('vehicle_number', selectedVehicle)
+        .eq('id', driverId)
         .single();
 
       if (error) throw error;
-
-      // Create a list of currently assigned drivers
-      const assignedDriversList: {id: string, name: string}[] = [];
-      
-      // Extract driver1 data
-      const driver1 = data.users;
-      if (driver1 && driver1.id) {
-        assignedDriversList.push({ id: driver1.id, name: driver1.name || 'Unknown' });
-      }
-      
-      // Extract driver2 data
-      const driver2 = data.users_assigned_driver_2_fkey;
-      if (driver2 && driver2.id) {
-        assignedDriversList.push({ id: driver2.id, name: driver2.name || 'Unknown' });
-      }
-
-      setAssignedDrivers(assignedDriversList);
-
-      // Check if we can assign this vehicle to the current driver
-      if (assignedDriversList.length >= 2 && !assignedDriversList.some(d => d.id === driver?.id)) {
-        setAssignmentError(`This vehicle already has two drivers assigned: ${assignedDriversList.map(d => d.name).join(', ')}`);
-        return false;
-      } else {
-        setAssignmentError('');
-        return true;
-      }
+      setDriver(data);
+      setIsOnline(data.online || false);
+      setSelectedShift(data.shift || '');
+      setSelectedVehicle(data.vehicle_number || '');
     } catch (error) {
-      console.error('Error checking vehicle assignment:', error);
-      toast.error('Failed to check vehicle assignment');
-      return false;
-    }
-  };
-
-  const handleVehicleChange = async (value: string) => {
-    const canAssign = await checkVehicleAssignment(value);
-    if (canAssign) {
-      setVehicleNumber(value);
-    }
-  };
-
-  const handleOnlineToggle = async (checked: boolean) => {
-    setIsOnline(checked);
-  };
-
-  const handleSubmit = async () => {
-    if (!driver) return;
-    
-    setLoading(true);
-    
-    try {
-      const now = new Date();
-      const dateString = now.toISOString().split('T')[0]; // YYYY-MM-DD format
-      
-      // Prepare update data
-      const updateData: Partial<Driver> = {
-        name,
-        email_id: email,
-        shift,
-      };
-      
-      // Handle online status change
-      if (isOnline !== driver.online) {
-        updateData.online = isOnline;
-        
-        if (isOnline) {
-          // Going online
-          updateData.online_from_date = dateString;
-          updateData.offline_from_date = null;
-        } else {
-          // Going offline
-          updateData.offline_from_date = dateString;
-        }
-      }
-      
-      // Handle vehicle change if needed
-      if (vehicleNumber !== driver.vehicle_number) {
-        // Check vehicle assignment again before update
-        const canAssign = await checkVehicleAssignment(vehicleNumber);
-        if (!canAssign) {
-          setLoading(false);
-          return;
-        }
-        
-        updateData.vehicle_number = vehicleNumber;
-        
-        // If there was a previous vehicle, update it to remove this driver
-        if (driver.vehicle_number) {
-          // Check which driver slot this user occupied in the previous vehicle
-          const { data: prevVehicleData, error: prevVehicleError } = await supabase
-            .from('vehicles')
-            .select('assigned_driver_1, assigned_driver_2')
-            .eq('vehicle_number', driver.vehicle_number)
-            .single();
-          
-          if (prevVehicleError) throw prevVehicleError;
-          
-          const updateVehicle: { assigned_driver_1?: null, assigned_driver_2?: null } = {};
-          
-          if (prevVehicleData.assigned_driver_1 === driver.id) {
-            updateVehicle.assigned_driver_1 = null;
-          }
-          
-          if (prevVehicleData.assigned_driver_2 === driver.id) {
-            updateVehicle.assigned_driver_2 = null;
-          }
-          
-          const { error: vehicleUpdateError } = await supabase
-            .from('vehicles')
-            .update(updateVehicle)
-            .eq('vehicle_number', driver.vehicle_number);
-          
-          if (vehicleUpdateError) throw vehicleUpdateError;
-        }
-        
-        // Assign driver to new vehicle
-        if (vehicleNumber) {
-          const { data: vehicleData, error: getVehicleError } = await supabase
-            .from('vehicles')
-            .select('assigned_driver_1, assigned_driver_2')
-            .eq('vehicle_number', vehicleNumber)
-            .single();
-          
-          if (getVehicleError) throw getVehicleError;
-          
-          const vehicleUpdate: { assigned_driver_1?: string, assigned_driver_2?: string } = {};
-          
-          if (!vehicleData.assigned_driver_1) {
-            vehicleUpdate.assigned_driver_1 = driver.id;
-          } else if (!vehicleData.assigned_driver_2) {
-            vehicleUpdate.assigned_driver_2 = driver.id;
-          }
-          
-          const { error: updateVehicleError } = await supabase
-            .from('vehicles')
-            .update(vehicleUpdate)
-            .eq('vehicle_number', vehicleNumber);
-          
-          if (updateVehicleError) throw updateVehicleError;
-        }
-      }
-      
-      // Update driver record
-      const { error } = await supabase
-        .from('users')
-        .update(updateData)
-        .eq('id', driver.id);
-      
-      if (error) throw error;
-      
-      toast.success('Driver details updated successfully');
-      onDriverUpdate();
-      onClose();
-    } catch (error) {
-      console.error('Error updating driver:', error);
-      toast.error('Failed to update driver details');
+      console.error('Error fetching driver details:', error);
+      toast.error('Failed to load driver details');
     } finally {
       setLoading(false);
     }
   };
 
-  if (!driver) return null;
+  const fetchVehicles = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('vehicles')
+        .select(`
+          id,
+          vehicle_number,
+          assigned_driver_1,
+          assigned_driver_2,
+          users!users_assigned_driver_1_fkey(id, name),
+          users!users_assigned_driver_2_fkey(id, name)
+        `);
+
+      if (error) throw error;
+
+      // Transform data to include driver names
+      const formattedVehicles = data.map((vehicle: any) => ({
+        id: vehicle.id,
+        vehicle_number: vehicle.vehicle_number,
+        assigned_driver_1: vehicle.assigned_driver_1,
+        assigned_driver_2: vehicle.assigned_driver_2,
+        users_driver1: vehicle.users && vehicle.users.length > 0 ? vehicle.users[0] : null,
+        users_driver2: vehicle.users_assigned_driver_2_fkey && vehicle.users_assigned_driver_2_fkey.length > 0 ? vehicle.users_assigned_driver_2_fkey[0] : null
+      }));
+
+      setVehicles(formattedVehicles);
+    } catch (error) {
+      console.error('Error fetching vehicles:', error);
+      toast.error('Failed to load vehicles');
+    }
+  };
+
+  const handleOnlineToggle = async () => {
+    setIsProcessing(true);
+    
+    try {
+      // Prepare the update data
+      const updateData: any = {
+        online: !isOnline
+      };
+      
+      // If turning offline, add the offline date
+      if (isOnline) {
+        updateData.offline_from_date = new Date().toISOString().split('T')[0];
+      } else {
+        // If turning online, add the online date and clear offline date
+        updateData.online_from_date = new Date().toISOString().split('T')[0];
+        updateData.offline_from_date = null;
+      }
+      
+      // Update the driver status
+      const { error } = await supabase
+        .from('users')
+        .update(updateData)
+        .eq('id', driverId);
+        
+      if (error) throw error;
+      
+      // Also insert a record into rent_history table for tracking
+      if (!isOnline) {
+        // Only if turning online, add a rent history entry
+        const { error: historyError } = await supabase
+          .from('rent_history')
+          .insert({
+            user_id: driverId,
+            rent_date: new Date().toISOString().split('T')[0],
+            is_online: true,
+            payment_status: 'active',
+            shift: selectedShift
+          });
+        
+        if (historyError) throw historyError;
+      }
+      
+      setIsOnline(!isOnline);
+      toast.success(`Driver status updated to ${!isOnline ? 'Online' : 'Offline'}`);
+    } catch (error) {
+      console.error('Error updating driver status:', error);
+      toast.error('Failed to update driver status');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleVehicleChange = async (vehicleNumber: string) => {
+    if (!vehicleNumber || vehicleNumber === selectedVehicle) return;
+    
+    setIsProcessing(true);
+    
+    try {
+      // 1. Check if the selected vehicle exists
+      const selectedVehicleData = vehicles.find(v => v.vehicle_number === vehicleNumber);
+      
+      if (!selectedVehicleData) {
+        toast.error('Vehicle not found');
+        return;
+      }
+      
+      // 2. Check if the vehicle already has two drivers assigned
+      const hasDriver1 = !!selectedVehicleData.assigned_driver_1;
+      const hasDriver2 = !!selectedVehicleData.assigned_driver_2;
+      
+      // If both slots are filled and neither is this driver
+      if (hasDriver1 && hasDriver2 && 
+          selectedVehicleData.assigned_driver_1 !== driverId && 
+          selectedVehicleData.assigned_driver_2 !== driverId) {
+        
+        // Get driver names
+        const driver1Name = selectedVehicleData.users_driver1?.name || 'Unknown';
+        const driver2Name = selectedVehicleData.users_driver2?.name || 'Unknown';
+        
+        toast.error(`Vehicle already has 2 drivers assigned: ${driver1Name} and ${driver2Name}`);
+        return;
+      }
+      
+      // 3. Determine which slot to use (slot 1 if empty, otherwise slot 2)
+      let slotToUse = 'assigned_driver_1';
+      if (hasDriver1 && selectedVehicleData.assigned_driver_1 !== driverId) {
+        slotToUse = 'assigned_driver_2';
+      }
+      
+      // 4. Clear previous vehicle assignment for this driver
+      const { error: updateError } = await supabase
+        .from('users')
+        .update({ vehicle_number: vehicleNumber })
+        .eq('id', driverId);
+        
+      if (updateError) throw updateError;
+      
+      // 5. Update the vehicle assignment
+      const vehicleUpdate: any = {};
+      vehicleUpdate[slotToUse] = driverId;
+      
+      const { error: vehicleError } = await supabase
+        .from('vehicles')
+        .update(vehicleUpdate)
+        .eq('id', selectedVehicleData.id);
+        
+      if (vehicleError) throw vehicleError;
+      
+      setSelectedVehicle(vehicleNumber);
+      toast.success(`Vehicle assigned successfully: ${vehicleNumber}`);
+    } catch (error) {
+      console.error('Error assigning vehicle:', error);
+      toast.error('Failed to assign vehicle');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleShiftChange = async (shift: string) => {
+    if (!shift || shift === selectedShift) return;
+    
+    setIsProcessing(true);
+    
+    try {
+      const today = new Date().toISOString().split('T')[0];
+      
+      // Update user shift
+      const { error } = await supabase
+        .from('users')
+        .update({ shift })
+        .eq('id', driverId);
+        
+      if (error) throw error;
+      
+      // Record the shift change in shift_history
+      const { error: historyError } = await supabase
+        .from('shift_history')
+        .insert({
+          user_id: driverId,
+          shift,
+          effective_from_date: today
+        });
+      
+      if (historyError) throw historyError;
+      
+      setSelectedShift(shift);
+      toast.success(`Shift updated to ${shift}`);
+    } catch (error) {
+      console.error('Error updating shift:', error);
+      toast.error('Failed to update shift');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const saveChanges = async () => {
+    try {
+      // Any final changes to be saved
+      
+      if (onSave) onSave();
+      onClose();
+    } catch (error) {
+      console.error('Error saving changes:', error);
+      toast.error('Failed to save changes');
+    }
+  };
+
+  if (loading) {
+    return (
+      <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
+        <DialogContent className="sm:max-w-md">
+          <div className="flex items-center justify-center h-40">
+            <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary"></div>
+          </div>
+        </DialogContent>
+      </Dialog>
+    );
+  }
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Driver Details</DialogTitle>
+          <DialogTitle>Edit Driver</DialogTitle>
           <DialogDescription>
-            View and update driver information
+            Make changes to driver {driver?.name}
           </DialogDescription>
         </DialogHeader>
-
-        <div className="grid gap-6 py-4">
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="name">Name</Label>
-              <Input id="name" value={name} onChange={(e) => setName(e.target.value)} />
-            </div>
-            
-            <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
-              <Input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
-            </div>
-          </div>
-
-          <Separator />
-          
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <Label htmlFor="online-status">Online Status</Label>
+        
+        <div className="grid gap-4 py-4">
+          <div className="flex flex-col gap-1">
+            <h3 className="text-sm font-medium">Driver Status</h3>
+            <div className="flex items-center space-x-2">
               <Switch 
                 id="online-status" 
-                checked={isOnline}
+                checked={isOnline} 
                 onCheckedChange={handleOnlineToggle}
+                disabled={isProcessing}
               />
+              <Label htmlFor="online-status">
+                {isOnline ? 'Online' : 'Offline'}
+              </Label>
+              
+              {!isOnline && driver?.offline_from_date && (
+                <span className="text-xs text-muted-foreground">
+                  (Offline since {format(new Date(driver.offline_from_date), 'PP')})
+                </span>
+              )}
             </div>
-            <p className="text-sm text-muted-foreground">
-              {isOnline ? 
-                (driver.online_from_date ? `Online since ${driver.online_from_date}` : 'Currently online') : 
-                (driver.offline_from_date ? `Offline since ${driver.offline_from_date}` : 'Currently offline')}
-            </p>
           </div>
-
-          <Separator />
           
-          <div className="space-y-2">
+          <div className="flex flex-col gap-1">
             <Label htmlFor="shift">Shift</Label>
             <Select 
-              value={shift} 
-              onValueChange={setShift}
+              value={selectedShift} 
+              onValueChange={handleShiftChange}
+              disabled={isProcessing}
             >
               <SelectTrigger>
                 <SelectValue placeholder="Select shift" />
@@ -295,83 +324,33 @@ const DriverDetailsModal: React.FC<DriverDetailsModalProps> = ({ isOpen, onClose
               </SelectContent>
             </Select>
           </div>
-
-          <Separator />
           
-          <div className="space-y-2">
-            <Label htmlFor="vehicle">Vehicle Number</Label>
+          <div className="flex flex-col gap-1">
+            <Label htmlFor="vehicle">Assigned Vehicle</Label>
             <Select 
-              value={vehicleNumber} 
+              value={selectedVehicle} 
               onValueChange={handleVehicleChange}
+              disabled={isProcessing}
             >
               <SelectTrigger>
                 <SelectValue placeholder="Select vehicle" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="none">None</SelectItem>
                 {vehicles.map((vehicle) => (
-                  <SelectItem key={vehicle.vehicle_number} value={vehicle.vehicle_number}>
+                  <SelectItem key={vehicle.id} value={vehicle.vehicle_number}>
                     {vehicle.vehicle_number}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
-            
-            {assignmentError && (
-              <div className="flex items-start gap-2 mt-2 text-red-500 text-sm">
-                <AlertTriangle className="h-4 w-4 mt-0.5" />
-                <span>{assignmentError}</span>
-              </div>
-            )}
-            
-            {assignedDrivers.length > 0 && !assignmentError && (
-              <div className="flex items-start gap-2 mt-2 text-amber-500 text-sm">
-                <Info className="h-4 w-4 mt-0.5" />
-                <span>
-                  Currently assigned to: {assignedDrivers.map(d => d.name).join(', ')}
-                </span>
-              </div>
-            )}
-          </div>
-
-          <Separator />
-          
-          <div className="space-y-2">
-            <Label>Document Verification</Label>
-            <div className="grid grid-cols-3 gap-4">
-              <div className="flex flex-col items-center p-2 border rounded">
-                <span className="text-sm font-medium">License</span>
-                <span className={`text-xs ${driver.license ? 'text-green-500' : 'text-red-500'}`}>
-                  {driver.license ? 'Verified' : 'Not Verified'}
-                </span>
-              </div>
-              <div className="flex flex-col items-center p-2 border rounded">
-                <span className="text-sm font-medium">Aadhar</span>
-                <span className={`text-xs ${driver.aadhar ? 'text-green-500' : 'text-red-500'}`}>
-                  {driver.aadhar ? 'Verified' : 'Not Verified'}
-                </span>
-              </div>
-              <div className="flex flex-col items-center p-2 border rounded">
-                <span className="text-sm font-medium">PAN</span>
-                <span className={`text-xs ${driver.pan ? 'text-green-500' : 'text-red-500'}`}>
-                  {driver.pan ? 'Verified' : 'Not Verified'}
-                </span>
-              </div>
-            </div>
           </div>
         </div>
-
+        
         <DialogFooter>
-          <Button variant="outline" onClick={onClose} disabled={loading}>
-            Cancel
-          </Button>
-          <Button onClick={handleSubmit} disabled={loading || !!assignmentError}>
-            {loading ? 'Saving...' : 'Save Changes'}
-          </Button>
+          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button onClick={saveChanges} disabled={isProcessing}>Save Changes</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
   );
 };
-
-export default DriverDetailsModal;

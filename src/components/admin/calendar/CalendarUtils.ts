@@ -1,4 +1,3 @@
-
 import { format, parseISO, isAfter, addMinutes, isBefore, addDays } from 'date-fns';
 
 export type RentStatus = 'paid' | 'overdue' | 'pending' | 'leave' | 'offline' | 'not_joined';
@@ -121,6 +120,35 @@ export const processReportData = (report: any): ReportData => {
     notes: report.remarks,
     joiningDate: report.users.joining_date,
   };
+};
+
+// Determine status for a date with no reports
+export const determineOverdueStatus = (date: string, shift: string, joiningDate?: string): RentStatus => {
+  // If no joining date or joining date is after the current date, return not_joined
+  if (!joiningDate || isAfter(parseISO(date), parseISO(joiningDate))) {
+    return 'not_joined';
+  }
+  
+  const currentDate = new Date();
+  const checkDate = parseISO(date);
+  
+  // Calculate deadline based on shift
+  let deadlineTime: Date;
+  if (shift === 'morning') {
+    // Morning shift: deadline is 4 PM same day + 30 min grace
+    deadlineTime = addMinutes(new Date(checkDate.setHours(16, 0, 0, 0)), 30);
+  } else {
+    // Night or 24hr shift: deadline is 4 AM next day + 30 min grace
+    deadlineTime = addMinutes(new Date(addDays(checkDate, 1).setHours(4, 0, 0, 0)), 30);
+  }
+  
+  // If current date is past the deadline and no report, it's overdue
+  if (isAfter(currentDate, deadlineTime) && isBefore(checkDate, currentDate)) {
+    return 'overdue';
+  }
+  
+  // Otherwise it's just not submitted yet
+  return 'not_joined';
 };
 
 // Get status color for UI
