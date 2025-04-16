@@ -10,7 +10,8 @@ import {
   FileText, 
   Settings,
   LogOut,
-  Menu
+  Menu,
+  Calendar
 } from 'lucide-react';
 import { Button } from './ui/button';
 import { Sheet, SheetContent, SheetTrigger } from './ui/sheet';
@@ -51,6 +52,7 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children, title }) => {
     { label: 'Drivers', icon: <Users size={20} />, path: '/admin/drivers' },
     { label: 'Vehicles', icon: <Car size={20} />, path: '/admin/vehicles' },
     { label: 'Reports', icon: <FileText size={20} />, path: '/admin/reports' },
+    { label: 'Rent Calendar', icon: <Calendar size={20} />, path: '/admin/calendar' },
     { label: 'Settings', icon: <Settings size={20} />, path: '/admin/settings' },
   ];
 
