@@ -17,13 +17,16 @@ import {
 } from '@/components/ui/select';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { useIsMobile } from '@/hooks/use-mobile';
+import { cn } from '@/lib/utils';
+
+type RentStatus = 'paid' | 'overdue' | 'pending' | 'leave' | 'offline';
 
 type RentStatusData = {
   date: string;
   userId: string;
   driverName: string;
   vehicleNumber: string | null;
-  status: 'paid' | 'overdue' | 'pending' | 'leave' | 'offline';
+  status: RentStatus;
   shift: string;
   submissionTime?: string;
   earnings?: number;
@@ -108,12 +111,19 @@ const AdminCalendar = () => {
         // Check if user is on leave
         if (report.remarks?.toLowerCase().includes('leave')) {
           return {
-            ...report,
+            date: report.rent_date,
+            userId: report.user_id,
+            driverName: report.driver_name,
+            vehicleNumber: report.vehicle_number,
             status: 'leave',
+            shift: report.shift,
+            submissionTime: report.created_at,
+            earnings: report.total_earnings,
+            notes: report.remarks,
           };
         }
 
-        let status: 'paid' | 'overdue' | 'pending' = 'pending';
+        let status: RentStatus = 'pending';
         
         if (report.rent_paid_status === true) {
           status = 'paid';
