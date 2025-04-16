@@ -61,7 +61,7 @@ export const processReportData = (report: any): ReportData => {
       status = 'pending';
       break;
     case 'overdue':
-      status = 'overdue';
+      status = 'Overdue';
       break;
     case 'leave':
       status = 'leave';
