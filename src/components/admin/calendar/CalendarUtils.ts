@@ -1,0 +1,130 @@
+
+import { format, parseISO, isAfter, addMinutes } from 'date-fns';
+
+export type RentStatus = 'paid' | 'overdue' | 'pending' | 'leave' | 'offline' | 'not_joined';
+
+export type ReportData = {
+  date: string;
+  userId: string;
+  driverName: string;
+  vehicleNumber: string;
+  status: RentStatus;
+  shift: string;
+  submissionTime?: string;
+  earnings?: number;
+  notes?: string;
+};
+
+// Process report data and determine status
+export const processReportData = (report: any): ReportData => {
+  // Offline user handling
+  if (!report.users.online) {
+    return {
+      date: report.rent_date,
+      userId: report.user_id,
+      driverName: report.driver_name,
+      vehicleNumber: report.vehicle_number,
+      status: 'offline' as RentStatus,
+      shift: report.shift,
+      submissionTime: report.created_at,
+      earnings: report.total_earnings,
+      notes: `Offline since ${report.users.offline_from_date ? format(parseISO(report.users.offline_from_date), 'PP') : 'unknown date'}`,
+    };
+  }
+
+  // Leave status handling
+  if (report.remarks?.toLowerCase().includes('leave')) {
+    return {
+      date: report.rent_date,
+      userId: report.user_id,
+      driverName: report.driver_name,
+      vehicleNumber: report.vehicle_number,
+      status: 'leave' as RentStatus,
+      shift: report.shift,
+      submissionTime: report.created_at,
+      earnings: report.total_earnings,
+      notes: report.remarks,
+    };
+  }
+
+  // Determine status based on report status, submission time, and shift
+  let status: RentStatus;
+  
+  switch (report.status?.toLowerCase()) {
+    case 'approved':
+      status = 'paid';
+      break;
+    case 'pending_verification':
+      status = 'pending';
+      break;
+    case 'overdue':
+      status = 'overdue';
+      break;
+    case 'leave':
+      status = 'leave';
+      break;
+    default:
+      status = 'pending';
+  }
+
+  // Check for overdue based on shift and submission time
+  if (status === 'pending' && report.created_at && report.rent_date && report.shift) {
+    const submissionTime = parseISO(report.created_at);
+    const rentDate = parseISO(report.rent_date);
+    
+    let deadlineTime: Date;
+    
+    if (report.shift === 'morning') {
+      // Morning shift: must submit by 4 PM same day + 30 min grace
+      deadlineTime = addMinutes(new Date(rentDate.setHours(16, 0, 0, 0)), 30);
+    } else if (report.shift === 'night') {
+      // Night shift: must submit by 4 AM next day + 30 min grace
+      deadlineTime = addMinutes(new Date(rentDate.setHours(28, 0, 0, 0)), 30); // 28 hours = 4 AM next day
+    } else {
+      // 24hr shift: must submit by 4 AM next day + 30 min grace
+      deadlineTime = addMinutes(new Date(rentDate.setHours(28, 0, 0, 0)), 30);
+    }
+    
+    if (isAfter(submissionTime, deadlineTime)) {
+      status = 'overdue';
+    }
+  }
+
+  return {
+    date: report.rent_date,
+    userId: report.user_id,
+    driverName: report.driver_name,
+    vehicleNumber: report.vehicle_number,
+    status,
+    shift: report.shift,
+    submissionTime: report.created_at,
+    earnings: report.total_earnings,
+    notes: report.remarks,
+  };
+};
+
+// Get status color for UI
+export const getStatusColor = (status: string) => {
+  switch (status) {
+    case 'paid': return 'bg-green-100';
+    case 'pending': return 'bg-yellow-100';
+    case 'overdue': return 'bg-red-100';
+    case 'leave': return 'bg-blue-100';
+    case 'offline': return 'bg-gray-100';
+    case 'not_joined': return 'bg-white';
+    default: return '';
+  }
+};
+
+// Get status label
+export const getStatusLabel = (status: string) => {
+  switch (status) {
+    case 'paid': return 'Paid';
+    case 'pending': return 'Pending';
+    case 'overdue': return 'Overdue';
+    case 'leave': return 'Leave';
+    case 'offline': return 'Offline';
+    case 'not_joined': return 'Not Paid';
+    default: return status;
+  }
+};
