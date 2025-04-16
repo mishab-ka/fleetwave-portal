@@ -114,6 +114,9 @@ const AdminCalendar = () => {
           case 'overdue':
             status = 'overdue';
             break;
+          case 'leave':
+            status = 'leave';
+            break;
           default:
             status = 'pending';
         }
