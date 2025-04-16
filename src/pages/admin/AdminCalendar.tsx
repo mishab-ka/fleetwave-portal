@@ -143,14 +143,29 @@ const AdminCalendar = () => {
   };
 
   const filteredDrivers = drivers.filter(driver => {
-    if (!searchQuery) return true;
-    const query = searchQuery.toLowerCase();
-    return (
-      (driver.name && driver.name.toLowerCase().includes(query)) ||
-      (driver.driver_id && driver.driver_id.toLowerCase().includes(query)) ||
-      (driver.vehicle_number && driver.vehicle_number.toLowerCase().includes(query))
-    );
+    // First filter by search query
+    if (searchQuery && !((driver.name && driver.name.toLowerCase().includes(searchQuery.toLowerCase())) ||
+      (driver.driver_id && driver.driver_id.toLowerCase().includes(searchQuery.toLowerCase())) ||
+      (driver.vehicle_number && driver.vehicle_number.toLowerCase().includes(searchQuery.toLowerCase())))) {
+      return false;
+    }
+    
+    // Filter online drivers
+    if (!driver.online) {
+      return false;
+    }
+    
+    return true;
   });
+
+  // Get drivers for specific shift tabs
+  const getShiftFilteredDrivers = (shiftType: string) => {
+    return filteredDrivers.filter(driver => driver.shift === shiftType);
+  };
+
+  const morningShiftDrivers = getShiftFilteredDrivers('morning');
+  const nightShiftDrivers = getShiftFilteredDrivers('night');
+  const fullDayShiftDrivers = getShiftFilteredDrivers('24hr');
 
   // Group data by shift
   const morningShiftData = calendarData.filter(data => data.shift === 'morning');
@@ -240,7 +255,7 @@ const AdminCalendar = () => {
                     <RentCalendarGrid
                       currentDate={currentDate}
                       weekOffset={weekOffset}
-                      filteredDrivers={filteredDrivers}
+                      filteredDrivers={morningShiftDrivers}
                       calendarData={morningShiftData}
                       isMobile={isMobile}
                     />
@@ -276,7 +291,7 @@ const AdminCalendar = () => {
                     <RentCalendarGrid
                       currentDate={currentDate}
                       weekOffset={weekOffset}
-                      filteredDrivers={filteredDrivers}
+                      filteredDrivers={nightShiftDrivers}
                       calendarData={nightShiftData}
                       isMobile={isMobile}
                     />
@@ -312,7 +327,7 @@ const AdminCalendar = () => {
                     <RentCalendarGrid
                       currentDate={currentDate}
                       weekOffset={weekOffset}
-                      filteredDrivers={filteredDrivers}
+                      filteredDrivers={fullDayShiftDrivers}
                       calendarData={fullDayShiftData}
                       isMobile={isMobile}
                     />
