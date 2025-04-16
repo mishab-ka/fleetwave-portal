@@ -1,4 +1,3 @@
-
 import React, { useEffect, useState } from 'react';
 import AdminLayout from '@/components/AdminLayout';
 import { supabase } from '@/integrations/supabase/client';
@@ -10,7 +9,7 @@ import { Eye, CheckCircle, XCircle } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { toast } from 'sonner';
 import { Tables } from '@/integrations/supabase/types';
-import DriverDetailsModal from '@/components/admin/drivers/DriverDetailsModal';
+import { DriverDetailsModal } from '@/components/admin/drivers/DriverDetailsModal';
 
 type Driver = Tables<"users">;
 
