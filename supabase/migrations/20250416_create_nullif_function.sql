@@ -1,10 +1,4 @@
 
--- Create a nullif_value function to set a value to NULL if it matches
-CREATE OR REPLACE FUNCTION public.nullif_value(value uuid)
-RETURNS uuid
-LANGUAGE plpgsql
-AS $$
-BEGIN
-  RETURN NULL;
-END;
-$$;
+-- This function is no longer needed as we're using direct NULL assignments
+-- But keeping the file for migration history
+

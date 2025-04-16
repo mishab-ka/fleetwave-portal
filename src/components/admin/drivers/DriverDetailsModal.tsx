@@ -77,13 +77,15 @@ const DriverDetailsModal: React.FC<DriverDetailsModalProps> = ({ isOpen, onClose
 
       // Create a list of currently assigned drivers
       const assignedDriversList: {id: string, name: string}[] = [];
-      const driver1 = data.users;
-      const driver2 = data.users_2;
       
+      // Extract driver1 data
+      const driver1 = data.users;
       if (driver1 && driver1.id) {
         assignedDriversList.push({ id: driver1.id, name: driver1.name || 'Unknown' });
       }
       
+      // Extract driver2 data
+      const driver2 = data.users_assigned_driver_2_fkey;
       if (driver2 && driver2.id) {
         assignedDriversList.push({ id: driver2.id, name: driver2.name || 'Unknown' });
       }
@@ -159,15 +161,31 @@ const DriverDetailsModal: React.FC<DriverDetailsModalProps> = ({ isOpen, onClose
         
         // If there was a previous vehicle, update it to remove this driver
         if (driver.vehicle_number) {
-          const { error: vehicleError } = await supabase
+          // Check which driver slot this user occupied in the previous vehicle
+          const { data: prevVehicleData, error: prevVehicleError } = await supabase
             .from('vehicles')
-            .update({
-              assigned_driver_1: supabase.rpc('nullif_value', { value: driver.id }),
-              assigned_driver_2: supabase.rpc('nullif_value', { value: driver.id })
-            })
+            .select('assigned_driver_1, assigned_driver_2')
+            .eq('vehicle_number', driver.vehicle_number)
+            .single();
+          
+          if (prevVehicleError) throw prevVehicleError;
+          
+          const updateVehicle: { assigned_driver_1?: null, assigned_driver_2?: null } = {};
+          
+          if (prevVehicleData.assigned_driver_1 === driver.id) {
+            updateVehicle.assigned_driver_1 = null;
+          }
+          
+          if (prevVehicleData.assigned_driver_2 === driver.id) {
+            updateVehicle.assigned_driver_2 = null;
+          }
+          
+          const { error: vehicleUpdateError } = await supabase
+            .from('vehicles')
+            .update(updateVehicle)
             .eq('vehicle_number', driver.vehicle_number);
           
-          if (vehicleError) throw vehicleError;
+          if (vehicleUpdateError) throw vehicleUpdateError;
         }
         
         // Assign driver to new vehicle
@@ -290,7 +308,7 @@ const DriverDetailsModal: React.FC<DriverDetailsModalProps> = ({ isOpen, onClose
                 <SelectValue placeholder="Select vehicle" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">None</SelectItem>
+                <SelectItem value="none">None</SelectItem>
                 {vehicles.map((vehicle) => (
                   <SelectItem key={vehicle.vehicle_number} value={vehicle.vehicle_number}>
                     {vehicle.vehicle_number}
