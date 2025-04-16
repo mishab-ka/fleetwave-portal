@@ -14,7 +14,7 @@ import { cn } from '@/lib/utils';
 import { DateRangeFilter } from '@/components/admin/calendar/DateRangeFilter';
 import { DriverDetailModal } from '@/components/admin/calendar/DriverDetailModal';
 import { useCalendarDateRange } from '@/hooks/useCalendarDateRange';
-import { processReportData, ReportData, getStatusColor, getStatusLabel } from '@/components/admin/calendar/CalendarUtils';
+import { processReportData, ReportData, getStatusColor, getStatusLabel, shouldIncludeDriver } from '@/components/admin/calendar/CalendarUtils';
 
 const AdminCalendar = () => {
   const [calendarData, setCalendarData] = useState<ReportData[]>([]);
@@ -26,6 +26,7 @@ const AdminCalendar = () => {
   const [weekOffset, setWeekOffset] = useState(0);
   const [selectedDriverData, setSelectedDriverData] = useState<ReportData | null>(null);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
+  const [rentHistory, setRentHistory] = useState<any[]>([]);
   const isMobile = useIsMobile();
   
   const {
@@ -41,6 +42,7 @@ const AdminCalendar = () => {
   useEffect(() => {
     fetchDrivers();
     fetchCalendarData();
+    fetchRentHistory();
   }, [weekOffset, selectedDriver, selectedShift, startDate, endDate]);
 
   const fetchDrivers = async () => {
@@ -54,6 +56,24 @@ const AdminCalendar = () => {
       setDrivers(data || []);
     } catch (error) {
       console.error('Error fetching drivers:', error);
+    }
+  };
+
+  const fetchRentHistory = async () => {
+    try {
+      const formattedStartDate = format(startDate, 'yyyy-MM-dd');
+      const formattedEndDate = format(endDate, 'yyyy-MM-dd');
+      
+      const { data, error } = await supabase
+        .from('rent_history')
+        .select('*')
+        .gte('rent_date', formattedStartDate)
+        .lte('rent_date', formattedEndDate);
+        
+      if (error) throw error;
+      setRentHistory(data || []);
+    } catch (error) {
+      console.error('Error fetching rent history:', error);
     }
   };
 
@@ -85,7 +105,74 @@ const AdminCalendar = () => {
 
       if (reportsError) throw reportsError;
 
-      const processedData: ReportData[] = reportsData?.map(report => processReportData(report)) || [];
+      // Get all online drivers
+      const { data: onlineDrivers, error: driversError } = await supabase
+        .from('users')
+        .select('id, name, vehicle_number, joining_date, shift, online')
+        .eq('online', true);
+        
+      if (driversError) throw driversError;
+      
+      // Create an array of all dates in the date range
+      const allDates: string[] = [];
+      let currentDateInRange = new Date(formattedStartDate);
+      const endDateObj = new Date(formattedEndDate);
+      
+      while (currentDateInRange <= endDateObj) {
+        allDates.push(format(currentDateInRange, 'yyyy-MM-dd'));
+        currentDateInRange.setDate(currentDateInRange.getDate() + 1);
+      }
+      
+      // Process existing reports
+      let processedData: ReportData[] = reportsData?.map(report => processReportData(report)) || [];
+      
+      // Create "not_joined" entries for drivers without reports
+      if (onlineDrivers) {
+        for (const driver of onlineDrivers) {
+          for (const dateStr of allDates) {
+            // Skip if the driver hadn't joined yet
+            if (!shouldIncludeDriver(driver, dateStr)) continue;
+            
+            // Check if a report exists for this driver and date
+            const existingReport = processedData.find(
+              report => report.userId === driver.id && report.date === dateStr
+            );
+            
+            // If no report exists, create a placeholder with "not_joined" status
+            if (!existingReport) {
+              // Check rent history if this was marked as leave or offline
+              const historyEntry = rentHistory.find(
+                entry => entry.user_id === driver.id && entry.rent_date === dateStr
+              );
+              
+              let status: RentStatus = 'not_joined';
+              let notes = '';
+              
+              if (historyEntry) {
+                if (historyEntry.payment_status === 'leave') {
+                  status = 'leave';
+                  notes = 'Driver on leave';
+                } else if (!historyEntry.is_online) {
+                  status = 'offline';
+                  notes = 'Driver offline on this date';
+                }
+              }
+              
+              processedData.push({
+                date: dateStr,
+                userId: driver.id,
+                driverName: driver.name || 'Unknown',
+                vehicleNumber: driver.vehicle_number || '',
+                status,
+                shift: driver.shift || 'unknown',
+                notes,
+                joiningDate: driver.joining_date,
+              });
+            }
+          }
+        }
+      }
+      
       setCalendarData(processedData);
     } catch (error) {
       console.error('Error fetching calendar data:', error);

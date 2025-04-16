@@ -1,5 +1,5 @@
 
-import { format, parseISO, isAfter, addMinutes } from 'date-fns';
+import { format, parseISO, isAfter, addMinutes, isBefore, addDays } from 'date-fns';
 
 export type RentStatus = 'paid' | 'overdue' | 'pending' | 'leave' | 'offline' | 'not_joined';
 
@@ -13,6 +13,7 @@ export type ReportData = {
   submissionTime?: string;
   earnings?: number;
   notes?: string;
+  joiningDate?: string; // Added joining date for better filtering
 };
 
 // Process report data and determine status
@@ -29,6 +30,7 @@ export const processReportData = (report: any): ReportData => {
       submissionTime: report.created_at,
       earnings: report.total_earnings,
       notes: `Offline since ${report.users.offline_from_date ? format(parseISO(report.users.offline_from_date), 'PP') : 'unknown date'}`,
+      joiningDate: report.users.joining_date,
     };
   }
 
@@ -44,6 +46,7 @@ export const processReportData = (report: any): ReportData => {
       submissionTime: report.created_at,
       earnings: report.total_earnings,
       notes: report.remarks,
+      joiningDate: report.users.joining_date,
     };
   }
 
@@ -67,7 +70,7 @@ export const processReportData = (report: any): ReportData => {
       status = 'pending';
   }
 
-  // Check for overdue based on shift and submission time
+  // Enhanced overdue checking based on shift and submission time
   if (status === 'pending' && report.created_at && report.rent_date && report.shift) {
     const submissionTime = parseISO(report.created_at);
     const rentDate = parseISO(report.rent_date);
@@ -79,13 +82,29 @@ export const processReportData = (report: any): ReportData => {
       deadlineTime = addMinutes(new Date(rentDate.setHours(16, 0, 0, 0)), 30);
     } else if (report.shift === 'night') {
       // Night shift: must submit by 4 AM next day + 30 min grace
-      deadlineTime = addMinutes(new Date(rentDate.setHours(28, 0, 0, 0)), 30); // 28 hours = 4 AM next day
+      deadlineTime = addMinutes(new Date(addDays(rentDate, 1).setHours(4, 0, 0, 0)), 30);
     } else {
       // 24hr shift: must submit by 4 AM next day + 30 min grace
-      deadlineTime = addMinutes(new Date(rentDate.setHours(28, 0, 0, 0)), 30);
+      deadlineTime = addMinutes(new Date(addDays(rentDate, 1).setHours(4, 0, 0, 0)), 30);
     }
     
     if (isAfter(submissionTime, deadlineTime)) {
+      status = 'overdue';
+    }
+  }
+  
+  // Check if rent is not submitted at all past the deadline (current date)
+  const currentDate = new Date();
+  const rentDate = parseISO(report.rent_date);
+  const joiningDate = report.users.joining_date ? parseISO(report.users.joining_date) : null;
+  
+  // Only check for overdue if joining date is before or equal to rent date
+  if (joiningDate && !isBefore(rentDate, joiningDate) && isBefore(rentDate, currentDate) && status !== 'paid' && status !== 'leave') {
+    const deadlineForShift = report.shift === 'morning' 
+      ? addMinutes(new Date(rentDate.setHours(16, 0, 0, 0)), 30)
+      : addMinutes(new Date(addDays(rentDate, 1).setHours(4, 0, 0, 0)), 30);
+      
+    if (isAfter(currentDate, deadlineForShift)) {
       status = 'overdue';
     }
   }
@@ -100,6 +119,7 @@ export const processReportData = (report: any): ReportData => {
     submissionTime: report.created_at,
     earnings: report.total_earnings,
     notes: report.remarks,
+    joiningDate: report.users.joining_date,
   };
 };
 
@@ -126,5 +146,25 @@ export const getStatusLabel = (status: string) => {
     case 'offline': return 'Offline';
     case 'not_joined': return 'Not Paid';
     default: return status;
+  }
+};
+
+// Add function to determine if a driver should be included based on joining date
+export const shouldIncludeDriver = (driver: any, date: string): boolean => {
+  if (!driver.joining_date) return true;
+  
+  const joiningDate = parseISO(driver.joining_date);
+  const checkDate = parseISO(date);
+  
+  return !isBefore(checkDate, joiningDate);
+};
+
+// Get shift badge color
+export const getShiftBadgeColor = (shift: string) => {
+  switch (shift) {
+    case 'morning': return 'bg-amber-100 text-amber-800';
+    case 'night': return 'bg-indigo-100 text-indigo-800';
+    case '24hr': return 'bg-purple-100 text-purple-800';
+    default: return 'bg-gray-100 text-gray-800';
   }
 };

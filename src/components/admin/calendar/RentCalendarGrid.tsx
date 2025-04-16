@@ -5,7 +5,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { cn } from '@/lib/utils';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { ReportData, getStatusColor, getStatusLabel } from './CalendarUtils';
+import { Badge } from '@/components/ui/badge';
+import { ReportData, getStatusColor, getStatusLabel, getShiftBadgeColor } from './CalendarUtils';
 
 interface RentCalendarGridProps {
   currentDate: Date;
@@ -65,6 +66,7 @@ export const RentCalendarGrid = ({
                 {onlineDrivers.map((driver, index) => {
                   const rentData = getStatusForDay(driver.id, day);
                   const driverStatus = rentData ? rentData.status : 'not_joined';
+                  const driverShift = driver.shift || 'N/A';
                   
                   return (
                     <div 
@@ -80,7 +82,10 @@ export const RentCalendarGrid = ({
                         <div>
                           <div className="font-medium">{driver.name}</div>
                           <div className="text-xs text-muted-foreground">
-                            {driver.vehicle_number} • {driver.shift || 'N/A'}
+                            {driver.vehicle_number} • 
+                            <Badge variant="outline" className={cn("ml-1 text-xs", getShiftBadgeColor(driverShift))}>
+                              {driverShift}
+                            </Badge>
                           </div>
                         </div>
                       </div>
@@ -143,8 +148,11 @@ export const RentCalendarGrid = ({
                   <div className="font-semibold">
                     {driver.name || 'Unknown'}
                   </div>
-                  <div className="text-xs text-muted-foreground">
+                  <div className="flex items-center gap-1 text-xs text-muted-foreground">
                     {driver.vehicle_number}
+                    <Badge variant="outline" className={cn("ml-1 text-xs", getShiftBadgeColor(driver.shift))}>
+                      {driver.shift || 'N/A'}
+                    </Badge>
                   </div>
                 </TableCell>
                 {weekDays.map((day) => {
@@ -179,6 +187,7 @@ export const RentCalendarGrid = ({
                             <div className="space-y-2">
                               <div className="font-bold">{driver.name}</div>
                               <div>Status: {getStatusLabel(driverStatus)}</div>
+                              <div>Shift: {driver.shift || 'N/A'}</div>
                               {rentData?.earnings !== undefined && (
                                 <div>Earnings: ₹{rentData.earnings.toLocaleString()}</div>
                               )}
