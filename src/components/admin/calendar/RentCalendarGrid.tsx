@@ -13,6 +13,7 @@ interface RentCalendarGridProps {
   filteredDrivers: any[];
   calendarData: any[];
   isMobile?: boolean;
+  shiftType?: string;
 }
 
 export const RentCalendarGrid = ({
@@ -21,6 +22,7 @@ export const RentCalendarGrid = ({
   filteredDrivers,
   calendarData,
   isMobile = false,
+  shiftType,
 }: RentCalendarGridProps) => {
   // Determine number of days to display based on device
   const daysToShow = isMobile ? 2 : 7;
@@ -37,12 +39,12 @@ export const RentCalendarGrid = ({
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'paid': return 'bg-green-50';
-      case 'pending': return 'bg-yellow-50';
-      case 'overdue': return 'bg-red-50';
-      case 'leave': return 'bg-blue-50';
-      case 'offline': return 'bg-gray-50';
-      case 'not_joined': return 'bg-slate-100';
+      case 'paid': return 'bg-green-100';
+      case 'pending': return 'bg-yellow-100';
+      case 'overdue': return 'bg-red-100';
+      case 'leave': return 'bg-blue-100';
+      case 'offline': return 'bg-gray-100';
+      case 'not_joined': return 'bg-white';
       default: return '';
     }
   };
@@ -82,7 +84,15 @@ export const RentCalendarGrid = ({
                           {driver.vehicle_number} • {driver.shift || 'N/A'}
                         </div>
                       </div>
-                      <RentStatusBadge status={driverStatus} />
+                      
+                      <div className="text-xs font-medium">
+                        {driverStatus === 'paid' && 'Paid'}
+                        {driverStatus === 'pending' && 'Pending'}
+                        {driverStatus === 'overdue' && 'Overdue'}
+                        {driverStatus === 'leave' && 'Leave'}
+                        {driverStatus === 'offline' && 'Offline'}
+                        {driverStatus === 'not_joined' && 'Not Paid'}
+                      </div>
                     </div>
                   );
                 })}
@@ -101,14 +111,16 @@ export const RentCalendarGrid = ({
     );
   }
 
-  // Desktop view with table
+  // Desktop view with table - redesigned to match the image
   return (
     <ScrollArea className="h-[calc(100vh-300px)]">
       <div className="rounded-md border">
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="bg-muted/50 w-[200px] sticky left-0 z-20">Driver Info</TableHead>
+              <TableHead className="w-[180px] sticky left-0 z-20 bg-muted/50">
+                {shiftType || "All Shifts"}
+              </TableHead>
               {weekDays.map((day, index) => (
                 <TableHead 
                   key={index}
@@ -117,10 +129,8 @@ export const RentCalendarGrid = ({
                     isSameDay(day, new Date()) && "bg-accent"
                   )}
                 >
-                  <div className="text-xs text-muted-foreground">
-                    {format(day, 'EEE')}
-                  </div>
-                  <div>{format(day, 'd MMM')}</div>
+                  <div className="font-medium">{format(day, 'EEE')}</div>
+                  <div className="text-xs text-muted-foreground">{format(day, 'd/MM')}</div>
                 </TableHead>
               ))}
             </TableRow>
@@ -129,13 +139,8 @@ export const RentCalendarGrid = ({
             {onlineDrivers.map((driver) => (
               <TableRow key={driver.id}>
                 <TableCell className="font-medium sticky left-0 bg-background z-10 border-r">
-                  <div className="space-y-1">
-                    <div className="font-semibold">
-                      {driver.name || 'Unknown'}
-                    </div>
-                    <div className="text-xs text-muted-foreground">
-                      Shift: {driver.shift || 'N/A'}
-                    </div>
+                  <div className="font-semibold">
+                    {driver.name || 'Unknown'}
                   </div>
                 </TableCell>
                 {weekDays.map((day) => {
@@ -146,15 +151,23 @@ export const RentCalendarGrid = ({
                     <TableCell 
                       key={`${driver.id}-${format(day, 'yyyy-MM-dd')}`}
                       className={cn(
-                        "text-center h-[72px]",
-                        getStatusColor(driverStatus)
+                        "p-0 h-[50px]",
+                        getStatusColor(driverStatus),
+                        "border"
                       )}
                     >
                       <TooltipProvider>
                         <Tooltip>
                           <TooltipTrigger asChild>
-                            <div className="h-full flex items-center justify-center">
-                              <RentStatusBadge status={driverStatus} />
+                            <div className="h-full w-full p-2">
+                              <div className="text-xs font-medium">
+                                {driverStatus === 'paid' && 'Paid'}
+                                {driverStatus === 'pending' && 'Pending'}
+                                {driverStatus === 'overdue' && 'Overdue'}
+                                {driverStatus === 'leave' && 'Leave'}
+                                {driverStatus === 'offline' && 'Offline'}
+                                {driverStatus === 'not_joined' && 'Not Paid'}
+                              </div>
                             </div>
                           </TooltipTrigger>
                           <TooltipContent side="right" className="w-[200px]">

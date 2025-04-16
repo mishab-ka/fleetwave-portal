@@ -172,9 +172,35 @@ const AdminCalendar = () => {
   const nightShiftData = calendarData.filter(data => data.shift === 'night');
   const fullDayShiftData = calendarData.filter(data => data.shift === '24hr');
 
+  // Create legend for status indicators
+  const statusLegend = [
+    { status: 'paid', label: 'Paid' },
+    { status: 'pending', label: 'Pending Verification' },
+    { status: 'overdue', label: 'Overdue' },
+    { status: 'leave', label: 'Leave' },
+    { status: 'not_joined', label: 'Not Paid' }
+  ];
+
   return (
     <AdminLayout title="Rent Due Calendar">
       <div className="space-y-4">
+        {/* Status indicators legend */}
+        <div className="flex flex-wrap gap-3 mb-4">
+          {statusLegend.map((item) => (
+            <div key={item.status} className="flex items-center gap-2">
+              <div className={cn(
+                "w-3 h-3 rounded",
+                item.status === 'paid' ? "bg-green-100" : 
+                item.status === 'pending' ? "bg-yellow-100" : 
+                item.status === 'overdue' ? "bg-red-100" : 
+                item.status === 'leave' ? "bg-blue-100" : 
+                "bg-white border"
+              )}></div>
+              <span className="text-xs">{item.label}</span>
+            </div>
+          ))}
+        </div>
+
         {!isMobile && (
           <div className="flex justify-end">
             <Input
@@ -258,6 +284,7 @@ const AdminCalendar = () => {
                       filteredDrivers={morningShiftDrivers}
                       calendarData={morningShiftData}
                       isMobile={isMobile}
+                      shiftType="morning"
                     />
                   </>
                 )}
@@ -294,6 +321,7 @@ const AdminCalendar = () => {
                       filteredDrivers={nightShiftDrivers}
                       calendarData={nightShiftData}
                       isMobile={isMobile}
+                      shiftType="night"
                     />
                   </>
                 )}
@@ -330,6 +358,7 @@ const AdminCalendar = () => {
                       filteredDrivers={fullDayShiftDrivers}
                       calendarData={fullDayShiftData}
                       isMobile={isMobile}
+                      shiftType="24hr"
                     />
                   </>
                 )}

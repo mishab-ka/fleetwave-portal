@@ -12,12 +12,12 @@ interface RentStatusBadgeProps {
 }
 
 const statusConfig = {
-  paid: { icon: Check, bg: 'bg-green-500', text: 'Paid' },
-  overdue: { icon: AlertTriangle, bg: 'bg-red-500', text: 'Overdue' },
-  pending: { icon: Clock, bg: 'bg-yellow-500', text: 'Pending' },
-  leave: { icon: Sun, bg: 'bg-blue-500', text: 'Leave' },
-  offline: { icon: UserMinus, bg: 'bg-gray-500', text: 'Offline' },
-  not_joined: { icon: UserX, bg: 'bg-slate-400', text: 'Not Joined' },
+  paid: { icon: Check, bg: 'bg-green-100 text-green-700', text: 'Paid' },
+  overdue: { icon: AlertTriangle, bg: 'bg-red-100 text-red-700', text: 'Overdue' },
+  pending: { icon: Clock, bg: 'bg-yellow-100 text-yellow-700', text: 'Pending' },
+  leave: { icon: Sun, bg: 'bg-blue-100 text-blue-700', text: 'Leave' },
+  offline: { icon: UserMinus, bg: 'bg-gray-100 text-gray-700', text: 'Offline' },
+  not_joined: { icon: UserX, bg: 'bg-slate-100 text-slate-700', text: 'Not Paid' },
 };
 
 export const RentStatusBadge = ({ status, className }: RentStatusBadgeProps) => {
@@ -26,9 +26,9 @@ export const RentStatusBadge = ({ status, className }: RentStatusBadgeProps) => 
   
   return (
     <Badge 
-      variant="secondary"
+      variant="outline"
       className={cn(
-        'flex items-center gap-1 text-white',
+        'flex items-center gap-1',
         config.bg,
         'hover:opacity-90',
         className
