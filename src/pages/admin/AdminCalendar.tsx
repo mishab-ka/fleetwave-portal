@@ -5,9 +5,9 @@ import { supabase } from '@/integrations/supabase/client';
 import AdminLayout from '@/components/AdminLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { ChevronLeft, ChevronRight, Filter } from 'lucide-react';
-import { Badge } from '@/components/ui/badge';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { Input } from '@/components/ui/input';
+import { RentStatusBadge } from '@/components/RentStatusBadge';
 import { 
   Select, 
   SelectContent, 
@@ -16,53 +16,30 @@ import {
   SelectValue 
 } from '@/components/ui/select';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { Tables } from '@/integrations/supabase/types';
-import { 
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from '@/components/ui/popover';
-
-type User = Tables<'users'>;
-type FleetReport = Tables<'fleet_reports'>;
-type RentHistory = Tables<'rent_history'>;
-type ShiftHistory = Tables<'shift_history'>;
+import { useIsMobile } from '@/hooks/use-mobile';
 
 type RentStatusData = {
   date: string;
   userId: string;
   driverName: string;
   vehicleNumber: string | null;
-  status: 'paid' | 'overdue' | 'pending' | 'leave';
+  status: 'paid' | 'overdue' | 'pending' | 'leave' | 'offline';
   shift: string;
   submissionTime?: string;
   earnings?: number;
   notes?: string;
 };
 
-const statusColors = {
-  paid: 'bg-green-500',
-  overdue: 'bg-red-500',
-  pending: 'bg-yellow-500',
-  leave: 'bg-blue-500',
-};
-
-const statusEmojis = {
-  paid: '✅',
-  overdue: '❌',
-  pending: '⏳',
-  leave: '☀️',
-};
-
 const AdminCalendar = () => {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [calendarData, setCalendarData] = useState<RentStatusData[]>([]);
   const [loading, setLoading] = useState(true);
-  const [drivers, setDrivers] = useState<User[]>([]);
+  const [drivers, setDrivers] = useState<any[]>([]);
   const [selectedDriver, setSelectedDriver] = useState<string>('all');
   const [selectedShift, setSelectedShift] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [weekOffset, setWeekOffset] = useState(0);
+  const isMobile = useIsMobile();
 
   useEffect(() => {
     fetchDrivers();
@@ -95,7 +72,7 @@ const AdminCalendar = () => {
         .select(`
           id, user_id, driver_name, vehicle_number, submission_date, 
           rent_date, shift, rent_paid_status, total_earnings, 
-          remarks, created_at
+          remarks, created_at, users!inner(joining_date, online, offline_from_date)
         `)
         .gte('rent_date', startDate)
         .lte('rent_date', endDate);
@@ -113,7 +90,30 @@ const AdminCalendar = () => {
       if (reportsError) throw reportsError;
 
       const processedData: RentStatusData[] = reportsData?.map(report => {
-        let status: 'paid' | 'overdue' | 'pending' | 'leave' = 'pending';
+        // Check if user is offline
+        if (!report.users.online) {
+          return {
+            date: report.rent_date,
+            userId: report.user_id,
+            driverName: report.driver_name,
+            vehicleNumber: report.vehicle_number,
+            status: 'offline',
+            shift: report.shift,
+            submissionTime: report.created_at,
+            earnings: report.total_earnings,
+            notes: report.remarks,
+          };
+        }
+
+        // Check if user is on leave
+        if (report.remarks?.toLowerCase().includes('leave')) {
+          return {
+            ...report,
+            status: 'leave',
+          };
+        }
+
+        let status: 'paid' | 'overdue' | 'pending' = 'pending';
         
         if (report.rent_paid_status === true) {
           status = 'paid';
@@ -123,15 +123,8 @@ const AdminCalendar = () => {
           
           if (submissionDate) {
             const hourDifference = (submissionDate.getTime() - rentDate.getTime()) / (1000 * 60 * 60);
-            if (report.shift === 'morning' && hourDifference > 24) {
-              status = 'overdue';
-            } else if (report.shift === 'night' && hourDifference > 12) {
-              status = 'overdue';
-            }
-          } else {
-            const now = new Date();
-            const dayDifference = (now.getTime() - rentDate.getTime()) / (1000 * 60 * 60 * 24);
-            if (dayDifference > 1) {
+            if ((report.shift === 'morning' && hourDifference > 24) || 
+                (report.shift === 'night' && hourDifference > 12)) {
               status = 'overdue';
             }
           }
@@ -167,81 +160,27 @@ const AdminCalendar = () => {
     return days;
   };
 
-  const handlePreviousWeek = () => {
-    setWeekOffset(weekOffset - 1);
-  };
-
-  const handleNextWeek = () => {
-    setWeekOffset(weekOffset + 1);
-  };
-
+  const handlePreviousWeek = () => setWeekOffset(weekOffset - 1);
+  const handleNextWeek = () => setWeekOffset(weekOffset + 1);
   const handleCurrentWeek = () => {
     setWeekOffset(0);
     setCurrentDate(new Date());
   };
 
-  const getStatusForCell = (date: Date, driverId: string) => {
-    const dateStr = format(date, 'yyyy-MM-dd');
-    const driverEntries = calendarData.filter(
-      entry => entry.userId === driverId && entry.date === dateStr
-    );
-    
-    return driverEntries.length > 0 ? driverEntries[0] : null;
-  };
-
-  const filteredDrivers = drivers.filter(driver => {
-    if (!searchQuery) return true;
-    
-    const query = searchQuery.toLowerCase();
-    return (
-      (driver.name && driver.name.toLowerCase().includes(query)) ||
-      (driver.driver_id && driver.driver_id.toLowerCase().includes(query)) ||
-      (driver.vehicle_number && driver.vehicle_number.toLowerCase().includes(query))
-    );
-  });
-
-  const RentStatusTooltip = ({ data }: { data: RentStatusData }) => (
-    <div className="space-y-2 p-2">
-      <div className="font-bold">{data.driverName}</div>
-      {data.vehicleNumber && <div>Vehicle: {data.vehicleNumber}</div>}
-      <div>Shift: {data.shift}</div>
-      <div>Status: {data.status.charAt(0).toUpperCase() + data.status.slice(1)}</div>
-      {data.submissionTime && (
-        <div>Submitted: {new Date(data.submissionTime).toLocaleString()}</div>
-      )}
-      {data.earnings !== undefined && (
-        <div>Earnings: ₹{data.earnings.toLocaleString()}</div>
-      )}
-      {data.notes && <div>Notes: {data.notes}</div>}
-    </div>
-  );
-
   const weekDays = getWeekDays();
 
   return (
     <AdminLayout title="Weekly Rent Calendar">
-      <div className="space-y-6">
-        <div className="flex flex-wrap gap-4 justify-between items-center">
-          <div className="flex flex-wrap gap-2 items-center">
-            <Button 
-              variant="outline" 
-              size="sm" 
-              onClick={handlePreviousWeek}
-            >
+      <div className="space-y-4">
+        <div className="flex flex-col gap-4 sm:flex-row sm:justify-between sm:items-center">
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={handlePreviousWeek}>
               <ChevronLeft className="h-4 w-4" />
             </Button>
-            <Button 
-              variant="outline" 
-              size="sm" 
-              onClick={handleCurrentWeek}
-            >
+            <Button variant="outline" size="sm" onClick={handleCurrentWeek}>
               Today
             </Button>
-            <Button 
-              variant="outline" 
-              size="sm" 
-              onClick={handleNextWeek}
-            >
+            <Button variant="outline" size="sm" onClick={handleNextWeek}>
               <ChevronRight className="h-4 w-4" />
             </Button>
             <span className="text-sm font-medium">
@@ -249,21 +188,16 @@ const AdminCalendar = () => {
             </span>
           </div>
           
-          <div className="flex flex-wrap gap-2 items-center">
-            <div className="w-full sm:w-auto">
-              <Input
-                placeholder="Search drivers..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="h-9"
-              />
-            </div>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <Input
+              placeholder="Search drivers..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="h-9 w-full sm:w-[200px]"
+            />
             
-            <Select 
-              value={selectedDriver} 
-              onValueChange={setSelectedDriver}
-            >
-              <SelectTrigger className="w-[180px] h-9">
+            <Select value={selectedDriver} onValueChange={setSelectedDriver}>
+              <SelectTrigger className="w-full sm:w-[180px] h-9">
                 <SelectValue placeholder="Select Driver" />
               </SelectTrigger>
               <SelectContent>
@@ -276,11 +210,8 @@ const AdminCalendar = () => {
               </SelectContent>
             </Select>
             
-            <Select 
-              value={selectedShift} 
-              onValueChange={setSelectedShift}
-            >
-              <SelectTrigger className="w-[150px] h-9">
+            <Select value={selectedShift} onValueChange={setSelectedShift}>
+              <SelectTrigger className="w-full sm:w-[150px] h-9">
                 <SelectValue placeholder="Select Shift" />
               </SelectTrigger>
               <SelectContent>
@@ -292,100 +223,112 @@ const AdminCalendar = () => {
             </Select>
           </div>
         </div>
-        
-        <div className="flex flex-wrap gap-4 justify-start">
-          {Object.entries(statusColors).map(([status, color]) => (
-            <div key={status} className="flex items-center">
-              <span className={`w-3 h-3 rounded-full ${color} mr-2`}></span>
-              <span className="text-sm">{status.charAt(0).toUpperCase() + status.slice(1)} {statusEmojis[status as keyof typeof statusEmojis]}</span>
-            </div>
-          ))}
-        </div>
-        
-        <div className="overflow-x-auto">
-          <Card>
-            <CardHeader>
-              <CardTitle>Weekly Rent Status</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {loading ? (
-                <div className="flex items-center justify-center h-64">
-                  <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-fleet-purple"></div>
-                </div>
-              ) : (
-                <div className="grid grid-cols-7 gap-2 min-w-[700px]">
-                  {weekDays.map((day, index) => (
-                    <div 
-                      key={index}
-                      className={`font-medium text-center py-2 ${
-                        isSameDay(day, new Date()) ? 'bg-accent rounded-md' : ''
-                      }`}
-                    >
-                      <div className="text-xs text-muted-foreground">
-                        {format(day, 'EEE')}
-                      </div>
-                      <div>{format(day, 'd MMM')}</div>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Weekly Rent Status</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {loading ? (
+              <div className="flex items-center justify-center h-64">
+                <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-fleet-purple"></div>
+              </div>
+            ) : (
+              <div className="grid grid-cols-7 gap-2 min-w-[700px] overflow-x-auto">
+                {weekDays.map((day, index) => (
+                  <div key={index} className={cn(
+                    "font-medium text-center py-2",
+                    isSameDay(day, new Date()) ? "bg-accent rounded-md" : ""
+                  )}>
+                    <div className="text-xs text-muted-foreground">
+                      {format(day, 'EEE')}
                     </div>
-                  ))}
-                  
-                  {filteredDrivers.length === 0 ? (
-                    <div className="col-span-7 py-8 text-center text-muted-foreground">
-                      No drivers found matching your criteria
-                    </div>
-                  ) : (
-                    filteredDrivers.map((driver) => (
-                      <React.Fragment key={driver.id}>
-                        <div className="col-span-7 mt-4 mb-2 py-2 bg-muted rounded-md px-3">
-                          <div className="font-medium">{driver.name || 'Unknown'}</div>
-                          <div className="text-xs text-muted-foreground">
-                            ID: {driver.driver_id} | Vehicle: {driver.vehicle_number || 'N/A'} | 
-                            Shift: {driver.shift || 'N/A'}
-                          </div>
+                    <div>{format(day, 'd MMM')}</div>
+                  </div>
+                ))}
+
+                {drivers
+                  .filter(driver => {
+                    if (!searchQuery) return true;
+                    const query = searchQuery.toLowerCase();
+                    return (
+                      (driver.name && driver.name.toLowerCase().includes(query)) ||
+                      (driver.driver_id && driver.driver_id.toLowerCase().includes(query)) ||
+                      (driver.vehicle_number && driver.vehicle_number.toLowerCase().includes(query))
+                    );
+                  })
+                  .map((driver) => (
+                    <React.Fragment key={driver.id}>
+                      <div className="col-span-7 mt-4 mb-2 py-2 bg-muted rounded-md px-3">
+                        <div className="font-medium flex items-center gap-2">
+                          {driver.name || 'Unknown'}
+                          {!driver.online && (
+                            <RentStatusBadge status="offline" className="text-xs" />
+                          )}
                         </div>
-                        
-                        {weekDays.map((day, index) => {
-                          const status = getStatusForCell(day, driver.id || '');
-                          return (
-                            <div 
-                              key={`${driver.id}-${index}`}
-                              className="min-h-[60px] border rounded-md p-1"
-                            >
-                              {status ? (
-                                <TooltipProvider>
-                                  <Tooltip>
-                                    <TooltipTrigger asChild>
-                                      <div 
-                                        className={`
-                                          h-full w-full rounded-md flex items-center justify-center 
-                                          ${statusColors[status.status]} bg-opacity-20 cursor-pointer
-                                        `}
-                                      >
-                                        <span className="text-xl">
-                                          {statusEmojis[status.status]}
-                                        </span>
-                                      </div>
-                                    </TooltipTrigger>
-                                    <TooltipContent side="right">
-                                      <RentStatusTooltip data={status} />
-                                    </TooltipContent>
-                                  </Tooltip>
-                                </TooltipProvider>
-                              ) : (
-                                <div className="h-full w-full flex items-center justify-center text-muted-foreground text-xs">
-                                  -
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </React.Fragment>
-                    ))
-                  )}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </div>
+                        <div className="text-xs text-muted-foreground">
+                          ID: {driver.driver_id} | Vehicle: {driver.vehicle_number || 'N/A'} | 
+                          Shift: {driver.shift || 'N/A'}
+                        </div>
+                      </div>
+                      
+                      {weekDays.map((day) => {
+                        const rentData = calendarData.find(
+                          data => data.userId === driver.id && data.date === format(day, 'yyyy-MM-dd')
+                        );
+
+                        // Check if the date is before joining date
+                        const isBeforeJoining = driver.joining_date && 
+                          new Date(format(day, 'yyyy-MM-dd')) < new Date(driver.joining_date);
+
+                        return (
+                          <div 
+                            key={`${driver.id}-${format(day, 'yyyy-MM-dd')}`}
+                            className="min-h-[60px] border rounded-md p-1"
+                          >
+                            {isBeforeJoining ? (
+                              <div className="h-full w-full flex items-center justify-center text-muted-foreground text-xs">
+                                Not joined
+                              </div>
+                            ) : rentData ? (
+                              <TooltipProvider>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <div className="h-full w-full flex items-center justify-center">
+                                      <RentStatusBadge status={rentData.status} />
+                                    </div>
+                                  </TooltipTrigger>
+                                  <TooltipContent side="right">
+                                    <div className="space-y-2 p-2">
+                                      <div className="font-bold">{rentData.driverName}</div>
+                                      <div>Vehicle: {rentData.vehicleNumber || 'N/A'}</div>
+                                      <div>Shift: {rentData.shift}</div>
+                                      <div>Status: {rentData.status}</div>
+                                      {rentData.submissionTime && (
+                                        <div>Submitted: {new Date(rentData.submissionTime).toLocaleString()}</div>
+                                      )}
+                                      {rentData.earnings !== undefined && (
+                                        <div>Earnings: ₹{rentData.earnings.toLocaleString()}</div>
+                                      )}
+                                      {rentData.notes && <div>Notes: {rentData.notes}</div>}
+                                    </div>
+                                  </TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
+                            ) : (
+                              <div className="h-full w-full flex items-center justify-center text-muted-foreground text-xs">
+                                -
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </React.Fragment>
+                  ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
       </div>
     </AdminLayout>
   );
