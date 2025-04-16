@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { format, startOfWeek, addDays, subWeeks, addWeeks, isSameDay, parseISO } from 'date-fns';
 import { supabase } from '@/integrations/supabase/client';
@@ -74,7 +73,7 @@ const AdminCalendar = () => {
         .from('fleet_reports')
         .select(`
           id, user_id, driver_name, vehicle_number, submission_date, 
-          rent_date, shift, rent_paid_status, total_earnings, 
+          rent_date, shift, rent_paid_status, total_earnings, status,
           remarks, created_at, users!inner(joining_date, online, offline_from_date)
         `)
         .gte('rent_date', startDate)
@@ -104,7 +103,7 @@ const AdminCalendar = () => {
             shift: report.shift,
             submissionTime: report.created_at,
             earnings: report.total_earnings,
-            notes: report.remarks,
+            notes: `Offline since ${format(parseISO(report.users.offline_from_date), 'PP')}`,
           };
         }
 
@@ -123,21 +122,20 @@ const AdminCalendar = () => {
           };
         }
 
-        let status: RentStatus = 'pending';
-        
-        if (report.rent_paid_status === true) {
-          status = 'paid';
-        } else {
-          const submissionDate = report.created_at ? new Date(report.created_at) : null;
-          const rentDate = new Date(report.rent_date);
-          
-          if (submissionDate) {
-            const hourDifference = (submissionDate.getTime() - rentDate.getTime()) / (1000 * 60 * 60);
-            if ((report.shift === 'morning' && hourDifference > 24) || 
-                (report.shift === 'night' && hourDifference > 12)) {
-              status = 'overdue';
-            }
-          }
+        // Handle rent status based on fleet_reports status
+        let status: RentStatus;
+        switch (report.status?.toLowerCase()) {
+          case 'approved':
+            status = 'paid';
+            break;
+          case 'pending_for_verification':
+            status = 'pending';
+            break;
+          case 'overdue':
+            status = 'overdue';
+            break;
+          default:
+            status = 'pending';
         }
 
         return {
