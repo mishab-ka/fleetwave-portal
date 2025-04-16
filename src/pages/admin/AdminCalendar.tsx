@@ -108,7 +108,7 @@ const AdminCalendar = () => {
           case 'approved':
             status = 'paid';
             break;
-          case 'pending_for_verification':
+          case 'pending_verification:
             status = 'pending';
             break;
           case 'overdue':
