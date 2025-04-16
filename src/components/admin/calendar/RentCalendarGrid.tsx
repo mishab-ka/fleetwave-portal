@@ -42,6 +42,7 @@ export const RentCalendarGrid = ({
       case 'overdue': return 'bg-red-50';
       case 'leave': return 'bg-blue-50';
       case 'offline': return 'bg-gray-50';
+      case 'not_joined': return 'bg-slate-100';
       default: return '';
     }
   };
@@ -65,12 +66,14 @@ export const RentCalendarGrid = ({
               <div className="divide-y">
                 {onlineDrivers.map((driver) => {
                   const rentData = getStatusForDay(driver.id, day);
-                  return rentData ? (
+                  const driverStatus = rentData ? rentData.status : 'not_joined';
+                  
+                  return (
                     <div 
                       key={`${driver.id}-${format(day, 'yyyy-MM-dd')}`}
                       className={cn(
                         "p-3 flex items-center justify-between",
-                        rentData && getStatusColor(rentData.status)
+                        getStatusColor(driverStatus)
                       )}
                     >
                       <div className="text-sm">
@@ -79,15 +82,15 @@ export const RentCalendarGrid = ({
                           {driver.vehicle_number} • {driver.shift || 'N/A'}
                         </div>
                       </div>
-                      <RentStatusBadge status={rentData.status} />
+                      <RentStatusBadge status={driverStatus} />
                     </div>
-                  ) : null;
+                  );
                 })}
                 
-                {/* If no drivers have data for this day */}
-                {onlineDrivers.filter(driver => getStatusForDay(driver.id, day)).length === 0 && (
+                {/* If no drivers for this day */}
+                {onlineDrivers.length === 0 && (
                   <div className="p-4 text-center text-sm text-muted-foreground">
-                    No rent data for this day
+                    No drivers available
                   </div>
                 )}
               </div>
@@ -137,37 +140,35 @@ export const RentCalendarGrid = ({
                 </TableCell>
                 {weekDays.map((day) => {
                   const rentData = getStatusForDay(driver.id, day);
+                  const driverStatus = rentData ? rentData.status : 'not_joined';
+                  
                   return (
                     <TableCell 
                       key={`${driver.id}-${format(day, 'yyyy-MM-dd')}`}
                       className={cn(
                         "text-center h-[72px]",
-                        rentData && getStatusColor(rentData.status)
+                        getStatusColor(driverStatus)
                       )}
                     >
-                      {rentData ? (
-                        <TooltipProvider>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <div className="h-full flex items-center justify-center">
-                                <RentStatusBadge status={rentData.status} />
-                              </div>
-                            </TooltipTrigger>
-                            <TooltipContent side="right" className="w-[200px]">
-                              <div className="space-y-2">
-                                <div className="font-bold">{rentData.driverName}</div>
-                                <div>Status: {rentData.status}</div>
-                                {rentData.earnings !== undefined && (
-                                  <div>Earnings: ₹{rentData.earnings.toLocaleString()}</div>
-                                )}
-                                {rentData.notes && <div>Notes: {rentData.notes}</div>}
-                              </div>
-                            </TooltipContent>
-                          </Tooltip>
-                        </TooltipProvider>
-                      ) : (
-                        <div className="text-muted-foreground text-xs">-</div>
-                      )}
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <div className="h-full flex items-center justify-center">
+                              <RentStatusBadge status={driverStatus} />
+                            </div>
+                          </TooltipTrigger>
+                          <TooltipContent side="right" className="w-[200px]">
+                            <div className="space-y-2">
+                              <div className="font-bold">{driver.name}</div>
+                              <div>Status: {driverStatus}</div>
+                              {rentData?.earnings !== undefined && (
+                                <div>Earnings: ₹{rentData.earnings.toLocaleString()}</div>
+                              )}
+                              {rentData?.notes && <div>Notes: {rentData.notes}</div>}
+                            </div>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
                     </TableCell>
                   );
                 })}

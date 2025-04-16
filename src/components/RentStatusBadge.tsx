@@ -2,9 +2,9 @@
 import React from 'react';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
-import { Check, Clock, AlertTriangle, Sun, UserMinus } from 'lucide-react';
+import { Check, Clock, AlertTriangle, Sun, UserMinus, UserX } from 'lucide-react';
 
-type RentStatus = 'paid' | 'overdue' | 'pending' | 'leave' | 'offline';
+type RentStatus = 'paid' | 'overdue' | 'pending' | 'leave' | 'offline' | 'not_joined';
 
 interface RentStatusBadgeProps {
   status: RentStatus;
@@ -17,6 +17,7 @@ const statusConfig = {
   pending: { icon: Clock, bg: 'bg-yellow-500', text: 'Pending' },
   leave: { icon: Sun, bg: 'bg-blue-500', text: 'Leave' },
   offline: { icon: UserMinus, bg: 'bg-gray-500', text: 'Offline' },
+  not_joined: { icon: UserX, bg: 'bg-slate-400', text: 'Not Joined' },
 };
 
 export const RentStatusBadge = ({ status, className }: RentStatusBadgeProps) => {

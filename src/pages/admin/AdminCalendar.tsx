@@ -12,7 +12,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { toast } from 'sonner';
 
 // Define the RentStatus type to fix the TypeScript error
-type RentStatus = 'paid' | 'overdue' | 'pending' | 'leave' | 'offline';
+type RentStatus = 'paid' | 'overdue' | 'pending' | 'leave' | 'offline' | 'not_joined';
 
 const AdminCalendar = () => {
   const [currentDate, setCurrentDate] = useState(new Date());
