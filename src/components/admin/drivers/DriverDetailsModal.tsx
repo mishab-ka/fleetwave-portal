@@ -1,8 +1,6 @@
-
 import React, { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
@@ -14,7 +12,7 @@ interface DriverDetailsModalProps {
   isOpen: boolean;
   onClose: () => void;
   driverId?: string;
-  onSave?: () => void;
+  onDriverUpdate?: () => void;
 }
 
 type Vehicle = {
@@ -26,7 +24,7 @@ type Vehicle = {
   users_driver2?: { id: string; name: string; } | null;
 };
 
-export const DriverDetailsModal = ({ isOpen, onClose, driverId, onSave }: DriverDetailsModalProps) => {
+export const DriverDetailsModal = ({ isOpen, onClose, driverId, onDriverUpdate }: DriverDetailsModalProps) => {
   const [driver, setDriver] = useState<any>(null);
   const [loading, setLoading] = useState<boolean>(false);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
@@ -79,7 +77,6 @@ export const DriverDetailsModal = ({ isOpen, onClose, driverId, onSave }: Driver
 
       if (error) throw error;
 
-      // Transform data to include driver names
       const formattedVehicles = data.map((vehicle: any) => ({
         id: vehicle.id,
         vehicle_number: vehicle.vehicle_number,
@@ -100,21 +97,17 @@ export const DriverDetailsModal = ({ isOpen, onClose, driverId, onSave }: Driver
     setIsProcessing(true);
     
     try {
-      // Prepare the update data
       const updateData: any = {
         online: !isOnline
       };
       
-      // If turning offline, add the offline date
       if (isOnline) {
         updateData.offline_from_date = new Date().toISOString().split('T')[0];
       } else {
-        // If turning online, add the online date and clear offline date
         updateData.online_from_date = new Date().toISOString().split('T')[0];
         updateData.offline_from_date = null;
       }
       
-      // Update the driver status
       const { error } = await supabase
         .from('users')
         .update(updateData)
@@ -122,9 +115,7 @@ export const DriverDetailsModal = ({ isOpen, onClose, driverId, onSave }: Driver
         
       if (error) throw error;
       
-      // Also insert a record into rent_history table for tracking
       if (!isOnline) {
-        // Only if turning online, add a rent history entry
         const { error: historyError } = await supabase
           .from('rent_history')
           .insert({
@@ -140,6 +131,8 @@ export const DriverDetailsModal = ({ isOpen, onClose, driverId, onSave }: Driver
       
       setIsOnline(!isOnline);
       toast.success(`Driver status updated to ${!isOnline ? 'Online' : 'Offline'}`);
+      
+      if (onDriverUpdate) onDriverUpdate();
     } catch (error) {
       console.error('Error updating driver status:', error);
       toast.error('Failed to update driver status');
@@ -154,7 +147,6 @@ export const DriverDetailsModal = ({ isOpen, onClose, driverId, onSave }: Driver
     setIsProcessing(true);
     
     try {
-      // 1. Check if the selected vehicle exists
       const selectedVehicleData = vehicles.find(v => v.vehicle_number === vehicleNumber);
       
       if (!selectedVehicleData) {
@@ -162,16 +154,13 @@ export const DriverDetailsModal = ({ isOpen, onClose, driverId, onSave }: Driver
         return;
       }
       
-      // 2. Check if the vehicle already has two drivers assigned
       const hasDriver1 = !!selectedVehicleData.assigned_driver_1;
       const hasDriver2 = !!selectedVehicleData.assigned_driver_2;
       
-      // If both slots are filled and neither is this driver
       if (hasDriver1 && hasDriver2 && 
           selectedVehicleData.assigned_driver_1 !== driverId && 
           selectedVehicleData.assigned_driver_2 !== driverId) {
         
-        // Get driver names
         const driver1Name = selectedVehicleData.users_driver1?.name || 'Unknown';
         const driver2Name = selectedVehicleData.users_driver2?.name || 'Unknown';
         
@@ -179,13 +168,11 @@ export const DriverDetailsModal = ({ isOpen, onClose, driverId, onSave }: Driver
         return;
       }
       
-      // 3. Determine which slot to use (slot 1 if empty, otherwise slot 2)
       let slotToUse = 'assigned_driver_1';
       if (hasDriver1 && selectedVehicleData.assigned_driver_1 !== driverId) {
         slotToUse = 'assigned_driver_2';
       }
       
-      // 4. Clear previous vehicle assignment for this driver
       const { error: updateError } = await supabase
         .from('users')
         .update({ vehicle_number: vehicleNumber })
@@ -193,7 +180,6 @@ export const DriverDetailsModal = ({ isOpen, onClose, driverId, onSave }: Driver
         
       if (updateError) throw updateError;
       
-      // 5. Update the vehicle assignment
       const vehicleUpdate: any = {};
       vehicleUpdate[slotToUse] = driverId;
       
@@ -206,6 +192,8 @@ export const DriverDetailsModal = ({ isOpen, onClose, driverId, onSave }: Driver
       
       setSelectedVehicle(vehicleNumber);
       toast.success(`Vehicle assigned successfully: ${vehicleNumber}`);
+      
+      if (onDriverUpdate) onDriverUpdate();
     } catch (error) {
       console.error('Error assigning vehicle:', error);
       toast.error('Failed to assign vehicle');
@@ -222,7 +210,6 @@ export const DriverDetailsModal = ({ isOpen, onClose, driverId, onSave }: Driver
     try {
       const today = new Date().toISOString().split('T')[0];
       
-      // Update user shift
       const { error } = await supabase
         .from('users')
         .update({ shift })
@@ -230,7 +217,6 @@ export const DriverDetailsModal = ({ isOpen, onClose, driverId, onSave }: Driver
         
       if (error) throw error;
       
-      // Record the shift change in shift_history
       const { error: historyError } = await supabase
         .from('shift_history')
         .insert({
@@ -243,6 +229,8 @@ export const DriverDetailsModal = ({ isOpen, onClose, driverId, onSave }: Driver
       
       setSelectedShift(shift);
       toast.success(`Shift updated to ${shift}`);
+      
+      if (onDriverUpdate) onDriverUpdate();
     } catch (error) {
       console.error('Error updating shift:', error);
       toast.error('Failed to update shift');
@@ -253,9 +241,7 @@ export const DriverDetailsModal = ({ isOpen, onClose, driverId, onSave }: Driver
 
   const saveChanges = async () => {
     try {
-      // Any final changes to be saved
-      
-      if (onSave) onSave();
+      if (onDriverUpdate) onDriverUpdate();
       onClose();
     } catch (error) {
       console.error('Error saving changes:', error);
