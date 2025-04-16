@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { format, startOfWeek, addDays, addWeeks, parseISO } from 'date-fns';
 import { supabase } from '@/integrations/supabase/client';
@@ -6,6 +7,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { CalendarHeader } from '@/components/admin/calendar/CalendarHeader';
 import { RentCalendarGrid } from '@/components/admin/calendar/RentCalendarGrid';
+import { DriverStats } from '@/components/admin/calendar/DriverStats';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { toast } from 'sonner';
@@ -175,6 +177,11 @@ const AdminCalendar = () => {
   return (
     <AdminLayout title="Rent Due Calendar">
       <div className="space-y-4">
+        <DriverStats 
+          drivers={drivers} 
+          calendarData={calendarData} 
+        />
+        
         <div className="flex flex-wrap gap-3 mb-4">
           {statusLegend.map((item) => (
             <div key={item.status} className="flex items-center gap-2">
