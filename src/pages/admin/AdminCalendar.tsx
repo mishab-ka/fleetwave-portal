@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { format, startOfWeek, addDays, addWeeks, parseISO } from 'date-fns';
 import { supabase } from '@/integrations/supabase/client';
