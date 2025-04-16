@@ -66,7 +66,7 @@ export const RentCalendarGrid = ({
               </div>
               
               <div className="divide-y">
-                {onlineDrivers.map((driver) => {
+                {onlineDrivers.map((driver, index) => {
                   const rentData = getStatusForDay(driver.id, day);
                   const driverStatus = rentData ? rentData.status : 'not_joined';
                   
@@ -78,10 +78,13 @@ export const RentCalendarGrid = ({
                         getStatusColor(driverStatus)
                       )}
                     >
-                      <div className="text-sm">
-                        <div className="font-medium">{driver.name}</div>
-                        <div className="text-xs text-muted-foreground">
-                          {driver.vehicle_number} • {driver.shift || 'N/A'}
+                      <div className="text-sm flex items-center">
+                        <span className="font-semibold w-6 mr-2">{index + 1}.</span>
+                        <div>
+                          <div className="font-medium">{driver.name}</div>
+                          <div className="text-xs text-muted-foreground">
+                            {driver.vehicle_number} • {driver.shift || 'N/A'}
+                          </div>
                         </div>
                       </div>
                       
@@ -118,7 +121,10 @@ export const RentCalendarGrid = ({
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="w-[180px] sticky left-0 z-20 bg-muted/50">
+              <TableHead className="w-[40px] sticky left-0 z-20 bg-muted/50">
+                #
+              </TableHead>
+              <TableHead className="w-[180px] sticky left-10 z-20 bg-muted/50">
                 {shiftType || "All Shifts"}
               </TableHead>
               {weekDays.map((day, index) => (
@@ -136,9 +142,12 @@ export const RentCalendarGrid = ({
             </TableRow>
           </TableHeader>
           <TableBody>
-            {onlineDrivers.map((driver) => (
+            {onlineDrivers.map((driver, index) => (
               <TableRow key={driver.id}>
-                <TableCell className="font-medium sticky left-0 bg-background z-10 border-r">
+                <TableCell className="font-semibold sticky left-0 bg-background z-10 border-r text-center w-[40px]">
+                  {index + 1}
+                </TableCell>
+                <TableCell className="font-medium sticky left-10 bg-background z-10 border-r">
                   <div className="font-semibold">
                     {driver.name || 'Unknown'}
                   </div>
