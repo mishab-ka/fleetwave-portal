@@ -1,3 +1,4 @@
+
 import React, { useEffect, useState } from 'react';
 import AdminLayout from '@/components/AdminLayout';
 import { supabase } from '@/integrations/supabase/client';
@@ -9,12 +10,15 @@ import { Eye, CheckCircle, XCircle } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { toast } from 'sonner';
 import { Tables } from '@/integrations/supabase/types';
+import DriverDetailsModal from '@/components/admin/drivers/DriverDetailsModal';
 
 type Driver = Tables<"users">;
 
 const AdminDrivers = () => {
   const [drivers, setDrivers] = useState<Driver[]>([]);
   const [loading, setLoading] = useState(true);
+  const [selectedDriver, setSelectedDriver] = useState<Driver | null>(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
   
   useEffect(() => {
     fetchDrivers();
@@ -36,6 +40,11 @@ const AdminDrivers = () => {
     } finally {
       setLoading(false);
     }
+  };
+  
+  const openDriverDetails = (driver: Driver) => {
+    setSelectedDriver(driver);
+    setIsModalOpen(true);
   };
   
   const toggleVerification = async (id: string, currentStatus: boolean | null) => {
@@ -118,7 +127,11 @@ const AdminDrivers = () => {
         </div>
         
         <div className="mt-4 flex justify-end">
-          <Button variant="ghost" size="sm">
+          <Button 
+            variant="ghost" 
+            size="sm"
+            onClick={() => openDriverDetails(driver)}
+          >
             <Eye className="h-4 w-4 mr-1" /> View
           </Button>
         </div>
@@ -211,7 +224,11 @@ const AdminDrivers = () => {
                             </div>
                           </TableCell>
                           <TableCell className="text-right">
-                            <Button variant="ghost" size="sm">
+                            <Button 
+                              variant="ghost" 
+                              size="sm"
+                              onClick={() => openDriverDetails(driver)}
+                            >
                               <Eye className="h-4 w-4 mr-1" /> View
                             </Button>
                           </TableCell>
@@ -225,6 +242,13 @@ const AdminDrivers = () => {
           )}
         </CardContent>
       </Card>
+
+      <DriverDetailsModal 
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        driver={selectedDriver}
+        onDriverUpdate={fetchDrivers}
+      />
     </AdminLayout>
   );
 };
