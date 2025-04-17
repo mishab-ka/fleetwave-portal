@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { Button } from './ui/button';
 import { Sheet, SheetContent, SheetTrigger } from './ui/sheet';
+import { ScrollArea } from './ui/scroll-area';
 import { toast } from 'sonner';
 
 interface AdminLayoutProps {
@@ -93,30 +94,32 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children, title }) => {
           <ChevronLeft className={`h-5 w-5 transition-transform duration-200 ${isCollapsed ? 'rotate-180' : ''}`} />
         </Button>
       </div>
-      <nav className="flex-1 overflow-y-auto py-4">
-        <ul className="space-y-1">
-          {navItems.map((item) => (
-            <li key={item.label}>
-              <button
-                onClick={() => {
-                  navigate(item.path);
-                  setIsMobileMenuOpen(false);
-                }}
-                className={`flex items-center w-full px-4 py-3 text-left transition-colors ${
-                  window.location.pathname === item.path
-                    ? 'bg-fleet-purple text-white'
-                    : 'text-gray-700 hover:bg-gray-100'
-                }`}
-                title={isCollapsed ? item.label : undefined}
-              >
-                <span className="mr-3">{item.icon}</span>
-                {!isCollapsed && <span>{item.label}</span>}
-              </button>
-            </li>
-          ))}
-        </ul>
-      </nav>
-      <div className="p-4 border-t">
+      <ScrollArea className="flex-1">
+        <nav className="py-4">
+          <ul className="space-y-1">
+            {navItems.map((item) => (
+              <li key={item.label}>
+                <button
+                  onClick={() => {
+                    navigate(item.path);
+                    setIsMobileMenuOpen(false);
+                  }}
+                  className={`flex items-center w-full px-4 py-3 text-left transition-colors ${
+                    window.location.pathname === item.path
+                      ? 'bg-fleet-purple text-white'
+                      : 'text-gray-700 hover:bg-gray-100'
+                  }`}
+                  title={isCollapsed ? item.label : undefined}
+                >
+                  <span className="mr-3">{item.icon}</span>
+                  {!isCollapsed && <span>{item.label}</span>}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </nav>
+      </ScrollArea>
+      <div className="p-4 border-t mt-auto">
         <Button
           variant="outline"
           className={`w-full flex items-center justify-center ${isCollapsed ? 'p-2' : ''}`}
@@ -133,11 +136,13 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children, title }) => {
     <div className="min-h-screen bg-gray-100 flex">
       {/* Desktop Sidebar */}
       <div 
-        className={`hidden md:flex bg-white shadow-lg flex-col transition-all duration-300 ease-in-out ${
+        className={`hidden md:block bg-white shadow-lg flex-shrink-0 transition-all duration-300 ease-in-out ${
           isCollapsed ? 'w-16' : 'w-64'
         }`}
       >
-        <NavContent />
+        <div className="h-screen sticky top-0">
+          <NavContent />
+        </div>
       </div>
 
       {/* Mobile Sidebar */}
@@ -160,12 +165,12 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children, title }) => {
 
       {/* Main content */}
       <div className="flex-1 overflow-x-hidden">
-        <header className="bg-white shadow px-6 py-4 md:ml-0 flex items-center">
+        <header className="bg-white shadow px-6 py-4 md:ml-0 flex items-center sticky top-0 z-10">
           <h1 className="text-xl md:text-2xl font-bold text-gray-800 ml-12 md:ml-0">
             {title}
           </h1>
         </header>
-        <main className="p-4 md:p-6 overflow-x-auto">
+        <main className="p-4 md:p-6">
           {children}
         </main>
       </div>
