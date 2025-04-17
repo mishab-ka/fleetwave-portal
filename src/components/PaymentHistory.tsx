@@ -1,4 +1,3 @@
-
 import React from "react";
 import { useAuth } from "@/context/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
@@ -73,7 +72,7 @@ const PaymentHistory = () => {
                       <Badge 
                         variant={
                           record.payment_status === 'paid' ? 'success' :
-                          record.payment_status === 'pending' ? 'warning' :
+                          record.payment_status === 'pending' ? 'secondary' :
                           'destructive'
                         }
                       >
@@ -89,7 +88,6 @@ const PaymentHistory = () => {
                     </TableCell>
                   </TableRow>
                 ))}
-
                 {(!rentHistory || rentHistory.length === 0) && (
                   <TableRow>
                     <TableCell colSpan={4} className="h-24 text-center">

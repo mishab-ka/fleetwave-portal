@@ -487,6 +487,45 @@ export type Database = {
           },
         ]
       }
+      weekly_leaderboard: {
+        Row: {
+          created_at: string
+          id: string
+          on_time_payments: number | null
+          rank: number | null
+          score: number | null
+          total_earnings: number | null
+          total_trips: number | null
+          user_id: string
+          week_end: string
+          week_start: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          on_time_payments?: number | null
+          rank?: number | null
+          score?: number | null
+          total_earnings?: number | null
+          total_trips?: number | null
+          user_id: string
+          week_end: string
+          week_start: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          on_time_payments?: number | null
+          rank?: number | null
+          score?: number | null
+          total_earnings?: number | null
+          total_trips?: number | null
+          user_id?: string
+          week_end?: string
+          week_start?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       rent_due_view: {
@@ -527,6 +566,10 @@ export type Database = {
       }
       update_account_balance: {
         Args: { account_id: number; amount_change: number }
+        Returns: undefined
+      }
+      update_weekly_leaderboard: {
+        Args: Record<PropertyKey, never>
         Returns: undefined
       }
     }

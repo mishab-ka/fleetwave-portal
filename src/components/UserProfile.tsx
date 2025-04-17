@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
@@ -74,7 +73,7 @@ const UserProfile = () => {
 
   return (
     <div className="space-y-6">
-      <Card className="shadow-md">
+      <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-4">
             <Avatar className="h-16 w-16">
@@ -158,7 +157,7 @@ const UserProfile = () => {
               <Badge variant={profileData.online ? 'success' : 'secondary'}>
                 {profileData.online ? 'Online' : 'Offline'}
               </Badge>
-              <Badge variant={profileData.is_verified ? 'success' : 'warning'}>
+              <Badge variant={profileData.is_verified ? 'success' : 'secondary'}>
                 {profileData.is_verified ? 'Verified' : 'Pending Verification'}
               </Badge>
             </div>

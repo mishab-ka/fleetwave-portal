@@ -7,6 +7,7 @@ import Footer from "@/components/Footer";
 import UserProfile from "@/components/UserProfile";
 import DocumentsSection from "@/components/DocumentsSection";
 import PaymentHistory from "@/components/PaymentHistory";
+import Leaderboard from "@/components/Leaderboard";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { FilePlus } from "lucide-react";
@@ -50,10 +51,11 @@ const Profile = () => {
         </div>
         
         <Tabs defaultValue="profile" className="w-full">
-          <TabsList className="mb-6 grid w-full grid-cols-3">
+          <TabsList className="mb-6 grid w-full grid-cols-4">
             <TabsTrigger value="profile">Profile</TabsTrigger>
             <TabsTrigger value="documents">Documents</TabsTrigger>
             <TabsTrigger value="history">Payment History</TabsTrigger>
+            <TabsTrigger value="leaderboard">Leaderboard</TabsTrigger>
           </TabsList>
           
           <TabsContent value="profile">
@@ -66,6 +68,10 @@ const Profile = () => {
 
           <TabsContent value="history">
             <PaymentHistory />
+          </TabsContent>
+
+          <TabsContent value="leaderboard">
+            <Leaderboard />
           </TabsContent>
         </Tabs>
       </main>
