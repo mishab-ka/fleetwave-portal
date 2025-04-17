@@ -15,7 +15,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { CheckCircle, XCircle, Mail, Phone, Calendar, FileText, Car, IndianRupee } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { BalanceTransactions } from '@/components/ui/balance-transactions';
+import { BalanceTransactions } from '@/components/admin/drivers/BalanceTransactions';
 
 interface DriverDetailsModalProps {
   isOpen: boolean;

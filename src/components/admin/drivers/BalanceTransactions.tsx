@@ -1,148 +1,190 @@
 
-import React from 'react';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import React, { useState, useEffect } from 'react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { ScrollArea } from '@/components/ui/scroll-area';
-import { IndianRupee, Plus, Minus, CreditCard, ArrowUpRight, ArrowDownRight, Award, Ban } from 'lucide-react';
+import { Separator } from '@/components/ui/separator';
+import { AlertCircle, ArrowDown, ArrowUp, Plus } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { useAuth } from '@/context/AuthContext';
 
 interface BalanceTransactionsProps {
   driverId: string;
   currentBalance: number;
-  onBalanceUpdate: () => void;
+  onBalanceUpdate?: () => void;
 }
 
-export const BalanceTransactions = ({ driverId, currentBalance, onBalanceUpdate }: BalanceTransactionsProps) => {
-  const [transactions, setTransactions] = React.useState<any[]>([]);
-  const [loading, setLoading] = React.useState(false);
-  const [amount, setAmount] = React.useState('');
-  const [type, setType] = React.useState<string>('');
-  const [description, setDescription] = React.useState('');
+type TransactionType = 'due' | 'deposit' | 'refund' | 'penalty' | 'bonus';
 
-  React.useEffect(() => {
-    fetchTransactions();
+interface BalanceTransaction {
+  id: string;
+  user_id: string;
+  amount: number;
+  type: TransactionType;
+  description?: string;
+  created_at: string;
+  created_by: string;
+}
+
+export const BalanceTransactions = ({ 
+  driverId, 
+  currentBalance, 
+  onBalanceUpdate 
+}: BalanceTransactionsProps) => {
+  const { user } = useAuth();
+  const [transactions, setTransactions] = useState<BalanceTransaction[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [amount, setAmount] = useState<string>('');
+  const [description, setDescription] = useState<string>('');
+  const [transactionType, setTransactionType] = useState<TransactionType>('due');
+  const [isAdding, setIsAdding] = useState(false);
+  
+  useEffect(() => {
+    if (driverId) {
+      fetchTransactions();
+    }
   }, [driverId]);
-
+  
   const fetchTransactions = async () => {
     try {
+      setLoading(true);
       const { data, error } = await supabase
         .from('driver_balance_transactions')
         .select('*')
         .eq('user_id', driverId)
         .order('created_at', { ascending: false });
-
+        
       if (error) throw error;
+      
       setTransactions(data || []);
     } catch (error) {
       console.error('Error fetching transactions:', error);
       toast.error('Failed to load transaction history');
+    } finally {
+      setLoading(false);
     }
   };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!amount || !type) {
-      toast.error('Please fill in all required fields');
+  
+  const handleAddTransaction = async () => {
+    if (!amount || parseFloat(amount) <= 0 || !transactionType) {
+      toast.error('Please enter a valid amount and select a transaction type');
       return;
     }
-
-    setLoading(true);
+    
     try {
+      setIsAdding(true);
+      
+      // Determine if this transaction will add or subtract from balance
+      const isPositive = ['deposit', 'refund', 'bonus'].includes(transactionType);
       const numericAmount = parseFloat(amount);
-      const { error: transactionError } = await supabase
+      const balanceChange = isPositive ? numericAmount : -numericAmount;
+      
+      // Insert transaction record
+      const { error: txError } = await supabase
         .from('driver_balance_transactions')
         .insert({
           user_id: driverId,
           amount: numericAmount,
-          type,
-          description,
-          created_by: (await supabase.auth.getUser()).data.user?.id
+          type: transactionType,
+          description: description || undefined,
+          created_by: user?.id
         });
-
-      if (transactionError) throw transactionError;
-
+      
+      if (txError) throw txError;
+      
       // Update user's pending balance
-      const balanceChange = type === 'due' || type === 'penalty' ? numericAmount : -numericAmount;
-      const { error: updateError } = await supabase
+      const { error: userError } = await supabase
         .from('users')
         .update({ 
           pending_balance: currentBalance + balanceChange 
         })
         .eq('id', driverId);
-
-      if (updateError) throw updateError;
-
-      toast.success('Transaction recorded successfully');
-      fetchTransactions();
-      onBalanceUpdate();
+      
+      if (userError) throw userError;
+      
+      toast.success('Transaction added successfully');
+      
+      // Reset form
       setAmount('');
-      setType('');
       setDescription('');
+      
+      // Refresh data
+      fetchTransactions();
+      if (onBalanceUpdate) onBalanceUpdate();
     } catch (error) {
-      console.error('Error recording transaction:', error);
-      toast.error('Failed to record transaction');
+      console.error('Error adding transaction:', error);
+      toast.error('Failed to add transaction');
     } finally {
-      setLoading(false);
+      setIsAdding(false);
     }
   };
 
-  const getTransactionIcon = (type: string) => {
+  const getTransactionLabel = (type: TransactionType) => {
     switch (type) {
-      case 'due':
-        return <ArrowUpRight className="h-4 w-4 text-red-500" />;
-      case 'deposit':
-        return <CreditCard className="h-4 w-4 text-green-500" />;
-      case 'refund':
-        return <ArrowDownRight className="h-4 w-4 text-blue-500" />;
-      case 'penalty':
-        return <Ban className="h-4 w-4 text-red-500" />;
-      case 'bonus':
-        return <Award className="h-4 w-4 text-green-500" />;
-      default:
-        return <CreditCard className="h-4 w-4" />;
+      case 'due': return 'Amount Due';
+      case 'deposit': return 'Deposit Added';
+      case 'refund': return 'Refund Issued';
+      case 'penalty': return 'Penalty';
+      case 'bonus': return 'Bonus';
+      default: return type;
     }
   };
-
+  
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center justify-between">
-          <span>Balance Transactions</span>
-          <div className="flex items-center text-lg">
-            <IndianRupee className="h-4 w-4" />
-            <span className={currentBalance > 0 ? 'text-red-500' : 'text-green-500'}>
-              {Math.abs(currentBalance)}
-            </span>
+    <div className="space-y-6">
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-lg font-medium">Current Balance</CardTitle>
+          <div className="mt-1 text-2xl font-bold">
+            ₹{currentBalance.toLocaleString()}
           </div>
-        </CardTitle>
-        <CardDescription>
-          Manage driver's balance and view transaction history
-        </CardDescription>
-      </CardHeader>
-
-      <CardContent>
-        <Tabs defaultValue="add" className="w-full">
-          <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="add">Add Transaction</TabsTrigger>
-            <TabsTrigger value="history">Transaction History</TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="add">
-            <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="text-sm text-muted-foreground">
+            {currentBalance < 0 
+              ? "Amount due from driver" 
+              : currentBalance > 0 
+                ? "Amount available to driver" 
+                : "No pending balance"}
+          </div>
+        </CardHeader>
+        <CardContent>
+          <Button 
+            variant="outline" 
+            className="w-full"
+            onClick={() => setIsAdding(!isAdding)}
+          >
+            <Plus className="mr-2 h-4 w-4" />
+            Add Transaction
+          </Button>
+          
+          {isAdding && (
+            <div className="mt-4 p-4 border rounded-md space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="amount">Amount</Label>
+                <Input
+                  id="amount"
+                  type="number"
+                  placeholder="Enter amount"
+                  value={amount}
+                  onChange={(e) => setAmount(e.target.value)}
+                />
+              </div>
+              
               <div className="space-y-2">
                 <Label htmlFor="type">Transaction Type</Label>
-                <Select value={type} onValueChange={setType}>
+                <Select
+                  value={transactionType}
+                  onValueChange={(value) => setTransactionType(value as TransactionType)}
+                >
                   <SelectTrigger>
                     <SelectValue placeholder="Select type" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="due">Due Amount</SelectItem>
+                    <SelectItem value="due">Due (Driver owes)</SelectItem>
                     <SelectItem value="deposit">Deposit</SelectItem>
                     <SelectItem value="refund">Refund</SelectItem>
                     <SelectItem value="penalty">Penalty</SelectItem>
@@ -150,81 +192,98 @@ export const BalanceTransactions = ({ driverId, currentBalance, onBalanceUpdate 
                   </SelectContent>
                 </Select>
               </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="amount">Amount</Label>
-                <div className="relative">
-                  <IndianRupee className="absolute left-3 top-2.5 h-4 w-4 text-gray-500" />
-                  <Input
-                    id="amount"
-                    type="number"
-                    value={amount}
-                    onChange={(e) => setAmount(e.target.value)}
-                    className="pl-9"
-                    placeholder="Enter amount"
-                  />
-                </div>
-              </div>
-
+              
               <div className="space-y-2">
                 <Label htmlFor="description">Description (Optional)</Label>
                 <Input
                   id="description"
+                  placeholder="Enter description"
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
-                  placeholder="Add a note"
                 />
               </div>
-
-              <Button type="submit" className="w-full" disabled={loading}>
-                {loading ? 'Processing...' : 'Record Transaction'}
-              </Button>
-            </form>
-          </TabsContent>
-
-          <TabsContent value="history">
+              
+              <div className="flex justify-end space-x-2">
+                <Button
+                  variant="outline"
+                  onClick={() => setIsAdding(false)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleAddTransaction}
+                  disabled={isAdding}
+                >
+                  Add Transaction
+                </Button>
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+      
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg font-medium">Transaction History</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {loading ? (
+            <div className="flex justify-center py-8">
+              <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-fleet-purple"></div>
+            </div>
+          ) : transactions.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground">
+              <AlertCircle className="mx-auto h-8 w-8 mb-2" />
+              <p>No transactions found</p>
+            </div>
+          ) : (
             <ScrollArea className="h-[300px]">
               <div className="space-y-4">
-                {transactions.map((transaction) => (
-                  <div
-                    key={transaction.id}
-                    className="flex items-center justify-between p-3 border rounded-lg"
-                  >
-                    <div className="flex items-center gap-3">
-                      {getTransactionIcon(transaction.type)}
-                      <div>
-                        <p className="font-medium capitalize">{transaction.type}</p>
-                        <p className="text-sm text-gray-500">
-                          {format(new Date(transaction.created_at), 'PPpp')}
-                        </p>
+                {transactions.map((transaction) => {
+                  const isPositiveTransaction = ['deposit', 'refund', 'bonus'].includes(transaction.type);
+                  
+                  return (
+                    <div key={transaction.id} className="flex items-start p-3 border rounded-md">
+                      <div className={`p-2 rounded-full mr-3 ${
+                        isPositiveTransaction ? 'bg-green-100' : 'bg-red-100'
+                      }`}>
+                        {isPositiveTransaction ? (
+                          <ArrowUp className="h-5 w-5 text-green-600" />
+                        ) : (
+                          <ArrowDown className="h-5 w-5 text-red-600" />
+                        )}
+                      </div>
+                      
+                      <div className="flex-1">
+                        <div className="flex justify-between">
+                          <div className="font-medium">
+                            {getTransactionLabel(transaction.type)}
+                          </div>
+                          <div className={`font-bold ${
+                            isPositiveTransaction ? 'text-green-600' : 'text-red-600'
+                          }`}>
+                            {isPositiveTransaction ? '+' : '-'}₹{transaction.amount.toLocaleString()}
+                          </div>
+                        </div>
+                        
                         {transaction.description && (
-                          <p className="text-sm text-gray-600 mt-1">
+                          <p className="text-sm text-muted-foreground mt-1">
                             {transaction.description}
                           </p>
                         )}
+                        
+                        <p className="text-xs text-muted-foreground mt-2">
+                          {format(new Date(transaction.created_at), 'PPp')}
+                        </p>
                       </div>
                     </div>
-                    <div className={`flex items-center font-medium ${
-                      ['due', 'penalty'].includes(transaction.type) 
-                        ? 'text-red-500' 
-                        : 'text-green-500'
-                    }`}>
-                      <IndianRupee className="h-3 w-3 mr-0.5" />
-                      {transaction.amount}
-                    </div>
-                  </div>
-                ))}
-
-                {transactions.length === 0 && (
-                  <div className="text-center py-8 text-gray-500">
-                    No transactions found
-                  </div>
-                )}
+                  );
+                })}
               </div>
             </ScrollArea>
-          </TabsContent>
-        </Tabs>
-      </CardContent>
-    </Card>
+          )}
+        </CardContent>
+      </Card>
+    </div>
   );
 };

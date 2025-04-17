@@ -80,7 +80,9 @@ const Leaderboard = () => {
                       ) : entry.rank}
                     </TableCell>
                     <TableCell className="font-medium">
-                      {entry.user?.name || 'Unknown Driver'}
+                      {entry.user && typeof entry.user === 'object' && 'name' in entry.user 
+                        ? entry.user.name 
+                        : 'Unknown Driver'}
                     </TableCell>
                     <TableCell>{entry.total_trips}</TableCell>
                     <TableCell>₹{entry.total_earnings.toLocaleString()}</TableCell>
