@@ -11,9 +11,10 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
-import { PlusSquare, ArrowUpRight, ArrowDownLeft, Calendar, ArrowUp, ArrowDown } from 'lucide-react';
+import { PlusSquare, ArrowUp, ArrowDown, Calendar, Edit, Trash } from 'lucide-react';
 import { formatter } from '@/lib/utils';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 
 interface Account {
   id: number;
@@ -50,7 +51,9 @@ const TransactionsSection = () => {
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [isAddDialogOpen, setIsAddDialogOpen] = useState<boolean>(false);
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState<boolean>(false);
   const [activeTab, setActiveTab] = useState<string>("all");
+  const [selectedTransaction, setSelectedTransaction] = useState<TransactionWithRelations | null>(null);
   
   const [formData, setFormData] = useState({
     description: '',
@@ -188,6 +191,69 @@ const TransactionsSection = () => {
     }
   };
 
+  const handleEditClick = (transaction: TransactionWithRelations) => {
+    setSelectedTransaction(transaction);
+    setFormData({
+      description: transaction.description || '',
+      amount: transaction.amount,
+      type: transaction.type,
+      date: new Date(transaction.date),
+      account_id: transaction.account_id.toString(),
+      category_id: transaction.category_id.toString(),
+    });
+    setIsEditDialogOpen(true);
+  };
+
+  const handleUpdateTransaction = async () => {
+    try {
+      if (!selectedTransaction) return;
+      if (!formData.description || !formData.amount || !formData.date || !formData.account_id || !formData.category_id) {
+        toast.error('Please fill all required fields');
+        return;
+      }
+      
+      const { error } = await supabase
+        .from('transactions')
+        .update({
+          description: formData.description,
+          amount: formData.amount,
+          type: formData.type,
+          date: formData.date.toISOString(),
+          account_id: parseInt(formData.account_id),
+          category_id: parseInt(formData.category_id),
+        })
+        .eq('id', selectedTransaction.id);
+        
+      if (error) throw error;
+      
+      toast.success('Transaction updated successfully');
+      fetchTransactions();
+      setIsEditDialogOpen(false);
+      setSelectedTransaction(null);
+      resetForm();
+    } catch (error) {
+      console.error('Error updating transaction:', error);
+      toast.error('Failed to update transaction');
+    }
+  };
+
+  const handleDeleteTransaction = async (id: number) => {
+    try {
+      const { error } = await supabase
+        .from('transactions')
+        .delete()
+        .eq('id', id);
+        
+      if (error) throw error;
+      
+      toast.success('Transaction deleted successfully');
+      fetchTransactions();
+    } catch (error) {
+      console.error('Error deleting transaction:', error);
+      toast.error('Failed to delete transaction');
+    }
+  };
+
   const filteredTransactions = activeTab === "all" 
     ? transactions 
     : transactions.filter(t => t.type === activeTab);
@@ -319,6 +385,116 @@ const TransactionsSection = () => {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+
+        {/* Edit Transaction Dialog */}
+        <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+          <DialogContent className="sm:max-w-[500px]">
+            <DialogHeader>
+              <DialogTitle>Edit Transaction</DialogTitle>
+              <DialogDescription>
+                Update the transaction details.
+              </DialogDescription>
+            </DialogHeader>
+            
+            <div className="grid gap-4 py-4">
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="edit-description" className="text-right">Description</Label>
+                <Input 
+                  id="edit-description" 
+                  name="description" 
+                  value={formData.description} 
+                  onChange={handleInputChange} 
+                  className="col-span-3" 
+                  placeholder="Transaction description"
+                />
+              </div>
+              
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="edit-amount" className="text-right">Amount</Label>
+                <Input 
+                  id="edit-amount" 
+                  name="amount" 
+                  type="number" 
+                  value={formData.amount} 
+                  onChange={handleInputChange} 
+                  className="col-span-3" 
+                  placeholder="0.00"
+                />
+              </div>
+              
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="edit-type" className="text-right">Type</Label>
+                <Select 
+                  value={formData.type} 
+                  onValueChange={(value) => setFormData(prev => ({ ...prev, type: value }))}
+                >
+                  <SelectTrigger className="col-span-3">
+                    <SelectValue placeholder="Select type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="income">Income</SelectItem>
+                    <SelectItem value="expense">Expense</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="edit-date" className="text-right">Date</Label>
+                <DatePicker
+                  date={formData.date}
+                  onSelect={handleDateChange}
+                  defaultValue={formData.date}
+                  className="col-span-3"
+                />
+              </div>
+              
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="edit-account_id" className="text-right">Account</Label>
+                <Select 
+                  value={formData.account_id} 
+                  onValueChange={(value) => setFormData(prev => ({ ...prev, account_id: value }))}
+                >
+                  <SelectTrigger className="col-span-3">
+                    <SelectValue placeholder="Select account" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {accounts.map(account => (
+                      <SelectItem key={account.id} value={account.id.toString()}>
+                        {account.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="edit-category_id" className="text-right">Category</Label>
+                <Select 
+                  value={formData.category_id} 
+                  onValueChange={(value) => setFormData(prev => ({ ...prev, category_id: value }))}
+                >
+                  <SelectTrigger className="col-span-3">
+                    <SelectValue placeholder="Select category" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {categories.map(category => (
+                      <SelectItem key={category.id} value={category.id.toString()}>
+                        {category.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setIsEditDialogOpen(false)}>Cancel</Button>
+              <Button onClick={handleUpdateTransaction} className="bg-fleet-purple hover:bg-fleet-purple-dark">
+                Update Transaction
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
       
       <Card>
@@ -343,6 +519,7 @@ const TransactionsSection = () => {
                   <TableHead>Date</TableHead>
                   <TableHead>Account</TableHead>
                   <TableHead>Category</TableHead>
+                  <TableHead>Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -375,12 +552,53 @@ const TransactionsSection = () => {
                     <TableCell>{new Date(transaction.date).toLocaleDateString()}</TableCell>
                     <TableCell>{transaction.accounts?.name}</TableCell>
                     <TableCell>{transaction.categories?.name}</TableCell>
+                    <TableCell>
+                      <div className="flex space-x-2">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleEditClick(transaction)}
+                          className="text-gray-600 hover:text-gray-900"
+                        >
+                          <Edit className="h-4 w-4" />
+                        </Button>
+                        
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="text-red-500 hover:text-red-700"
+                            >
+                              <Trash className="h-4 w-4" />
+                            </Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+                              <AlertDialogDescription>
+                                This action cannot be undone. This will permanently delete the transaction.
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>Cancel</AlertDialogCancel>
+                              <AlertDialogAction
+                                onClick={() => handleDeleteTransaction(transaction.id)}
+                                className="bg-red-500 hover:bg-red-600"
+                              >
+                                Delete
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
+                      </div>
+                    </TableCell>
                   </TableRow>
                 ))}
                 
                 {filteredTransactions.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center text-gray-500 py-8">
+                    <TableCell colSpan={7} className="text-center text-gray-500 py-8">
                       No transactions found
                     </TableCell>
                   </TableRow>
