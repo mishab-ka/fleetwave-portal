@@ -1,3 +1,4 @@
+
 import React, { useEffect, useState } from 'react';
 import AdminLayout from '@/components/AdminLayout';
 import { supabase } from '@/integrations/supabase/client';
@@ -360,9 +361,11 @@ const AdminDrivers = () => {
                 {filteredDrivers.length === 0 ? (
                   <p className="text-center py-8">No drivers found</p>
                 ) : (
-                  filteredDrivers.map((driver) => (
-                    <MobileDriverCard key={driver.id} driver={driver} />
-                  ))
+                  <ScrollArea className="h-[calc(100vh-280px)]">
+                    {filteredDrivers.map((driver) => (
+                      <MobileDriverCard key={driver.id} driver={driver} />
+                    ))}
+                  </ScrollArea>
                 )}
               </div>
 
