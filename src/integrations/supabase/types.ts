@@ -54,6 +54,36 @@ export type Database = {
         }
         Relationships: []
       }
+      driver_balance_transactions: {
+        Row: {
+          amount: number
+          created_at: string
+          created_by: string
+          description: string | null
+          id: string
+          type: Database["public"]["Enums"]["driver_balance_type"]
+          user_id: string
+        }
+        Insert: {
+          amount: number
+          created_at?: string
+          created_by: string
+          description?: string | null
+          id?: string
+          type: Database["public"]["Enums"]["driver_balance_type"]
+          user_id: string
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          created_by?: string
+          description?: string | null
+          id?: string
+          type?: Database["public"]["Enums"]["driver_balance_type"]
+          user_id?: string
+        }
+        Relationships: []
+      }
       fleet_reports: {
         Row: {
           created_at: string | null
@@ -347,6 +377,7 @@ export type Database = {
           online: boolean | null
           online_from_date: string | null
           pan: string | null
+          pending_balance: number | null
           phone_number: string
           profile_photo: string | null
           rent: number | null
@@ -373,6 +404,7 @@ export type Database = {
           online?: boolean | null
           online_from_date?: string | null
           pan?: string | null
+          pending_balance?: number | null
           phone_number: string
           profile_photo?: string | null
           rent?: number | null
@@ -399,6 +431,7 @@ export type Database = {
           online?: boolean | null
           online_from_date?: string | null
           pan?: string | null
+          pending_balance?: number | null
           phone_number?: string
           profile_photo?: string | null
           rent?: number | null
@@ -574,7 +607,7 @@ export type Database = {
       }
     }
     Enums: {
-      [_ in never]: never
+      driver_balance_type: "due" | "deposit" | "refund" | "penalty" | "bonus"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -689,6 +722,8 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      driver_balance_type: ["due", "deposit", "refund", "penalty", "bonus"],
+    },
   },
 } as const

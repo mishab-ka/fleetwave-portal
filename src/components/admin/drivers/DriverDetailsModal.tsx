@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -16,6 +15,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { CheckCircle, XCircle, Mail, Phone, Calendar, FileText, Car, IndianRupee } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { BalanceTransactions } from '@/components/ui/balance-transactions';
 
 interface DriverDetailsModalProps {
   isOpen: boolean;
@@ -29,7 +29,6 @@ type Vehicle = {
   id: string;
   assigned_driver_1?: string | null;
   assigned_driver_2?: string | null;
-  // Add driver name properties for UI display
   driver1_name?: string | null;
   driver2_name?: string | null;
 };
@@ -45,8 +44,6 @@ export const DriverDetailsModal = ({ isOpen, onClose, driverId, onDriverUpdate }
   const [deposit, setDeposit] = useState<string>('0');
   const [totalTrips, setTotalTrips] = useState<string>('0');
   const [currentTab, setCurrentTab] = useState<string>('view');
-  
-  // New form state fields
   const [name, setName] = useState<string>('');
   const [email, setEmail] = useState<string>('');
   const [phone, setPhone] = useState<string>('');
@@ -76,8 +73,6 @@ export const DriverDetailsModal = ({ isOpen, onClose, driverId, onDriverUpdate }
       setSelectedVehicle(data.vehicle_number || '');
       setDeposit(data.deposit_amount?.toString() || '0');
       setTotalTrips(data.total_trip?.toString() || '0');
-      
-      // Set additional form fields
       setName(data.name || '');
       setEmail(data.email_id || '');
       setPhone(data.phone_number || '');
@@ -93,7 +88,6 @@ export const DriverDetailsModal = ({ isOpen, onClose, driverId, onDriverUpdate }
 
   const fetchVehicles = async () => {
     try {
-      // Get all vehicles with their assigned drivers
       const { data, error } = await supabase
         .from('vehicles')
         .select(`
@@ -105,7 +99,6 @@ export const DriverDetailsModal = ({ isOpen, onClose, driverId, onDriverUpdate }
 
       if (error) throw error;
 
-      // Fetch driver details separately to avoid the relationship issues
       const driverIds = data
         .flatMap(vehicle => [vehicle.assigned_driver_1, vehicle.assigned_driver_2])
         .filter(id => id !== null && id !== undefined);
@@ -117,13 +110,11 @@ export const DriverDetailsModal = ({ isOpen, onClose, driverId, onDriverUpdate }
 
       if (driversError) throw driversError;
 
-      // Create a map of driver IDs to names for easy lookup
       const driverMap = {};
       driversData.forEach(driver => {
         driverMap[driver.id] = driver.name;
       });
 
-      // Add driver names to the vehicles data
       const vehiclesWithDrivers = data.map(vehicle => ({
         ...vehicle,
         driver1_name: vehicle.assigned_driver_1 ? driverMap[vehicle.assigned_driver_1] : null,
@@ -294,14 +285,12 @@ export const DriverDetailsModal = ({ isOpen, onClose, driverId, onDriverUpdate }
   const saveChanges = async () => {
     setIsProcessing(true);
     try {
-      // Validate inputs
       if (!name.trim()) {
         toast.error('Name is required');
         setIsProcessing(false);
         return;
       }
 
-      // Update all driver information
       const { error } = await supabase
         .from('users')
         .update({
@@ -328,7 +317,6 @@ export const DriverDetailsModal = ({ isOpen, onClose, driverId, onDriverUpdate }
     }
   };
 
-  // Format joining date if available
   const formattedJoiningDate = driver?.joining_date ? 
     (isValid(parseISO(driver.joining_date)) ? 
       format(parseISO(driver.joining_date), 'PPP') : 
@@ -358,9 +346,10 @@ export const DriverDetailsModal = ({ isOpen, onClose, driverId, onDriverUpdate }
         </DialogHeader>
         
         <Tabs defaultValue="view" value={currentTab} onValueChange={setCurrentTab}>
-          <TabsList className="grid w-full grid-cols-2">
+          <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="view">View Details</TabsTrigger>
             <TabsTrigger value="edit">Edit Details</TabsTrigger>
+            <TabsTrigger value="balance">Balance</TabsTrigger>
           </TabsList>
           
           <ScrollArea className="h-[calc(100vh-220px)]">
@@ -617,6 +606,14 @@ export const DriverDetailsModal = ({ isOpen, onClose, driverId, onDriverUpdate }
                   </div>
                 </CardContent>
               </Card>
+            </TabsContent>
+
+            <TabsContent value="balance">
+              <BalanceTransactions 
+                driverId={driverId || ''} 
+                currentBalance={driver?.pending_balance || 0}
+                onBalanceUpdate={fetchDriverDetails}
+              />
             </TabsContent>
           </ScrollArea>
         </Tabs>
