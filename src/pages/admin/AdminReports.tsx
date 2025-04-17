@@ -1,3 +1,4 @@
+
 import React, { useEffect, useState } from "react";
 import AdminLayout from "@/components/AdminLayout";
 import { supabase } from "@/integrations/supabase/client";
@@ -28,7 +29,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
-import DatePicker from "@/components/DatePicker";
+import { DatePicker } from "@/components/ui/date-picker";
 import {
   Popover,
   PopoverContent,
@@ -44,7 +45,7 @@ import {
 } from "@/components/ui/select";
 
 interface Report {
-  id: number;
+  id: string;
   driver_name: string;
   vehicle_number: string;
   total_trips: number;
@@ -62,14 +63,18 @@ interface Report {
   remarks: string | null;
 }
 
+interface VehicleInfo {
+  id: string;
+  vehicle_number: string;
+  total_trips: number;
+}
+
 const AdminReports = () => {
   const [reports, setReports] = useState<Report[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [vehicles, setVehicles] = useState<
-    { id: number; vehicle_number: string; total_trips: number }[]
-  >([]);
+  const [vehicles, setVehicles] = useState<VehicleInfo[]>([]);
   const [dateRange, setDateRange] = useState<{ start?: Date; end?: Date }>({});
 
   const [dateFilter, setDateFilter] = useState<
@@ -84,19 +89,6 @@ const AdminReports = () => {
 
   useEffect(() => {
     const fetchVehicles = async () => {
-      const { data: vehiclesData } = await supabase
-        .from("vehicles")
-        .select("*")
-        .eq("online", true);
-
-      if (vehiclesData)
-        setVehicles(
-          vehiclesData.map((v) => ({
-            id: v.id,
-            vehicle_number: v.vehicle_number,
-            total_trips: v.total_trips,
-          }))
-        );
       try {
         const { data, error } = await supabase
           .from("vehicles")
@@ -108,7 +100,16 @@ const AdminReports = () => {
           return;
         }
 
-        setVehicles(data || []);
+        // Transform data to match the expected VehicleInfo type
+        if (data) {
+          setVehicles(
+            data.map((v) => ({
+              id: v.id || "",
+              vehicle_number: v.vehicle_number,
+              total_trips: v.total_trips || 0,
+            }))
+          );
+        }
       } catch (error) {
         console.error("Unexpected error fetching vehicles:", error);
       } finally {
@@ -127,7 +128,10 @@ const AdminReports = () => {
 
       if (error) throw error;
 
-      setReports(data || []);
+      // Ensure data conforms to Report interface
+      if (data) {
+        setReports(data as Report[]);
+      }
     } catch (error) {
       console.error("Error fetching reports:", error);
       toast.error("Failed to load reports data");
@@ -167,7 +171,7 @@ const AdminReports = () => {
 
   const [selectedReport, setSelectedReport] = useState<Report | null>(null);
 
-  const updateReportStatus = async (id: number, newStatus: string) => {
+  const updateReportStatus = async (id: string, newStatus: string) => {
     try {
       const { error } = await supabase
         .from("fleet_reports")
@@ -200,7 +204,7 @@ const AdminReports = () => {
       case "rejected":
         return <Badge variant="destructive">Rejected</Badge>;
       case "leave":
-        return <Badge variant="yellow">Leave</Badge>;
+        return <Badge variant="outline" className="bg-yellow-100 text-yellow-800">Leave</Badge>;
       default:
         return <Badge variant="outline">Pending</Badge>;
     }
@@ -290,7 +294,7 @@ const AdminReports = () => {
 
   const earnings = filteredReports.reduce((total, report) => {
     return (
-      total + (report.total_trips === 0 ? 0 : calculateRent(report.total_trips))
+      total + (report.total_trips === 0 ? 0 : calculateFleetRent(report.total_trips))
     );
   }, 0);
 
@@ -298,7 +302,7 @@ const AdminReports = () => {
   const cashInHand = totalRentPaid;
 
   const earningsPerRow = 600;
-  const verifyRent = async (reportId: number) => {
+  const verifyRent = async (reportId: string) => {
     const { error } = await supabase
       .from("fleet_reports")
       .update({ rent_verified: true })
@@ -598,7 +602,7 @@ const AdminReports = () => {
                             value={selectedReport.vehicle_number}
                             onValueChange={(value) =>
                               setSelectedReport((prev) => ({
-                                ...prev,
+                                ...prev!,
                                 vehicle_number: value,
                               }))
                             }
@@ -629,7 +633,7 @@ const AdminReports = () => {
                             value={selectedReport.driver_name}
                             onChange={(e) =>
                               setSelectedReport((prev) => ({
-                                ...prev,
+                                ...prev!,
                                 driver_name: e.target.value,
                               }))
                             }
@@ -644,7 +648,7 @@ const AdminReports = () => {
                             }
                             onChange={(e) =>
                               setSelectedReport((prev) => ({
-                                ...prev,
+                                ...prev!,
                                 rent_date: new Date(
                                   e.target.value
                                 ).toISOString(),
@@ -659,7 +663,7 @@ const AdminReports = () => {
                             value={selectedReport.total_earnings}
                             onChange={(e) =>
                               setSelectedReport((prev) => ({
-                                ...prev,
+                                ...prev!,
                                 total_earnings: Number(e.target.value),
                               }))
                             }
@@ -672,7 +676,7 @@ const AdminReports = () => {
                             value={selectedReport.total_cashcollect}
                             onChange={(e) =>
                               setSelectedReport((prev) => ({
-                                ...prev,
+                                ...prev!,
                                 total_cashcollect: Number(e.target.value),
                               }))
                             }
@@ -685,7 +689,7 @@ const AdminReports = () => {
                             value={selectedReport.total_trips}
                             onChange={(e) =>
                               setSelectedReport((prev) => ({
-                                ...prev,
+                                ...prev!,
                                 total_trips: Number(e.target.value),
                               }))
                             }
@@ -698,7 +702,7 @@ const AdminReports = () => {
                             value={selectedReport.rent_paid_amount}
                             onChange={(e) =>
                               setSelectedReport((prev) => ({
-                                ...prev,
+                                ...prev!,
                                 rent_paid_amount: Number(e.target.value),
                               }))
                             }
@@ -756,10 +760,10 @@ const AdminReports = () => {
                           </Button>
 
                           <Select
-                            value={selectedReport.status}
+                            value={selectedReport.status || ""}
                             onValueChange={(value) =>
                               setSelectedReport((prev) => ({
-                                ...prev,
+                                ...prev!,
                                 status: value,
                               }))
                             }
@@ -787,7 +791,16 @@ const AdminReports = () => {
                             onClick={async () => {
                               const { error } = await supabase
                                 .from("fleet_reports")
-                                .update(selectedReport)
+                                .update({
+                                  driver_name: selectedReport.driver_name,
+                                  vehicle_number: selectedReport.vehicle_number,
+                                  total_trips: selectedReport.total_trips,
+                                  total_earnings: selectedReport.total_earnings,
+                                  rent_paid_amount: selectedReport.rent_paid_amount,
+                                  total_cashcollect: selectedReport.total_cashcollect,
+                                  rent_date: selectedReport.rent_date,
+                                  status: selectedReport.status,
+                                })
                                 .eq("id", selectedReport.id);
 
                               if (!error) {
