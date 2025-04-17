@@ -16,15 +16,61 @@ import { toast } from 'sonner';
 import { Plus, CalendarIcon, ArrowUpRight, ArrowDownLeft, ChevronsUpDown, Search } from 'lucide-react';
 import { formatter } from '@/lib/utils';
 
+// Define interfaces for our data
+interface Transaction {
+  id: number;
+  amount: number;
+  type: string;
+  category_id: number;
+  date: string;
+  account_id: number;
+  description?: string;
+  created_at?: string;
+  categories?: Category;
+  accounts?: Account;
+}
+
+interface Category {
+  id: number;
+  name: string;
+  type: string;
+}
+
+interface Account {
+  id: number;
+  name: string;
+  balance: number;
+  type: string;
+}
+
+interface TransactionForm {
+  amount: string;
+  type: string;
+  category_id: string;
+  date: string;
+  account_id: string;
+  note: string;
+  created_by: string;
+}
+
+interface Filters {
+  type: string;
+  account_id: string;
+  category_id: string;
+  date_from: string;
+  date_to: string;
+  search: string;
+}
+
 const TransactionsSection = () => {
-  const [transactions, setTransactions] = useState([]);
-  const [categories, setCategories] = useState([]);
-  const [accounts, setAccounts] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
-  const [date, setDate] = useState(new Date());
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [accounts, setAccounts] = useState<Account[]>([]);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [isAddDialogOpen, setIsAddDialogOpen] = useState<boolean>(false);
+  const [date, setDate] = useState<Date>(new Date());
   
-  const [filters, setFilters] = useState({
+  const [filters, setFilters] = useState<Filters>({
     type: '',
     account_id: '',
     category_id: '',
@@ -33,7 +79,7 @@ const TransactionsSection = () => {
     search: '',
   });
   
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<TransactionForm>({
     amount: '',
     type: 'Expense',
     category_id: '',
@@ -52,7 +98,7 @@ const TransactionsSection = () => {
         .from('transactions')
         .select(`
           *,
-          categories(name, type),
+          categories!fk_category(name, type),
           accounts(name)
         `)
         .order('date', { ascending: false });
@@ -63,11 +109,11 @@ const TransactionsSection = () => {
       }
       
       if (filters.account_id) {
-        query = query.eq('account_id', filters.account_id);
+        query = query.eq('account_id', parseInt(filters.account_id));
       }
       
       if (filters.category_id) {
-        query = query.eq('category_id', filters.category_id);
+        query = query.eq('category_id', parseInt(filters.category_id));
       }
       
       if (filters.date_from) {
@@ -79,7 +125,7 @@ const TransactionsSection = () => {
       }
       
       if (filters.search) {
-        query = query.ilike('note', `%${filters.search}%`);
+        query = query.ilike('description', `%${filters.search}%`);
       }
       
       const { data: transactionsData, error: transactionsError } = await query;
@@ -98,7 +144,6 @@ const TransactionsSection = () => {
       const { data: accountsData, error: accountsError } = await supabase
         .from('accounts')
         .select('*')
-        .eq('balance', true)
         .order('name');
         
       if (accountsError) throw accountsError;
@@ -118,29 +163,29 @@ const TransactionsSection = () => {
     fetchData();
   }, [filters]);
   
-  const handleInputChange = (e) => {
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
     setFormData(prev => ({
       ...prev,
-      [name]: name === 'amount' ? (value === '' ? '' : parseFloat(value)) : value,
+      [name]: value,
     }));
   };
   
-  const handleFilterChange = (name, value) => {
+  const handleFilterChange = (name: string, value: string) => {
     setFilters(prev => ({
       ...prev,
       [name]: value,
     }));
   };
   
-  const handleSelectChange = (name, value) => {
+  const handleSelectChange = (name: string, value: string) => {
     setFormData(prev => ({
       ...prev,
       [name]: value,
     }));
   };
   
-  const handleDateSelect = (selectedDate) => {
+  const handleDateSelect = (selectedDate: Date) => {
     setDate(selectedDate);
     setFormData(prev => ({
       ...prev,
@@ -158,13 +203,13 @@ const TransactionsSection = () => {
       const { data: account, error: accountError } = await supabase
         .from('accounts')
         .select('balance')
-        .eq('id', formData.account_id)
+        .eq('id', parseInt(formData.account_id))
         .single();
         
       if (accountError) throw accountError;
       
       // For expenses, ensure account has enough balance
-      if (formData.type === 'Expense' && account.balance < formData.amount) {
+      if (formData.type === 'Expense' && account.balance < parseFloat(formData.amount)) {
         toast.error('Insufficient balance in selected account');
         return;
       }
@@ -172,17 +217,24 @@ const TransactionsSection = () => {
       // Add transaction
       const { error: transactionError } = await supabase
         .from('transactions')
-        .insert([formData]);
+        .insert([{
+          amount: parseFloat(formData.amount),
+          type: formData.type,
+          category_id: parseInt(formData.category_id),
+          date: formData.date,
+          account_id: parseInt(formData.account_id),
+          description: formData.note
+        }]);
         
       if (transactionError) throw transactionError;
       
       // Update account balance
-      const balanceChange = formData.type === 'Income' ? formData.amount : -formData.amount;
+      const balanceChange = formData.type === 'Income' ? parseFloat(formData.amount) : -parseFloat(formData.amount);
       
       const { error: updateError } = await supabase
         .from('accounts')
         .update({ balance: account.balance + balanceChange })
-        .eq('id', formData.account_id);
+        .eq('id', parseInt(formData.account_id));
         
       if (updateError) throw updateError;
       
@@ -386,7 +438,7 @@ const TransactionsSection = () => {
                   <SelectValue placeholder="All Types" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all-types">All Types</SelectItem>
+                  <SelectItem value="">All Types</SelectItem>
                   <SelectItem value="Income">Income</SelectItem>
                   <SelectItem value="Expense">Expense</SelectItem>
                   <SelectItem value="Transfer">Transfer</SelectItem>
@@ -404,7 +456,7 @@ const TransactionsSection = () => {
                   <SelectValue placeholder="All Accounts" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all-accounts">All Accounts</SelectItem>
+                  <SelectItem value="">All Accounts</SelectItem>
                   {accounts.map(account => (
                     <SelectItem key={account.id} value={account.id.toString()}>
                       {account.name}
@@ -424,7 +476,7 @@ const TransactionsSection = () => {
                   <SelectValue placeholder="All Categories" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all-categories">All Categories</SelectItem>
+                  <SelectItem value="">All Categories</SelectItem>
                   {categories.map(category => (
                     <SelectItem key={category.id} value={category.id.toString()}>
                       {category.name}
@@ -483,7 +535,7 @@ const TransactionsSection = () => {
                 {transactions.map((transaction) => (
                   <tr key={transaction.id} className="border-b hover:bg-gray-50">
                     <td className="p-3">
-                      {format(new Date(transaction.date), 'MMM dd, yyyy')}
+                      {transaction.date ? format(new Date(transaction.date), 'MMM dd, yyyy') : ''}
                     </td>
                     <td className="p-3">
                       <div className="flex items-center">
@@ -499,7 +551,7 @@ const TransactionsSection = () => {
                     </td>
                     <td className="p-3">{transaction.accounts?.name || 'N/A'}</td>
                     <td className="p-3">{transaction.categories?.name || 'N/A'}</td>
-                    <td className="p-3">{transaction.note || '-'}</td>
+                    <td className="p-3">{transaction.description || '-'}</td>
                     <td className={`p-3 text-right font-medium ${
                       transaction.type === 'Income' 
                         ? 'text-green-600' 
