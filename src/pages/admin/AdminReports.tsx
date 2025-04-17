@@ -1,11 +1,12 @@
+
 import React, { useEffect, useState } from 'react';
 import AdminLayout from '@/components/AdminLayout';
 import { supabase } from '@/integrations/supabase/client';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Card, CardContent } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Eye, CheckCircle, XCircle, Download } from 'lucide-react';
+import { Eye, CheckCircle, XCircle, Download, IndianRupee, TrendingUp, TrendingDown, Wallet, CreditCard } from 'lucide-react';
 import { toast } from 'sonner';
 import { Tables } from '@/integrations/supabase/types';
 
@@ -14,6 +15,13 @@ type Report = Tables<"fleet_reports">;
 const AdminReports = () => {
   const [reports, setReports] = useState<Report[]>([]);
   const [loading, setLoading] = useState(true);
+  const [financialSummary, setFinancialSummary] = useState({
+    totalRentCollected: 0,
+    fleetExpenses: 0,
+    netProfit: 0,
+    cashInUber: 0,
+    cashInHand: 0
+  });
   
   useEffect(() => {
     fetchReports();
@@ -21,14 +29,44 @@ const AdminReports = () => {
   
   const fetchReports = async () => {
     try {
-      const { data, error } = await supabase
+      const { data: reportsData, error } = await supabase
         .from('fleet_reports')
         .select('*')
         .order('submission_date', { ascending: false });
         
       if (error) throw error;
       
-      setReports(data || []);
+      setReports(reportsData || []);
+
+      // Calculate financial summary
+      const summary = (reportsData || []).reduce((acc, report) => {
+        const rentPaid = report.rent_paid_amount || 0;
+        const totalEarnings = report.total_earnings || 0;
+        const cashCollected = report.total_cashcollect || 0;
+
+        acc.totalRentCollected += rentPaid;
+        // Simple fleet expense calculation (can be enhanced based on business logic)
+        acc.fleetExpenses += (report.total_trips || 0) * 50; // Assuming ₹50 per trip as expense
+        acc.netProfit = acc.totalRentCollected - acc.fleetExpenses;
+        
+        // If rent is positive, add to cash in hand/bank
+        // If negative (dues), add to cash in uber
+        if (rentPaid >= 0) {
+          acc.cashInHand += rentPaid;
+        } else {
+          acc.cashInUber += Math.abs(rentPaid);
+        }
+
+        return acc;
+      }, {
+        totalRentCollected: 0,
+        fleetExpenses: 0,
+        netProfit: 0,
+        cashInUber: 0,
+        cashInHand: 0
+      });
+
+      setFinancialSummary(summary);
     } catch (error) {
       console.error('Error fetching reports:', error);
       toast.error('Failed to load reports data');
@@ -137,6 +175,88 @@ const AdminReports = () => {
 
   return (
     <AdminLayout title="Reports Management">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+        <Card className="bg-gradient-to-br from-emerald-100 to-emerald-50">
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium text-emerald-800">Total Rent Collected</CardTitle>
+            <IndianRupee className="h-5 w-5 text-emerald-600" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-emerald-900">
+              ₹{financialSummary.totalRentCollected.toLocaleString()}
+            </div>
+            <div className="flex items-center text-xs text-emerald-600 mt-2">
+              <TrendingUp className="h-4 w-4 mr-1" />
+              <span>From all reports</span>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-gradient-to-br from-amber-100 to-amber-50">
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium text-amber-800">Fleet Expenses</CardTitle>
+            <CreditCard className="h-5 w-5 text-amber-600" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-amber-900">
+              ₹{financialSummary.fleetExpenses.toLocaleString()}
+            </div>
+            <div className="flex items-center text-xs text-amber-600 mt-2">
+              <span>Based on trip counts</span>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className={`bg-gradient-to-br ${
+          financialSummary.netProfit >= 0 
+            ? 'from-green-100 to-green-50' 
+            : 'from-red-100 to-red-50'
+        }`}>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className={`text-sm font-medium ${
+              financialSummary.netProfit >= 0 
+                ? 'text-green-800' 
+                : 'text-red-800'
+            }`}>Net Profit</CardTitle>
+            {financialSummary.netProfit >= 0 ? (
+              <TrendingUp className="h-5 w-5 text-green-600" />
+            ) : (
+              <TrendingDown className="h-5 w-5 text-red-600" />
+            )}
+          </CardHeader>
+          <CardContent>
+            <div className={`text-2xl font-bold ${
+              financialSummary.netProfit >= 0 
+                ? 'text-green-900' 
+                : 'text-red-900'
+            }`}>
+              ₹{Math.abs(financialSummary.netProfit).toLocaleString()}
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-gradient-to-br from-blue-100 to-blue-50">
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium text-blue-800">Cash Status</CardTitle>
+            <Wallet className="h-5 w-5 text-blue-600" />
+          </CardHeader>
+          <CardContent className="space-y-2">
+            <div className="flex justify-between items-center">
+              <span className="text-sm text-blue-600">In Hand/Bank:</span>
+              <span className="text-green-600 font-semibold">
+                ₹{financialSummary.cashInHand.toLocaleString()}
+              </span>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className="text-sm text-blue-600">In Uber:</span>
+              <span className="text-red-600 font-semibold">
+                ₹{financialSummary.cashInUber.toLocaleString()}
+              </span>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
       <div className="flex justify-end mb-6">
         <Button>
           <Download className="h-4 w-4 mr-2" /> Export Reports

@@ -1,3 +1,4 @@
+
 import { format, parseISO, isAfter, addMinutes, isBefore, addDays, startOfDay } from 'date-fns';
 
 export type RentStatus = 'paid' | 'overdue' | 'pending' | 'leave' | 'offline' | 'not_joined';
@@ -13,6 +14,7 @@ export interface ReportData {
   earnings?: number;
   notes?: string;
   joiningDate?: string;
+  created_at?: string;
 }
 
 // Process report data and determine status
@@ -26,7 +28,7 @@ export const processReportData = (report: any): ReportData => {
       vehicleNumber: report.vehicle_number,
       status: 'offline' as RentStatus,
       shift: report.shift,
-      submissionTime: report.created_at,
+      created_at: report.created_at,
       earnings: report.total_earnings,
       notes: `Offline since ${report.users.offline_from_date ? format(parseISO(report.users.offline_from_date), 'PP') : 'unknown date'}`,
       joiningDate: report.users.joining_date,
@@ -43,7 +45,7 @@ export const processReportData = (report: any): ReportData => {
       vehicleNumber: report.vehicle_number,
       status: 'leave' as RentStatus,
       shift: report.shift,
-      submissionTime: report.created_at,
+      created_at: report.created_at,
       earnings: report.total_earnings,
       notes: report.remarks,
       joiningDate: report.users.joining_date,
@@ -136,7 +138,7 @@ export const processReportData = (report: any): ReportData => {
     vehicleNumber: report.vehicle_number,
     status,
     shift: report.shift,
-    submissionTime: report.created_at,
+    created_at: report.created_at,
     earnings: report.total_earnings,
     notes: report.remarks,
     joiningDate: report.users.joining_date,
