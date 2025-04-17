@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -5,8 +6,15 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ArrowUpRight, ArrowDownRight, DollarSign, Wallet, CreditCard, ArrowUpFromLine } from 'lucide-react';
 import { formatter } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
+import { ResponsiveContainer, AreaChart, Area, LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, PieChart, Pie, Cell } from 'recharts';
 import CashflowChart from './CashflowChart';
 import RecentTransactions from './RecentTransactions';
+
+// Define the color array for the pie charts
+const categoryColors = [
+  '#8884d8', '#83a6ed', '#8dd1e1', '#82ca9d', '#a4de6c', 
+  '#d0ed57', '#ffc658', '#ff8042', '#ff6361', '#bc5090'
+];
 
 const FinanceDashboard = () => {
   const [timeRange, setTimeRange] = useState('month');
