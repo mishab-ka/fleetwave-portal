@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { format, parseISO } from 'date-fns';
 import { supabase } from '@/integrations/supabase/client';
@@ -208,19 +207,15 @@ const AdminCalendar = () => {
     }
   };
 
-  // Helper function to determine shift for a specific date based on shift history
   const getShiftForDate = (userId: string, dateStr: string) => {
-    // Get all shift changes for this user
     const userShiftHistory = shiftHistory.filter(history => history.user_id === userId);
     
     if (userShiftHistory.length === 0) return null;
     
-    // Sort by effective date descending
     userShiftHistory.sort((a, b) => 
       new Date(b.effective_from_date).getTime() - new Date(a.effective_from_date).getTime()
     );
     
-    // Find the most recent shift change that occurred before or on the given date
     const relevantShift = userShiftHistory.find(history => 
       new Date(history.effective_from_date) <= new Date(dateStr)
     );
