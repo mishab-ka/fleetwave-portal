@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -101,7 +100,7 @@ const ReportsSection = () => {
   
   return (
     <div className="space-y-6">
-      <h2 className="text-3xl font-bold">Financial Reports</h2>
+      <h2 className="text-2xl sm:text-3xl font-bold">Financial Reports</h2>
       
       <Card>
         <CardHeader>
@@ -109,15 +108,15 @@ const ReportsSection = () => {
           <CardDescription>Export financial data for accounting and tax purposes</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <div className="space-y-4">
-              <div>
+              <div className="space-y-2">
                 <Label htmlFor="report-type">Report Type</Label>
                 <Select 
                   value={reportType} 
                   onValueChange={setReportType}
                 >
-                  <SelectTrigger className="mt-1">
+                  <SelectTrigger className="w-full">
                     <SelectValue placeholder="Select report type" />
                   </SelectTrigger>
                   <SelectContent>
@@ -222,13 +221,13 @@ const ReportsSection = () => {
             </div>
             
             <div className="space-y-4">
-              <div>
+              <div className="space-y-2">
                 <Label htmlFor="category">Category</Label>
                 <Select 
                   value={category} 
                   onValueChange={setCategory}
                 >
-                  <SelectTrigger className="mt-1">
+                  <SelectTrigger className="w-full">
                     <SelectValue placeholder="Select category" />
                   </SelectTrigger>
                   <SelectContent>
@@ -258,10 +257,10 @@ const ReportsSection = () => {
                 </Select>
               </div>
               
-              <div className="flex space-x-4 pt-8">
+              <div className="flex flex-col sm:flex-row gap-4 pt-8">
                 <Button 
                   onClick={generateReport} 
-                  className="bg-fleet-purple hover:bg-fleet-purple-dark flex-1"
+                  className="bg-fleet-purple hover:bg-fleet-purple-dark w-full sm:flex-1"
                   disabled={loading}
                 >
                   {loading ? (
@@ -275,7 +274,7 @@ const ReportsSection = () => {
                 <Button 
                   variant="outline" 
                   onClick={printReport}
-                  className="flex-1"
+                  className="w-full sm:flex-1"
                 >
                   <Printer className="mr-2 h-4 w-4" />
                   Print
@@ -286,10 +285,10 @@ const ReportsSection = () => {
         </CardContent>
       </Card>
       
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <Card className="hover:shadow-md transition-shadow cursor-pointer">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+        <Card className="hover:shadow-md transition-shadow cursor-pointer bg-gradient-to-br from-purple-50 to-white">
           <CardHeader className="pb-2">
-            <CardTitle className="flex items-center">
+            <CardTitle className="flex items-center text-lg sm:text-xl">
               <FileText className="mr-2 h-5 w-5 text-fleet-purple" />
               Income Summary
             </CardTitle>
@@ -300,9 +299,9 @@ const ReportsSection = () => {
           </CardContent>
         </Card>
         
-        <Card className="hover:shadow-md transition-shadow cursor-pointer">
+        <Card className="hover:shadow-md transition-shadow cursor-pointer bg-gradient-to-br from-red-50 to-white">
           <CardHeader className="pb-2">
-            <CardTitle className="flex items-center">
+            <CardTitle className="flex items-center text-lg sm:text-xl">
               <FileText className="mr-2 h-5 w-5 text-fleet-purple" />
               Expense Analysis
             </CardTitle>
@@ -313,9 +312,9 @@ const ReportsSection = () => {
           </CardContent>
         </Card>
         
-        <Card className="hover:shadow-md transition-shadow cursor-pointer">
+        <Card className="hover:shadow-md transition-shadow cursor-pointer bg-gradient-to-br from-blue-50 to-white">
           <CardHeader className="pb-2">
-            <CardTitle className="flex items-center">
+            <CardTitle className="flex items-center text-lg sm:text-xl">
               <FileText className="mr-2 h-5 w-5 text-fleet-purple" />
               Tax Reports
             </CardTitle>

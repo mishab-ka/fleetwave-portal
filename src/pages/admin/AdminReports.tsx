@@ -27,7 +27,7 @@ import {
   CalendarIcon,
 } from "lucide-react";
 import { toast } from "sonner";
-import { Input } from "@/components/ui/input"; // Assuming you have a DatePicker component
+import { Input } from "@/components/ui/input";
 import DatePicker from "@/components/DatePicker";
 import {
   Popover,
@@ -223,14 +223,14 @@ const AdminReports = () => {
     (sum, vehicle) => sum + calculateFleetRent(vehicle.total_trips),
     0
   );
-  // Filter reports based on search query and date filter
+
   const filteredReports = reports.filter((report) => {
     const matchesSearch =
       report.driver_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
       report.vehicle_number?.toLowerCase().includes(searchQuery.toLowerCase());
 
     const matchesStatus =
-      statusFilter === "all" || // Show all reports if "All" is selected
+      statusFilter === "all" ||
       (statusFilter === "pending_verification" &&
         report.status === "pending_verification") ||
       (statusFilter === "approved" && report.status === "approved") ||
@@ -240,14 +240,12 @@ const AdminReports = () => {
     const today = new Date();
     const startOfWeek = new Date(today);
 
-    // Adjust to start from Monday
-    const dayOfWeek = today.getDay(); // 0 = Sunday, 1 = Monday, etc.
-    const daysToSubtract = dayOfWeek === 0 ? 6 : dayOfWeek - 1; // Move back to Monday
+    const dayOfWeek = today.getDay();
+    const daysToSubtract = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
     startOfWeek.setDate(today.getDate() - daysToSubtract);
 
-    startOfWeek.setHours(0, 0, 0, 0); // Set time to midnight for precise filtering
+    startOfWeek.setHours(0, 0, 0, 0);
 
-    // Calculate the end of the week (Sunday 11:59 PM)
     const endOfWeek = new Date(startOfWeek);
     endOfWeek.setDate(startOfWeek.getDate() + 6);
     endOfWeek.setHours(23, 59, 59, 999);
@@ -277,7 +275,6 @@ const AdminReports = () => {
     }
   });
 
-  // Calculate summary statistics
   const totalEarnings = filteredReports.reduce(
     (sum, report) => sum + report.total_earnings,
     0
@@ -290,19 +287,6 @@ const AdminReports = () => {
     (sum, report) => sum + report.rent_paid_amount,
     0
   );
-  function calculateRent(trips) {
-    if (trips >= 11) {
-      return 485;
-    } else if (trips >= 10) {
-      return 585;
-    } else if (trips >= 8) {
-      return 665;
-    } else if (trips >= 5) {
-      return 695;
-    } else {
-      return 765;
-    }
-  }
 
   const earnings = filteredReports.reduce((total, report) => {
     return (
@@ -313,7 +297,7 @@ const AdminReports = () => {
   const cashInUber = totalEarnings - totalCashCollect;
   const cashInHand = totalRentPaid;
 
-  const earningsPerRow = 600; // Assuming each row contains 600rs
+  const earningsPerRow = 600;
   const verifyRent = async (reportId: number) => {
     const { error } = await supabase
       .from("fleet_reports")
@@ -327,17 +311,20 @@ const AdminReports = () => {
       toast.success("Rent verified successfully!");
     }
   };
+
   return (
     <AdminLayout title="Reports Management">
-      <div className="flex justify-between mb-6">
-        <Input
-          placeholder="Search by driver or vehicle..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          className="w-[300px]"
-        />
+      <div className="flex flex-col space-y-4 lg:space-y-0 lg:flex-row lg:justify-between mb-6">
+        <div className="w-full lg:w-[300px]">
+          <Input
+            placeholder="Search by driver or vehicle..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full"
+          />
+        </div>
 
-        <div className="w-[200px]">
+        <div className="w-full lg:w-[200px]">
           <Select
             value={statusFilter}
             onValueChange={(value) =>
@@ -346,7 +333,7 @@ const AdminReports = () => {
               )
             }
           >
-            <SelectTrigger>
+            <SelectTrigger className="w-full">
               <SelectValue placeholder="Filter by Status" />
             </SelectTrigger>
             <SelectContent>
@@ -358,33 +345,27 @@ const AdminReports = () => {
           </Select>
         </div>
 
-        <div className="flex space-x-2">
+        <div className="flex flex-wrap gap-2">
           <Button
             variant={dateFilter === "today" ? "default" : "outline"}
             onClick={() => setDateFilter("today")}
+            className="flex-1 sm:flex-none"
           >
             Today
           </Button>
           <Button
             variant={dateFilter === "week" ? "default" : "outline"}
             onClick={() => setDateFilter("week")}
+            className="flex-1 sm:flex-none"
           >
             This Week
           </Button>
-          {/* <DatePicker
-            selected={customDate}
-            onSelect={(date) => {
-              setCustomDate(date);
-              setDateFilter("custom");
-            }}
-            placeholder="Custom Date"
-          /> */}
 
           <Popover>
             <PopoverTrigger asChild>
               <Button
                 variant={dateFilter === "custom" ? "default" : "outline"}
-                className="gap-2"
+                className="gap-2 flex-1 sm:flex-none"
               >
                 <CalendarIcon className="h-4 w-4" />
                 Custom
@@ -411,19 +392,19 @@ const AdminReports = () => {
               setDateFilter(null);
               setCustomDate(null);
             }}
+            className="flex-1 sm:flex-none"
           >
-            Clear Filters
+            Clear
           </Button>
-          <Button>
-            <Download className="h-4 w-4 mr-2" /> Export Reports
+          <Button className="flex-1 sm:flex-none">
+            <Download className="h-4 w-4 mr-2" /> Export
           </Button>
         </div>
       </div>
 
-      {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4 mb-6">
-        <Card>
-          <CardContent className="p-4  rounded-lg">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
+        <Card className="bg-gradient-to-br from-purple-50 to-white">
+          <CardContent className="p-4">
             <div className="text-sm font-medium text-gray-500">
               Fleet Earnings
             </div>
@@ -433,35 +414,27 @@ const AdminReports = () => {
           </CardContent>
         </Card>
 
-        <Card>
-          <CardContent className="p-4  rounded-lg">
+        <Card className="bg-gradient-to-br from-red-50 to-white">
+          <CardContent className="p-4">
             <div className="text-sm font-medium text-gray-500">
-              Fleet Car Expence
+              Fleet Car Expense
             </div>
             <div className="text-2xl font-bold text-red-500">
               ₹{totalRent * 7}
             </div>
           </CardContent>
         </Card>
-        <Card>
-          <CardContent className="p-4  rounded-lg">
+
+        <Card className="bg-gradient-to-br from-blue-50 to-white">
+          <CardContent className="p-4">
             <div className="text-sm font-medium text-gray-500">Net Profit</div>
             <div className="text-2xl font-bold text-blue-500">
               ₹{earnings - totalRent * 7}
             </div>
           </CardContent>
         </Card>
-        {/* <Card>
-          <CardContent className="p-4">
-            <div className="text-sm font-medium text-gray-500">
-              Total Cash Collected
-            </div>
-            <div className="text-2xl font-bold">
-              ₹{totalCashCollect.toLocaleString()}
-            </div>
-          </CardContent>
-        </Card> */}
-        <Card>
+
+        <Card className="bg-gradient-to-br from-violet-50 to-white">
           <CardContent className="p-4">
             <div className="text-sm font-medium text-gray-500">
               Cash in Uber
@@ -471,7 +444,8 @@ const AdminReports = () => {
             </div>
           </CardContent>
         </Card>
-        <Card>
+
+        <Card className="bg-gradient-to-br from-emerald-50 to-white">
           <CardContent className="p-4">
             <div className="text-sm font-medium text-gray-500">
               Cash in Hand
@@ -484,7 +458,7 @@ const AdminReports = () => {
       </div>
 
       <Card>
-        <CardContent className="p-6">
+        <CardContent className="p-4 sm:p-6">
           {loading ? (
             <div className="flex items-center justify-center h-64">
               <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-fleet-purple"></div>
@@ -618,19 +592,6 @@ const AdminReports = () => {
                     </DialogHeader>
                     <div className="space-y-6">
                       <div className="grid grid-cols-2 gap-4">
-                        {/* <p>Shift: {selectedReport.shift}</p>
-                        <p>Remarks: {selectedReport.remarks}</p>
-                        <p>
-                          Rent Verified:
-                          {!selectedReport.rent_verified && (
-                            <button
-                              className="bg-green-600 text-white px-3 py-1 rounded"
-                              onClick={() => verifyRent(selectedReport.id)}
-                            >
-                              Verify
-                            </button>
-                          )}
-                        </p> */}
                         <div className="space-y-2">
                           <label>Vehicle Number</label>
                           <Select
