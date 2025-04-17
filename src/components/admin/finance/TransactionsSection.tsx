@@ -1,33 +1,23 @@
-
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
+import { DatePicker } from "@/components/ui/date-picker";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Calendar } from "@/components/ui/calendar";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { format } from "date-fns";
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
-import { Plus, CalendarIcon, ArrowUpRight, ArrowDownLeft, ChevronsUpDown, Search } from 'lucide-react';
+import { PlusSquare, ArrowUpRight, ArrowDownLeft, Calendar } from 'lucide-react';
 import { formatter } from '@/lib/utils';
 
-// Define interfaces for our data
-interface Transaction {
+// Define interfaces for the transaction-related data
+interface Account {
   id: number;
-  amount: number;
+  name: string;
   type: string;
-  category_id: number;
-  date: string;
-  account_id: number;
-  description?: string;
-  created_at?: string;
-  categories?: Category;
-  accounts?: Account;
+  balance: number;
 }
 
 interface Category {
@@ -36,210 +26,161 @@ interface Category {
   type: string;
 }
 
-interface Account {
+interface Transaction {
   id: number;
-  name: string;
-  balance: number;
+  description: string;
+  amount: number;
   type: string;
-}
-
-interface TransactionForm {
-  amount: string;
-  type: string;
-  category_id: string;
   date: string;
-  account_id: string;
-  note: string;
-  created_by: string;
-}
-
-interface Filters {
-  type: string;
-  account_id: string;
-  category_id: string;
-  date_from: string;
-  date_to: string;
-  search: string;
+  created_at: string;
+  account_id: number;
+  category_id: number;
+  accounts?: Account;
+  categories?: Category;
 }
 
 const TransactionsSection = () => {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [categories, setCategories] = useState<Category[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [isAddDialogOpen, setIsAddDialogOpen] = useState<boolean>(false);
-  const [date, setDate] = useState<Date>(new Date());
   
-  const [filters, setFilters] = useState<Filters>({
-    type: '',
-    account_id: '',
-    category_id: '',
-    date_from: '',
-    date_to: '',
-    search: '',
+  const [formData, setFormData] = useState({
+    description: '',
+    amount: 0,
+    type: 'income',
+    date: new Date(),
+    account_id: 0,
+    category_id: 0,
   });
   
-  const [formData, setFormData] = useState<TransactionForm>({
-    amount: '',
-    type: 'Expense',
-    category_id: '',
-    date: new Date().toISOString().split('T')[0],
-    account_id: '',
-    note: '',
-    created_by: 'Admin',
-  });
-  
-  const fetchData = async () => {
+  const fetchTransactions = async () => {
     try {
       setLoading(true);
       
-      // Fetch transactions
-      let query = supabase
+      const { data, error } = await supabase
         .from('transactions')
         .select(`
           *,
-          categories!fk_category(name, type),
-          accounts(name)
+          accounts:account_id(id, name, type, balance),
+          categories:category_id(id, name, type)
         `)
         .order('date', { ascending: false });
         
-      // Apply filters
-      if (filters.type) {
-        query = query.eq('type', filters.type);
-      }
+      if (error) throw error;
       
-      if (filters.account_id) {
-        query = query.eq('account_id', parseInt(filters.account_id));
-      }
-      
-      if (filters.category_id) {
-        query = query.eq('category_id', parseInt(filters.category_id));
-      }
-      
-      if (filters.date_from) {
-        query = query.gte('date', filters.date_from);
-      }
-      
-      if (filters.date_to) {
-        query = query.lte('date', filters.date_to);
-      }
-      
-      if (filters.search) {
-        query = query.ilike('description', `%${filters.search}%`);
-      }
-      
-      const { data: transactionsData, error: transactionsError } = await query;
-      
-      if (transactionsError) throw transactionsError;
-      
-      // Fetch categories
-      const { data: categoriesData, error: categoriesError } = await supabase
-        .from('categories')
-        .select('*')
-        .order('name');
+      if (data) {
+        // Transform the data to match the Transaction interface
+        const formattedTransactions: Transaction[] = data.map(item => ({
+          ...item,
+          accounts: item.accounts as Account,
+          categories: item.categories as Category
+        }));
         
-      if (categoriesError) throw categoriesError;
-      
-      // Fetch accounts
-      const { data: accountsData, error: accountsError } = await supabase
-        .from('accounts')
-        .select('*')
-        .order('name');
-        
-      if (accountsError) throw accountsError;
-      
-      setTransactions(transactionsData || []);
-      setCategories(categoriesData || []);
-      setAccounts(accountsData || []);
+        setTransactions(formattedTransactions);
+      }
     } catch (error) {
-      console.error('Error fetching data:', error);
-      toast.error('Failed to load data');
+      console.error('Error fetching transactions:', error);
+      toast.error('Failed to load transactions');
     } finally {
       setLoading(false);
     }
   };
   
-  useEffect(() => {
-    fetchData();
-  }, [filters]);
+  const fetchAccounts = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('accounts')
+        .select('id, name, type, balance');
+        
+      if (error) throw error;
+      
+      setAccounts(data || []);
+    } catch (error) {
+      console.error('Error fetching accounts:', error);
+      toast.error('Failed to load accounts');
+    }
+  };
   
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+  const fetchCategories = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('categories')
+        .select('id, name, type');
+        
+      if (error) throw error;
+      
+      setCategories(data || []);
+    } catch (error) {
+      console.error('Error fetching categories:', error);
+      toast.error('Failed to load categories');
+    }
+  };
+  
+  useEffect(() => {
+    fetchTransactions();
+    fetchAccounts();
+    fetchCategories();
+  }, []);
+  
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
     setFormData(prev => ({
       ...prev,
-      [name]: value,
+      [name]: name === 'amount' ? parseFloat(value) : value,
     }));
   };
   
-  const handleFilterChange = (name: string, value: string) => {
-    setFilters(prev => ({
-      ...prev,
-      [name]: value,
-    }));
-  };
-  
-  const handleSelectChange = (name: string, value: string) => {
+  const handleSelectChange = (name: string, value: number) => {
     setFormData(prev => ({
       ...prev,
       [name]: value,
     }));
   };
   
-  const handleDateSelect = (selectedDate: Date) => {
-    setDate(selectedDate);
-    setFormData(prev => ({
-      ...prev,
-      date: format(selectedDate, 'yyyy-MM-dd'),
-    }));
+  const handleDateChange = (date: Date | undefined) => {
+    if (date) {
+      setFormData(prev => ({
+        ...prev,
+        date: date,
+      }));
+    }
+  };
+  
+  const resetForm = () => {
+    setFormData({
+      description: '',
+      amount: 0,
+      type: 'income',
+      date: new Date(),
+      account_id: 0,
+      category_id: 0,
+    });
   };
   
   const handleAddTransaction = async () => {
     try {
-      if (!formData.amount || !formData.category_id || !formData.account_id) {
+      if (!formData.description || !formData.amount || !formData.date || !formData.account_id || !formData.category_id) {
         toast.error('Please fill all required fields');
         return;
       }
       
-      const { data: account, error: accountError } = await supabase
-        .from('accounts')
-        .select('balance')
-        .eq('id', parseInt(formData.account_id))
-        .single();
-        
-      if (accountError) throw accountError;
-      
-      // For expenses, ensure account has enough balance
-      if (formData.type === 'Expense' && account.balance < parseFloat(formData.amount)) {
-        toast.error('Insufficient balance in selected account');
-        return;
-      }
-      
-      // Add transaction
-      const { error: transactionError } = await supabase
+      const { error } = await supabase
         .from('transactions')
         .insert([{
-          amount: parseFloat(formData.amount),
+          description: formData.description,
+          amount: formData.amount,
           type: formData.type,
-          category_id: parseInt(formData.category_id),
-          date: formData.date,
-          account_id: parseInt(formData.account_id),
-          description: formData.note
+          date: formData.date.toISOString(),
+          account_id: formData.account_id,
+          category_id: formData.category_id,
         }]);
         
-      if (transactionError) throw transactionError;
-      
-      // Update account balance
-      const balanceChange = formData.type === 'Income' ? parseFloat(formData.amount) : -parseFloat(formData.amount);
-      
-      const { error: updateError } = await supabase
-        .from('accounts')
-        .update({ balance: account.balance + balanceChange })
-        .eq('id', parseInt(formData.account_id));
-        
-      if (updateError) throw updateError;
+      if (error) throw error;
       
       toast.success('Transaction added successfully');
-      fetchData();
+      fetchTransactions();
       setIsAddDialogOpen(false);
       resetForm();
     } catch (error) {
@@ -248,30 +189,7 @@ const TransactionsSection = () => {
     }
   };
   
-  const resetForm = () => {
-    setFormData({
-      amount: '',
-      type: 'Expense',
-      category_id: '',
-      date: new Date().toISOString().split('T')[0],
-      account_id: '',
-      note: '',
-      created_by: 'Admin',
-    });
-  };
-  
-  const resetFilters = () => {
-    setFilters({
-      type: '',
-      account_id: '',
-      category_id: '',
-      date_from: '',
-      date_to: '',
-      search: '',
-    });
-  };
-  
-  if (loading && transactions.length === 0 && categories.length === 0 && accounts.length === 0) {
+  if (loading) {
     return (
       <div className="flex justify-center items-center h-64">
         <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-fleet-purple"></div>
@@ -287,7 +205,7 @@ const TransactionsSection = () => {
         <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
           <DialogTrigger asChild>
             <Button className="bg-fleet-purple hover:bg-fleet-purple-dark">
-              <Plus className="mr-2 h-4 w-4" />
+              <PlusSquare className="mr-2 h-4 w-4" />
               Add Transaction
             </Button>
           </DialogTrigger>
@@ -301,20 +219,15 @@ const TransactionsSection = () => {
             
             <div className="grid gap-4 py-4">
               <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="type" className="text-right">Type</Label>
-                <Select 
-                  value={formData.type} 
-                  onValueChange={(value) => handleSelectChange('type', value)}
-                >
-                  <SelectTrigger className="col-span-3">
-                    <SelectValue placeholder="Select type" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Income">Income</SelectItem>
-                    <SelectItem value="Expense">Expense</SelectItem>
-                    <SelectItem value="Transfer">Transfer</SelectItem>
-                  </SelectContent>
-                </Select>
+                <Label htmlFor="description" className="text-right">Description</Label>
+                <Input 
+                  id="description" 
+                  name="description" 
+                  value={formData.description} 
+                  onChange={handleInputChange} 
+                  className="col-span-3" 
+                  placeholder="Transaction description"
+                />
               </div>
               
               <div className="grid grid-cols-4 items-center gap-4">
@@ -331,34 +244,36 @@ const TransactionsSection = () => {
               </div>
               
               <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="category" className="text-right">Category</Label>
+                <Label htmlFor="type" className="text-right">Type</Label>
                 <Select 
-                  value={formData.category_id} 
-                  onValueChange={(value) => handleSelectChange('category_id', value)}
+                  value={formData.type} 
+                  onValueChange={(value) => setFormData(prev => ({ ...prev, type: value }))}
                 >
                   <SelectTrigger className="col-span-3">
-                    <SelectValue placeholder="Select category" />
+                    <SelectValue placeholder="Select type" />
                   </SelectTrigger>
                   <SelectContent>
-                    {categories
-                      .filter(cat => 
-                        formData.type === 'Transfer' || 
-                        cat.type.toLowerCase() === formData.type.toLowerCase()
-                      )
-                      .map(category => (
-                        <SelectItem key={category.id} value={category.id.toString()}>
-                          {category.name}
-                        </SelectItem>
-                      ))}
+                    <SelectItem value="income">Income</SelectItem>
+                    <SelectItem value="expense">Expense</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
               
               <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="account" className="text-right">Account</Label>
+                <Label htmlFor="date" className="text-right">Date</Label>
+                <DatePicker
+                  id="date"
+                  onSelect={handleDateChange}
+                  defaultValue={formData.date}
+                  className="col-span-3"
+                />
+              </div>
+              
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="account_id" className="text-right">Account</Label>
                 <Select 
                   value={formData.account_id} 
-                  onValueChange={(value) => handleSelectChange('account_id', value)}
+                  onValueChange={(value) => handleSelectChange('account_id', Number(value))}
                 >
                   <SelectTrigger className="col-span-3">
                     <SelectValue placeholder="Select account" />
@@ -366,7 +281,7 @@ const TransactionsSection = () => {
                   <SelectContent>
                     {accounts.map(account => (
                       <SelectItem key={account.id} value={account.id.toString()}>
-                        {account.name} ({formatter.format(account.balance)})
+                        {account.name}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -374,40 +289,22 @@ const TransactionsSection = () => {
               </div>
               
               <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="date" className="text-right">Date</Label>
-                <div className="col-span-3">
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <Button
-                        variant={"outline"}
-                        className="w-full justify-start text-left font-normal"
-                      >
-                        <CalendarIcon className="mr-2 h-4 w-4" />
-                        {date ? format(date, "PPP") : <span>Pick a date</span>}
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0">
-                      <Calendar
-                        mode="single"
-                        selected={date}
-                        onSelect={handleDateSelect}
-                        initialFocus
-                      />
-                    </PopoverContent>
-                  </Popover>
-                </div>
-              </div>
-              
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="note" className="text-right">Note</Label>
-                <Textarea 
-                  id="note" 
-                  name="note" 
-                  value={formData.note} 
-                  onChange={handleInputChange} 
-                  className="col-span-3" 
-                  placeholder="Transaction details"
-                />
+                <Label htmlFor="category_id" className="text-right">Category</Label>
+                <Select 
+                  value={formData.category_id} 
+                  onValueChange={(value) => handleSelectChange('category_id', Number(value))}
+                >
+                  <SelectTrigger className="col-span-3">
+                    <SelectValue placeholder="Select category" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {categories.map(category => (
+                      <SelectItem key={category.id} value={category.id.toString()}>
+                        {category.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
             </div>
             
@@ -421,146 +318,41 @@ const TransactionsSection = () => {
         </Dialog>
       </div>
       
-      {/* Filters */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg">Filters</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div>
-              <Label htmlFor="filter-type">Transaction Type</Label>
-              <Select 
-                value={filters.type} 
-                onValueChange={(value) => handleFilterChange('type', value)}
-              >
-                <SelectTrigger className="mt-1">
-                  <SelectValue placeholder="All Types" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="">All Types</SelectItem>
-                  <SelectItem value="Income">Income</SelectItem>
-                  <SelectItem value="Expense">Expense</SelectItem>
-                  <SelectItem value="Transfer">Transfer</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            
-            <div>
-              <Label htmlFor="filter-account">Account</Label>
-              <Select 
-                value={filters.account_id} 
-                onValueChange={(value) => handleFilterChange('account_id', value)}
-              >
-                <SelectTrigger className="mt-1">
-                  <SelectValue placeholder="All Accounts" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="">All Accounts</SelectItem>
-                  {accounts.map(account => (
-                    <SelectItem key={account.id} value={account.id.toString()}>
-                      {account.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            
-            <div>
-              <Label htmlFor="filter-category">Category</Label>
-              <Select 
-                value={filters.category_id} 
-                onValueChange={(value) => handleFilterChange('category_id', value)}
-              >
-                <SelectTrigger className="mt-1">
-                  <SelectValue placeholder="All Categories" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="">All Categories</SelectItem>
-                  {categories.map(category => (
-                    <SelectItem key={category.id} value={category.id.toString()}>
-                      {category.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            
-            <div className="col-span-1 md:col-span-2">
-              <Label htmlFor="filter-search">Search</Label>
-              <div className="relative">
-                <Search className="absolute top-3 left-3 h-4 w-4 text-gray-400" />
-                <Input 
-                  id="filter-search" 
-                  value={filters.search} 
-                  onChange={(e) => handleFilterChange('search', e.target.value)} 
-                  className="pl-10 mt-1" 
-                  placeholder="Search in transaction notes..."
-                />
-              </div>
-            </div>
-            
-            <div className="flex items-end">
-              <Button 
-                variant="outline" 
-                className="w-full" 
-                onClick={resetFilters}
-              >
-                Reset Filters
-              </Button>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-      
       {/* Transactions Table */}
       <Card>
         <CardHeader>
-          <CardTitle>Transaction History</CardTitle>
+          <CardTitle>Transactions List</CardTitle>
         </CardHeader>
         <CardContent>
           <ScrollArea className="h-[400px]">
             <table className="w-full">
               <thead>
                 <tr className="border-b">
-                  <th className="text-left p-3">Date</th>
+                  <th className="text-left p-3">Description</th>
+                  <th className="text-left p-3">Amount</th>
                   <th className="text-left p-3">Type</th>
+                  <th className="text-left p-3">Date</th>
                   <th className="text-left p-3">Account</th>
                   <th className="text-left p-3">Category</th>
-                  <th className="text-left p-3">Note</th>
-                  <th className="text-right p-3">Amount</th>
                 </tr>
               </thead>
               <tbody>
                 {transactions.map((transaction) => (
                   <tr key={transaction.id} className="border-b hover:bg-gray-50">
-                    <td className="p-3">
-                      {transaction.date ? format(new Date(transaction.date), 'MMM dd, yyyy') : ''}
-                    </td>
-                    <td className="p-3">
-                      <div className="flex items-center">
-                        {transaction.type === 'Income' ? (
-                          <ArrowUpRight className="h-4 w-4 text-green-500 mr-1" />
-                        ) : transaction.type === 'Expense' ? (
-                          <ArrowDownLeft className="h-4 w-4 text-red-500 mr-1" />
-                        ) : (
-                          <ChevronsUpDown className="h-4 w-4 text-blue-500 mr-1" />
-                        )}
-                        {transaction.type}
-                      </div>
-                    </td>
-                    <td className="p-3">{transaction.accounts?.name || 'N/A'}</td>
-                    <td className="p-3">{transaction.categories?.name || 'N/A'}</td>
-                    <td className="p-3">{transaction.description || '-'}</td>
-                    <td className={`p-3 text-right font-medium ${
-                      transaction.type === 'Income' 
-                        ? 'text-green-600' 
-                        : transaction.type === 'Expense' 
-                          ? 'text-red-600' 
-                          : 'text-blue-600'
-                    }`}>
-                      {transaction.type === 'Income' ? '+' : transaction.type === 'Expense' ? '-' : ''}
+                    <td className="p-3">{transaction.description}</td>
+                    <td className="p-3 font-medium">
+                      {transaction.type === 'expense' ? '-' : '+'}
                       {formatter.format(transaction.amount)}
+                    </td>
+                    <td className="p-3 capitalize">{transaction.type}</td>
+                    <td className="p-3">
+                      {new Date(transaction.date).toLocaleDateString()}
+                    </td>
+                    <td className="p-3">
+                      {transaction.accounts?.name}
+                    </td>
+                    <td className="p-3">
+                      {transaction.categories?.name}
                     </td>
                   </tr>
                 ))}

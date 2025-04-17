@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -10,10 +9,9 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
-import { Bank, Plus, DollarSign, CreditCard } from 'lucide-react';
+import { Banknote, Plus, DollarSign, CreditCard } from 'lucide-react';
 import { formatter } from '@/lib/utils';
 
-// Define the interface for Account
 interface Account {
   id: number;
   name: string;
@@ -47,7 +45,6 @@ const BankAccountsSection = () => {
       
       setAccounts(data || []);
       
-      // Calculate total balance
       const total = (data || []).reduce((sum, account) => sum + Number(account.balance), 0);
       setTotalBalance(total);
     } catch (error) {
@@ -123,13 +120,13 @@ const BankAccountsSection = () => {
   const getAccountTypeIcon = (type: string) => {
     switch(type.toLowerCase()) {
       case 'bank':
-        return <Bank className="h-4 w-4 mr-2" />;
+        return <Banknote className="h-4 w-4 mr-2" />;
       case 'cash':
         return <DollarSign className="h-4 w-4 mr-2" />;
       case 'card':
         return <CreditCard className="h-4 w-4 mr-2" />;
       default:
-        return <Bank className="h-4 w-4 mr-2" />;
+        return <Banknote className="h-4 w-4 mr-2" />;
     }
   };
   
@@ -207,7 +204,6 @@ const BankAccountsSection = () => {
         </Dialog>
       </div>
       
-      {/* Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
@@ -229,7 +225,7 @@ const BankAccountsSection = () => {
             <CardTitle className="text-sm font-medium">
               Account Distribution
             </CardTitle>
-            <Bank className="h-4 w-4 text-muted-foreground" />
+            <Banknote className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="flex gap-2">
@@ -246,7 +242,6 @@ const BankAccountsSection = () => {
         </Card>
       </div>
       
-      {/* Accounts Table */}
       <Card>
         <CardHeader>
           <CardTitle>Accounts List</CardTitle>
