@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -65,8 +66,8 @@ const TransactionsSection = () => {
         .from('transactions')
         .select(`
           *,
-          accounts:account_id(id, name, type, balance),
-          categories:category_id(id, name, type)
+          accounts!transactions_account_id_fkey(id, name, type, balance),
+          categories!transactions_category_id_fkey(id, name, type)
         `)
         .order('date', { ascending: false });
         
