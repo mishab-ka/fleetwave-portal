@@ -36,7 +36,6 @@ const AdminDrivers = () => {
   }, []);
   
   useEffect(() => {
-    // Apply filters when any filter changes
     applyFilters();
   }, [drivers, showOnlineOnly, searchQuery, shiftFilter, verificationFilter]);
   
@@ -62,12 +61,10 @@ const AdminDrivers = () => {
   const applyFilters = () => {
     let result = [...drivers];
     
-    // Filter by online status
     if (showOnlineOnly) {
       result = result.filter(driver => driver.online);
     }
     
-    // Filter by search query (name, email, vehicle number)
     if (searchQuery.trim() !== '') {
       const query = searchQuery.toLowerCase().trim();
       result = result.filter(driver => 
@@ -78,12 +75,10 @@ const AdminDrivers = () => {
       );
     }
     
-    // Filter by shift
     if (shiftFilter !== 'all') {
       result = result.filter(driver => driver.shift === shiftFilter);
     }
     
-    // Filter by verification status
     if (verificationFilter !== 'all') {
       const isVerified = verificationFilter === 'verified';
       result = result.filter(driver => driver.is_verified === isVerified);

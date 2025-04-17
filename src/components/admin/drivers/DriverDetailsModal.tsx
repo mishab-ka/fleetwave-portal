@@ -15,6 +15,7 @@ import { Separator } from "@/components/ui/separator";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { CheckCircle, XCircle, Mail, Phone, Calendar, FileText, Car, IndianRupee } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+import { ScrollArea } from '@/components/ui/scroll-area';
 
 interface DriverDetailsModalProps {
   isOpen: boolean;
@@ -44,6 +45,13 @@ export const DriverDetailsModal = ({ isOpen, onClose, driverId, onDriverUpdate }
   const [deposit, setDeposit] = useState<string>('0');
   const [totalTrips, setTotalTrips] = useState<string>('0');
   const [currentTab, setCurrentTab] = useState<string>('view');
+  
+  // New form state fields
+  const [name, setName] = useState<string>('');
+  const [email, setEmail] = useState<string>('');
+  const [phone, setPhone] = useState<string>('');
+  const [joiningDate, setJoiningDate] = useState<string>('');
+  const [driverId2, setDriverId2] = useState<string>('');
 
   useEffect(() => {
     if (driverId && isOpen) {
@@ -68,6 +76,13 @@ export const DriverDetailsModal = ({ isOpen, onClose, driverId, onDriverUpdate }
       setSelectedVehicle(data.vehicle_number || '');
       setDeposit(data.deposit_amount?.toString() || '0');
       setTotalTrips(data.total_trip?.toString() || '0');
+      
+      // Set additional form fields
+      setName(data.name || '');
+      setEmail(data.email_id || '');
+      setPhone(data.phone_number || '');
+      setJoiningDate(data.joining_date || '');
+      setDriverId2(data.driver_id || '');
     } catch (error) {
       console.error('Error fetching driver details:', error);
       toast.error('Failed to load driver details');
@@ -279,10 +294,22 @@ export const DriverDetailsModal = ({ isOpen, onClose, driverId, onDriverUpdate }
   const saveChanges = async () => {
     setIsProcessing(true);
     try {
-      // Update deposit and total trips
+      // Validate inputs
+      if (!name.trim()) {
+        toast.error('Name is required');
+        setIsProcessing(false);
+        return;
+      }
+
+      // Update all driver information
       const { error } = await supabase
         .from('users')
         .update({
+          name,
+          email_id: email,
+          phone_number: phone,
+          joining_date: joiningDate,
+          driver_id: driverId2,
           deposit_amount: parseFloat(deposit) || 0,
           total_trip: parseFloat(totalTrips) || 0
         })
@@ -322,7 +349,7 @@ export const DriverDetailsModal = ({ isOpen, onClose, driverId, onDriverUpdate }
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Driver Details</DialogTitle>
           <DialogDescription>
@@ -336,202 +363,262 @@ export const DriverDetailsModal = ({ isOpen, onClose, driverId, onDriverUpdate }
             <TabsTrigger value="edit">Edit Details</TabsTrigger>
           </TabsList>
           
-          <TabsContent value="view">
-            <Card>
-              <CardHeader className="pb-2">
-                <div className="flex items-center space-x-4">
-                  <Avatar className="h-12 w-12">
-                    <AvatarImage src={driver?.profile_photo || undefined} />
-                    <AvatarFallback>{driver?.name?.charAt(0) || 'U'}</AvatarFallback>
-                  </Avatar>
-                  <div>
-                    <CardTitle>{driver?.name}</CardTitle>
-                    <CardDescription>Driver ID: {driver?.driver_id}</CardDescription>
+          <ScrollArea className="h-[calc(100vh-220px)]">
+            <TabsContent value="view">
+              <Card>
+                <CardHeader className="pb-2">
+                  <div className="flex items-center space-x-4">
+                    <Avatar className="h-12 w-12">
+                      <AvatarImage src={driver?.profile_photo || undefined} />
+                      <AvatarFallback>{driver?.name?.charAt(0) || 'U'}</AvatarFallback>
+                    </Avatar>
+                    <div>
+                      <CardTitle>{driver?.name}</CardTitle>
+                      <CardDescription>Driver ID: {driver?.driver_id}</CardDescription>
+                    </div>
                   </div>
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid grid-cols-2 gap-2">
-                  <Badge variant={driver?.online ? 'success' : 'destructive'}>
-                    {driver?.online ? 'Online' : 'Offline'}
-                  </Badge>
-                  {driver?.shift && (
-                    <Badge variant={driver?.shift === 'morning' ? 'default' : 'secondary'}>
-                      {driver?.shift}
-                    </Badge>
-                  )}
-                </div>
-
-                <Separator />
-
-                <div className="space-y-3">
-                  <div className="flex items-center space-x-2">
-                    <Mail className="h-4 w-4 text-muted-foreground" />
-                    <span className="text-sm font-medium">Email:</span>
-                    <span className="text-sm">{driver?.email_id || 'Not available'}</span>
-                  </div>
-                  
-                  <div className="flex items-center space-x-2">
-                    <Phone className="h-4 w-4 text-muted-foreground" />
-                    <span className="text-sm font-medium">Phone:</span>
-                    <span className="text-sm">{driver?.phone_number || 'Not available'}</span>
-                  </div>
-                  
-                  <div className="flex items-center space-x-2">
-                    <Calendar className="h-4 w-4 text-muted-foreground" />
-                    <span className="text-sm font-medium">Joining Date:</span>
-                    <span className="text-sm">{formattedJoiningDate}</span>
-                  </div>
-                  
-                  <div className="flex items-center space-x-2">
-                    <Car className="h-4 w-4 text-muted-foreground" />
-                    <span className="text-sm font-medium">Vehicle:</span>
-                    <span className="text-sm">{driver?.vehicle_number || 'Not assigned'}</span>
-                  </div>
-                </div>
-
-                <Separator />
-
-                <div>
-                  <h4 className="text-sm font-medium mb-2">Documents</h4>
+                </CardHeader>
+                <CardContent className="space-y-4">
                   <div className="grid grid-cols-2 gap-2">
-                    <div className="flex items-center space-x-2">
-                      <FileText className="h-4 w-4 text-muted-foreground" />
-                      <span className="text-sm">License:</span>
-                      {driver?.license ? 
-                        <CheckCircle className="h-4 w-4 text-green-500" /> : 
-                        <XCircle className="h-4 w-4 text-red-500" />
-                      }
-                    </div>
-                    
-                    <div className="flex items-center space-x-2">
-                      <FileText className="h-4 w-4 text-muted-foreground" />
-                      <span className="text-sm">Aadhar:</span>
-                      {driver?.aadhar ? 
-                        <CheckCircle className="h-4 w-4 text-green-500" /> : 
-                        <XCircle className="h-4 w-4 text-red-500" />
-                      }
-                    </div>
-                    
-                    <div className="flex items-center space-x-2">
-                      <FileText className="h-4 w-4 text-muted-foreground" />
-                      <span className="text-sm">PAN:</span>
-                      {driver?.pan ? 
-                        <CheckCircle className="h-4 w-4 text-green-500" /> : 
-                        <XCircle className="h-4 w-4 text-red-500" />
-                      }
-                    </div>
-                  </div>
-                </div>
-
-                <Separator />
-
-                <div className="space-y-2">
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm font-medium">Total Trips:</span>
-                    <span>{driver?.total_trip || '0'}</span>
-                  </div>
-                  
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm font-medium">Deposit Amount:</span>
-                    <div className="flex items-center">
-                      <IndianRupee className="h-3 w-3 mr-1" />
-                      <span>{driver?.deposit_amount || '0'}</span>
-                    </div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-          
-          <TabsContent value="edit">
-            <Card>
-              <CardContent className="pt-6 space-y-4">
-                <div className="flex flex-col gap-1">
-                  <h3 className="text-sm font-medium">Driver Status</h3>
-                  <div className="flex items-center space-x-2">
-                    <Switch 
-                      id="online-status" 
-                      checked={isOnline} 
-                      onCheckedChange={handleOnlineToggle}
-                      disabled={isProcessing}
-                    />
-                    <Label htmlFor="online-status">
-                      {isOnline ? 'Online' : 'Offline'}
-                    </Label>
-                    
-                    {!isOnline && driver?.offline_from_date && (
-                      <span className="text-xs text-muted-foreground">
-                        (Offline since {format(new Date(driver.offline_from_date), 'PP')})
-                      </span>
+                    <Badge variant={driver?.online ? 'success' : 'destructive'}>
+                      {driver?.online ? 'Online' : 'Offline'}
+                    </Badge>
+                    {driver?.shift && (
+                      <Badge variant={driver?.shift === 'morning' ? 'default' : 'secondary'}>
+                        {driver?.shift}
+                      </Badge>
                     )}
                   </div>
-                </div>
-                
-                <div className="flex flex-col gap-1">
-                  <Label htmlFor="shift">Shift</Label>
-                  <Select 
-                    value={selectedShift} 
-                    onValueChange={handleShiftChange}
-                    disabled={isProcessing}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select shift" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="morning">Morning</SelectItem>
-                      <SelectItem value="night">Night</SelectItem>
-                      <SelectItem value="24hr">24 Hours</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                
-                <div className="flex flex-col gap-1">
-                  <Label htmlFor="vehicle">Assigned Vehicle</Label>
-                  <Select 
-                    value={selectedVehicle} 
-                    onValueChange={handleVehicleChange}
-                    disabled={isProcessing}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select vehicle" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {vehicles.map((vehicle) => (
-                        <SelectItem key={vehicle.id} value={vehicle.vehicle_number}>
-                          {vehicle.vehicle_number}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
 
-                <div className="flex flex-col gap-1">
-                  <Label htmlFor="deposit">Deposit Amount</Label>
-                  <Input
-                    id="deposit"
-                    type="number"
-                    value={deposit}
-                    onChange={handleDepositChange}
-                    placeholder="Enter deposit amount"
-                    disabled={isProcessing}
-                  />
-                </div>
+                  <Separator />
 
-                <div className="flex flex-col gap-1">
-                  <Label htmlFor="totalTrips">Total Trips</Label>
-                  <Input
-                    id="totalTrips"
-                    type="number"
-                    value={totalTrips}
-                    onChange={handleTotalTripsChange}
-                    placeholder="Enter total trips"
-                    disabled={isProcessing}
-                  />
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
+                  <div className="space-y-3">
+                    <div className="flex items-center space-x-2">
+                      <Mail className="h-4 w-4 text-muted-foreground" />
+                      <span className="text-sm font-medium">Email:</span>
+                      <span className="text-sm">{driver?.email_id || 'Not available'}</span>
+                    </div>
+                    
+                    <div className="flex items-center space-x-2">
+                      <Phone className="h-4 w-4 text-muted-foreground" />
+                      <span className="text-sm font-medium">Phone:</span>
+                      <span className="text-sm">{driver?.phone_number || 'Not available'}</span>
+                    </div>
+                    
+                    <div className="flex items-center space-x-2">
+                      <Calendar className="h-4 w-4 text-muted-foreground" />
+                      <span className="text-sm font-medium">Joining Date:</span>
+                      <span className="text-sm">{formattedJoiningDate}</span>
+                    </div>
+                    
+                    <div className="flex items-center space-x-2">
+                      <Car className="h-4 w-4 text-muted-foreground" />
+                      <span className="text-sm font-medium">Vehicle:</span>
+                      <span className="text-sm">{driver?.vehicle_number || 'Not assigned'}</span>
+                    </div>
+                  </div>
+
+                  <Separator />
+
+                  <div>
+                    <h4 className="text-sm font-medium mb-2">Documents</h4>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="flex items-center space-x-2">
+                        <FileText className="h-4 w-4 text-muted-foreground" />
+                        <span className="text-sm">License:</span>
+                        {driver?.license ? 
+                          <CheckCircle className="h-4 w-4 text-green-500" /> : 
+                          <XCircle className="h-4 w-4 text-red-500" />
+                        }
+                      </div>
+                      
+                      <div className="flex items-center space-x-2">
+                        <FileText className="h-4 w-4 text-muted-foreground" />
+                        <span className="text-sm">Aadhar:</span>
+                        {driver?.aadhar ? 
+                          <CheckCircle className="h-4 w-4 text-green-500" /> : 
+                          <XCircle className="h-4 w-4 text-red-500" />
+                        }
+                      </div>
+                      
+                      <div className="flex items-center space-x-2">
+                        <FileText className="h-4 w-4 text-muted-foreground" />
+                        <span className="text-sm">PAN:</span>
+                        {driver?.pan ? 
+                          <CheckCircle className="h-4 w-4 text-green-500" /> : 
+                          <XCircle className="h-4 w-4 text-red-500" />
+                        }
+                      </div>
+                    </div>
+                  </div>
+
+                  <Separator />
+
+                  <div className="space-y-2">
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm font-medium">Total Trips:</span>
+                      <span>{driver?.total_trip || '0'}</span>
+                    </div>
+                    
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm font-medium">Deposit Amount:</span>
+                      <div className="flex items-center">
+                        <IndianRupee className="h-3 w-3 mr-1" />
+                        <span>{driver?.deposit_amount || '0'}</span>
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </TabsContent>
+            
+            <TabsContent value="edit">
+              <Card>
+                <CardContent className="pt-6 space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="name">Name</Label>
+                    <Input
+                      id="name"
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      placeholder="Driver name"
+                      disabled={isProcessing}
+                    />
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <Label htmlFor="driverId">Driver ID</Label>
+                    <Input
+                      id="driverId"
+                      value={driverId2}
+                      onChange={(e) => setDriverId2(e.target.value)}
+                      placeholder="Driver ID"
+                      disabled={isProcessing}
+                    />
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <Label htmlFor="email">Email</Label>
+                    <Input
+                      id="email"
+                      type="email"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      placeholder="Email address"
+                      disabled={isProcessing}
+                    />
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <Label htmlFor="phone">Phone Number</Label>
+                    <Input
+                      id="phone"
+                      value={phone}
+                      onChange={(e) => setPhone(e.target.value)}
+                      placeholder="Phone number"
+                      disabled={isProcessing}
+                    />
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <Label htmlFor="joiningDate">Joining Date</Label>
+                    <Input
+                      id="joiningDate"
+                      type="date"
+                      value={joiningDate}
+                      onChange={(e) => setJoiningDate(e.target.value)}
+                      disabled={isProcessing}
+                    />
+                  </div>
+
+                  <Separator />
+
+                  <div className="flex flex-col gap-1">
+                    <h3 className="text-sm font-medium">Driver Status</h3>
+                    <div className="flex items-center space-x-2">
+                      <Switch 
+                        id="online-status" 
+                        checked={isOnline} 
+                        onCheckedChange={handleOnlineToggle}
+                        disabled={isProcessing}
+                      />
+                      <Label htmlFor="online-status">
+                        {isOnline ? 'Online' : 'Offline'}
+                      </Label>
+                      
+                      {!isOnline && driver?.offline_from_date && (
+                        <span className="text-xs text-muted-foreground">
+                          (Offline since {format(new Date(driver.offline_from_date), 'PP')})
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  
+                  <div className="flex flex-col gap-1">
+                    <Label htmlFor="shift">Shift</Label>
+                    <Select 
+                      value={selectedShift} 
+                      onValueChange={handleShiftChange}
+                      disabled={isProcessing}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select shift" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="morning">Morning</SelectItem>
+                        <SelectItem value="night">Night</SelectItem>
+                        <SelectItem value="24hr">24 Hours</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  
+                  <div className="flex flex-col gap-1">
+                    <Label htmlFor="vehicle">Assigned Vehicle</Label>
+                    <Select 
+                      value={selectedVehicle} 
+                      onValueChange={handleVehicleChange}
+                      disabled={isProcessing}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select vehicle" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {vehicles.map((vehicle) => (
+                          <SelectItem key={vehicle.id} value={vehicle.vehicle_number}>
+                            {vehicle.vehicle_number}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="flex flex-col gap-1">
+                    <Label htmlFor="deposit">Deposit Amount</Label>
+                    <Input
+                      id="deposit"
+                      type="number"
+                      value={deposit}
+                      onChange={handleDepositChange}
+                      placeholder="Enter deposit amount"
+                      disabled={isProcessing}
+                    />
+                  </div>
+
+                  <div className="flex flex-col gap-1">
+                    <Label htmlFor="totalTrips">Total Trips</Label>
+                    <Input
+                      id="totalTrips"
+                      type="number"
+                      value={totalTrips}
+                      onChange={handleTotalTripsChange}
+                      placeholder="Enter total trips"
+                      disabled={isProcessing}
+                    />
+                  </div>
+                </CardContent>
+              </Card>
+            </TabsContent>
+          </ScrollArea>
         </Tabs>
         
         <DialogFooter>
