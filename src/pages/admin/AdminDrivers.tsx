@@ -16,6 +16,7 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { useIsMobile } from '@/hooks/use-mobile';
 
 type Driver = Tables<"users">;
 
@@ -31,6 +32,7 @@ const AdminDrivers = () => {
   const [verificationFilter, setVerificationFilter] = useState<string>('all');
   const [showFilters, setShowFilters] = useState(false);
   const [isUpdating, setIsUpdating] = useState<string | null>(null);
+  const isMobile = useIsMobile();
   
   useEffect(() => {
     fetchDrivers();
@@ -250,26 +252,31 @@ const AdminDrivers = () => {
     </Card>
   );
   
+  const getContentHeight = () => {
+    // Adjust the height calculation based on viewport and content
+    return isMobile ? "calc(100vh - 300px)" : "calc(100vh - 280px)";
+  };
+  
   return (
     <AdminLayout title="Drivers Management">
       <Card className="mb-4">
         <CardContent className="p-4">
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-            <div className="flex items-center space-x-2">
+            <div className="flex flex-wrap items-center gap-2">
               <Users className="h-5 w-5 text-muted-foreground" />
-              <span>Total Drivers: {drivers.length}</span>
-              <span className="ml-2 text-green-500">Online: {drivers.filter(d => d.online).length}</span>
-              <span className="ml-2 text-red-500">Offline: {drivers.filter(d => !d.online).length}</span>
+              <span>Total: {drivers.length}</span>
+              <span className="text-green-500 text-sm md:text-base md:ml-2">Online: {drivers.filter(d => d.online).length}</span>
+              <span className="text-red-500 text-sm md:text-base md:ml-2">Offline: {drivers.filter(d => !d.online).length}</span>
             </div>
             
-            <div className="flex items-center space-x-4">
-              <div className="flex items-center space-x-2">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+              <div className="flex items-center gap-2">
                 <Switch 
                   id="online-filter" 
                   checked={showOnlineOnly} 
                   onCheckedChange={handleOnlineFilterToggle}
                 />
-                <Label htmlFor="online-filter">Show online drivers only</Label>
+                <Label htmlFor="online-filter" className="text-sm whitespace-nowrap">Show online only</Label>
               </div>
               
               <Button 
@@ -285,7 +292,7 @@ const AdminDrivers = () => {
           </div>
           
           {showFilters && (
-            <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               <div className="space-y-1">
                 <Label htmlFor="search">Search</Label>
                 <div className="relative">
@@ -335,7 +342,7 @@ const AdminDrivers = () => {
                 </Select>
               </div>
               
-              <div className="md:col-span-3 flex justify-end">
+              <div className="flex justify-end col-span-full">
                 <Button 
                   variant="outline" 
                   size="sm" 
@@ -350,7 +357,7 @@ const AdminDrivers = () => {
       </Card>
 
       <Card>
-        <CardContent className="p-6">
+        <CardContent className="p-4 sm:p-6">
           {loading ? (
             <div className="flex items-center justify-center h-64">
               <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-fleet-purple"></div>
@@ -361,118 +368,122 @@ const AdminDrivers = () => {
                 {filteredDrivers.length === 0 ? (
                   <p className="text-center py-8">No drivers found</p>
                 ) : (
-                  <ScrollArea className="h-[calc(100vh-280px)]">
-                    {filteredDrivers.map((driver) => (
-                      <MobileDriverCard key={driver.id} driver={driver} />
-                    ))}
+                  <ScrollArea className="h-[calc(100vh-320px)]">
+                    <div className="pr-3">
+                      {filteredDrivers.map((driver) => (
+                        <MobileDriverCard key={driver.id} driver={driver} />
+                      ))}
+                    </div>
                   </ScrollArea>
                 )}
               </div>
 
-              <div className="hidden md:block">
-                <ScrollArea className="h-[calc(100vh-280px)]">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead className="w-12">Profile</TableHead>
-                        <TableHead>Name</TableHead>
-                        <TableHead>Email</TableHead>
-                        <TableHead>Vehicle</TableHead>
-                        <TableHead>Shift</TableHead>
-                        <TableHead className="w-20">Status</TableHead>
-                        <TableHead>Verified</TableHead>
-                        <TableHead>Documents</TableHead>
-                        <TableHead>Trips</TableHead>
-                        <TableHead>Deposit</TableHead>
-                        <TableHead className="text-right">Actions</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {filteredDrivers.length === 0 ? (
+              <div className="hidden md:block relative">
+                <ScrollArea className="h-[calc(100vh-280px)] rounded-md">
+                  <div className="pr-4">
+                    <Table>
+                      <TableHeader>
                         <TableRow>
-                          <TableCell colSpan={11} className="text-center py-8">
-                            No drivers found
-                          </TableCell>
+                          <TableHead className="w-12">Profile</TableHead>
+                          <TableHead>Name</TableHead>
+                          <TableHead>Email</TableHead>
+                          <TableHead>Vehicle</TableHead>
+                          <TableHead>Shift</TableHead>
+                          <TableHead className="w-20">Status</TableHead>
+                          <TableHead>Verified</TableHead>
+                          <TableHead>Documents</TableHead>
+                          <TableHead>Trips</TableHead>
+                          <TableHead>Deposit</TableHead>
+                          <TableHead className="text-right">Actions</TableHead>
                         </TableRow>
-                      ) : (
-                        filteredDrivers.map((driver) => (
-                          <TableRow key={driver.id}>
-                            <TableCell>
-                              <Avatar className="h-8 w-8">
-                                <AvatarImage src={driver.profile_photo || undefined} />
-                                <AvatarFallback>{driver.name?.charAt(0) || 'U'}</AvatarFallback>
-                              </Avatar>
-                            </TableCell>
-                            <TableCell className="font-medium">{driver.name}</TableCell>
-                            <TableCell>{driver.email_id}</TableCell>
-                            <TableCell>{driver.vehicle_number || 'Not assigned'}</TableCell>
-                            <TableCell>
-                              {driver.shift ? (
-                                <Badge variant={driver.shift === 'morning' ? 'default' : 'secondary'} className="px-2 py-1 text-xs">
-                                  {driver.shift}
-                                </Badge>
-                              ) : (
-                                'Not set'
-                              )}
-                            </TableCell>
-                            <TableCell>
-                              <div className="flex items-center space-x-2">
-                                {isUpdating === driver.id ? (
-                                  <div className="h-4 w-4 rounded-full border-2 border-t-transparent border-blue-500 animate-spin"></div>
-                                ) : (
-                                  <>
-                                    {driver.online ? (
-                                      <Wifi className="h-4 w-4 text-green-500" />
-                                    ) : (
-                                      <WifiOff className="h-4 w-4 text-red-500" />
-                                    )}
-                                  </>
-                                )}
-                                <Switch
-                                  checked={driver.online || false}
-                                  onCheckedChange={() => toggleOnlineStatus(driver.id, driver.online)}
-                                  disabled={isUpdating === driver.id}
-                                  className="data-[state=checked]:bg-green-500"
-                                />
-                              </div>
-                            </TableCell>
-                            <TableCell>
-                              <Badge 
-                                variant={driver.is_verified ? 'success' : 'destructive'}
-                                className="cursor-pointer px-2 py-1 text-xs"
-                                onClick={() => toggleVerification(driver.id, driver.is_verified)}
-                              >
-                                {driver.is_verified ? 'Verified' : 'Unverified'}
-                              </Badge>
-                            </TableCell>
-                            <TableCell>
-                              <div className="flex space-x-1">
-                                {driver.license ? <CheckCircle className="h-4 w-4 text-green-500" /> : <XCircle className="h-4 w-4 text-red-500" />}
-                                {driver.aadhar ? <CheckCircle className="h-4 w-4 text-green-500" /> : <XCircle className="h-4 w-4 text-red-500" />}
-                                {driver.pan ? <CheckCircle className="h-4 w-4 text-green-500" /> : <XCircle className="h-4 w-4 text-red-500" />}
-                              </div>
-                            </TableCell>
-                            <TableCell>{driver.total_trip || '0'}</TableCell>
-                            <TableCell>
-                              <div className="flex items-center">
-                                <IndianRupee className="h-3 w-3 mr-1" />
-                                {driver.deposit_amount || '0'}
-                              </div>
-                            </TableCell>
-                            <TableCell className="text-right">
-                              <Button 
-                                variant="ghost" 
-                                size="sm"
-                                onClick={() => openDriverDetails(driver)}
-                              >
-                                <Eye className="h-4 w-4 mr-1" /> View
-                              </Button>
+                      </TableHeader>
+                      <TableBody>
+                        {filteredDrivers.length === 0 ? (
+                          <TableRow>
+                            <TableCell colSpan={11} className="text-center py-8">
+                              No drivers found
                             </TableCell>
                           </TableRow>
-                        ))
-                      )}
-                    </TableBody>
-                  </Table>
+                        ) : (
+                          filteredDrivers.map((driver) => (
+                            <TableRow key={driver.id}>
+                              <TableCell>
+                                <Avatar className="h-8 w-8">
+                                  <AvatarImage src={driver.profile_photo || undefined} />
+                                  <AvatarFallback>{driver.name?.charAt(0) || 'U'}</AvatarFallback>
+                                </Avatar>
+                              </TableCell>
+                              <TableCell className="font-medium">{driver.name}</TableCell>
+                              <TableCell>{driver.email_id}</TableCell>
+                              <TableCell>{driver.vehicle_number || 'Not assigned'}</TableCell>
+                              <TableCell>
+                                {driver.shift ? (
+                                  <Badge variant={driver.shift === 'morning' ? 'default' : 'secondary'} className="px-2 py-1 text-xs">
+                                    {driver.shift}
+                                  </Badge>
+                                ) : (
+                                  'Not set'
+                                )}
+                              </TableCell>
+                              <TableCell>
+                                <div className="flex items-center space-x-2">
+                                  {isUpdating === driver.id ? (
+                                    <div className="h-4 w-4 rounded-full border-2 border-t-transparent border-blue-500 animate-spin"></div>
+                                  ) : (
+                                    <>
+                                      {driver.online ? (
+                                        <Wifi className="h-4 w-4 text-green-500" />
+                                      ) : (
+                                        <WifiOff className="h-4 w-4 text-red-500" />
+                                      )}
+                                    </>
+                                  )}
+                                  <Switch
+                                    checked={driver.online || false}
+                                    onCheckedChange={() => toggleOnlineStatus(driver.id, driver.online)}
+                                    disabled={isUpdating === driver.id}
+                                    className="data-[state=checked]:bg-green-500"
+                                  />
+                                </div>
+                              </TableCell>
+                              <TableCell>
+                                <Badge 
+                                  variant={driver.is_verified ? 'success' : 'destructive'}
+                                  className="cursor-pointer px-2 py-1 text-xs"
+                                  onClick={() => toggleVerification(driver.id, driver.is_verified)}
+                                >
+                                  {driver.is_verified ? 'Verified' : 'Unverified'}
+                                </Badge>
+                              </TableCell>
+                              <TableCell>
+                                <div className="flex space-x-1">
+                                  {driver.license ? <CheckCircle className="h-4 w-4 text-green-500" /> : <XCircle className="h-4 w-4 text-red-500" />}
+                                  {driver.aadhar ? <CheckCircle className="h-4 w-4 text-green-500" /> : <XCircle className="h-4 w-4 text-red-500" />}
+                                  {driver.pan ? <CheckCircle className="h-4 w-4 text-green-500" /> : <XCircle className="h-4 w-4 text-red-500" />}
+                                </div>
+                              </TableCell>
+                              <TableCell>{driver.total_trip || '0'}</TableCell>
+                              <TableCell>
+                                <div className="flex items-center">
+                                  <IndianRupee className="h-3 w-3 mr-1" />
+                                  {driver.deposit_amount || '0'}
+                                </div>
+                              </TableCell>
+                              <TableCell className="text-right">
+                                <Button 
+                                  variant="ghost" 
+                                  size="sm"
+                                  onClick={() => openDriverDetails(driver)}
+                                >
+                                  <Eye className="h-4 w-4 mr-1" /> View
+                                </Button>
+                              </TableCell>
+                            </TableRow>
+                          ))
+                        )}
+                      </TableBody>
+                    </Table>
+                  </div>
                 </ScrollArea>
               </div>
             </>
