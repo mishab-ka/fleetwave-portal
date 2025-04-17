@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -94,7 +95,7 @@ const AssetsLiabilitiesSection = () => {
         type: item.description || 'Loan',
         due_date: item.date,
         amount_due: Math.abs(item.amount) || 0,
-        status: item.status || 'Pending',
+        status: item.description?.includes('Paid') ? 'Paid' : (item.description?.includes('Overdue') ? 'Overdue' : 'Pending'), // Extract status from description if available
         description: item.description,
         created_at: item.created_at
       }));
@@ -199,9 +200,8 @@ const AssetsLiabilitiesSection = () => {
         .insert([{
           amount: -Math.abs(parseFloat(liabilityFormData.amount_due as string)),
           type: 'Liability',
-          description: liabilityFormData.type + (liabilityFormData.description ? ` - ${liabilityFormData.description}` : ''),
-          date: liabilityFormData.due_date,
-          status: liabilityFormData.status
+          description: `${liabilityFormData.type} - ${liabilityFormData.status} - ${liabilityFormData.description || ''}`,
+          date: liabilityFormData.due_date
         }]);
         
       if (error) throw error;
@@ -260,12 +260,19 @@ const AssetsLiabilitiesSection = () => {
         
       if (fetchError) throw fetchError;
       
+      let updatedDescription = data.description || '';
+      
+      // Replace status in description if it exists
+      if (updatedDescription.includes('Pending') || updatedDescription.includes('Paid') || updatedDescription.includes('Overdue')) {
+        updatedDescription = updatedDescription.replace(/Pending|Paid|Overdue/, newStatus);
+      } else {
+        // Add status if not present
+        updatedDescription = `${updatedDescription} - ${newStatus}`;
+      }
+      
       const { error } = await supabase
         .from('transactions')
-        .update({ 
-          status: newStatus,
-          description: data.description
-        })
+        .update({ description: updatedDescription })
         .eq('id', id);
         
       if (error) throw error;

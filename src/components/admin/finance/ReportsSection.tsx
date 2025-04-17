@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -18,7 +19,7 @@ const ReportsSection = () => {
   const [toDate, setToDate] = useState(endOfMonth(new Date()));
   const [account, setAccount] = useState('all');
   const [category, setCategory] = useState('all');
-  const [format, setFormat] = useState('csv');
+  const [exportFormat, setExportFormat] = useState('csv');
   const [loading, setLoading] = useState(false);
   
   const handleDateRangeChange = (value) => {
@@ -80,7 +81,7 @@ const ReportsSection = () => {
           to_date: toDate.toISOString(),
           account_id: account === 'all' ? null : account,
           category_id: category === 'all' ? null : category,
-          format_type: format
+          format_type: exportFormat
         });
         
       if (error) throw error;
@@ -243,8 +244,8 @@ const ReportsSection = () => {
               <div>
                 <Label htmlFor="format">Format</Label>
                 <Select 
-                  value={format} 
-                  onValueChange={setFormat}
+                  value={exportFormat} 
+                  onValueChange={setExportFormat}
                 >
                   <SelectTrigger className="mt-1">
                     <SelectValue placeholder="Select format" />

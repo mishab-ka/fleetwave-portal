@@ -52,8 +52,8 @@ const TransactionsSection = () => {
         .from('transactions')
         .select(`
           *,
-          income_expense_categories(name, type),
-          bank_accounts(name)
+          categories(name, type),
+          accounts(name)
         `)
         .order('date', { ascending: false });
         
@@ -88,7 +88,7 @@ const TransactionsSection = () => {
       
       // Fetch categories
       const { data: categoriesData, error: categoriesError } = await supabase
-        .from('income_expense_categories')
+        .from('categories')
         .select('*')
         .order('name');
         
@@ -96,9 +96,9 @@ const TransactionsSection = () => {
       
       // Fetch accounts
       const { data: accountsData, error: accountsError } = await supabase
-        .from('bank_accounts')
+        .from('accounts')
         .select('*')
-        .eq('active', true)
+        .eq('balance', true)
         .order('name');
         
       if (accountsError) throw accountsError;
@@ -156,7 +156,7 @@ const TransactionsSection = () => {
       }
       
       const { data: account, error: accountError } = await supabase
-        .from('bank_accounts')
+        .from('accounts')
         .select('balance')
         .eq('id', formData.account_id)
         .single();
@@ -180,7 +180,7 @@ const TransactionsSection = () => {
       const balanceChange = formData.type === 'Income' ? formData.amount : -formData.amount;
       
       const { error: updateError } = await supabase
-        .from('bank_accounts')
+        .from('accounts')
         .update({ balance: account.balance + balanceChange })
         .eq('id', formData.account_id);
         
@@ -294,7 +294,7 @@ const TransactionsSection = () => {
                         cat.type.toLowerCase() === formData.type.toLowerCase()
                       )
                       .map(category => (
-                        <SelectItem key={category.id} value={category.id}>
+                        <SelectItem key={category.id} value={category.id.toString()}>
                           {category.name}
                         </SelectItem>
                       ))}
@@ -313,7 +313,7 @@ const TransactionsSection = () => {
                   </SelectTrigger>
                   <SelectContent>
                     {accounts.map(account => (
-                      <SelectItem key={account.id} value={account.id}>
+                      <SelectItem key={account.id} value={account.id.toString()}>
                         {account.name} ({formatter.format(account.balance)})
                       </SelectItem>
                     ))}
@@ -386,7 +386,7 @@ const TransactionsSection = () => {
                   <SelectValue placeholder="All Types" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">All Types</SelectItem>
+                  <SelectItem value="all-types">All Types</SelectItem>
                   <SelectItem value="Income">Income</SelectItem>
                   <SelectItem value="Expense">Expense</SelectItem>
                   <SelectItem value="Transfer">Transfer</SelectItem>
@@ -404,9 +404,9 @@ const TransactionsSection = () => {
                   <SelectValue placeholder="All Accounts" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">All Accounts</SelectItem>
+                  <SelectItem value="all-accounts">All Accounts</SelectItem>
                   {accounts.map(account => (
-                    <SelectItem key={account.id} value={account.id}>
+                    <SelectItem key={account.id} value={account.id.toString()}>
                       {account.name}
                     </SelectItem>
                   ))}
@@ -424,9 +424,9 @@ const TransactionsSection = () => {
                   <SelectValue placeholder="All Categories" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">All Categories</SelectItem>
+                  <SelectItem value="all-categories">All Categories</SelectItem>
                   {categories.map(category => (
-                    <SelectItem key={category.id} value={category.id}>
+                    <SelectItem key={category.id} value={category.id.toString()}>
                       {category.name}
                     </SelectItem>
                   ))}
@@ -497,8 +497,8 @@ const TransactionsSection = () => {
                         {transaction.type}
                       </div>
                     </td>
-                    <td className="p-3">{transaction.bank_accounts?.name || 'N/A'}</td>
-                    <td className="p-3">{transaction.income_expense_categories?.name || 'N/A'}</td>
+                    <td className="p-3">{transaction.accounts?.name || 'N/A'}</td>
+                    <td className="p-3">{transaction.categories?.name || 'N/A'}</td>
                     <td className="p-3">{transaction.note || '-'}</td>
                     <td className={`p-3 text-right font-medium ${
                       transaction.type === 'Income' 
