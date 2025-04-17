@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { format } from 'date-fns';
@@ -21,6 +22,9 @@ type Vehicle = {
   id: string;
   assigned_driver_1?: string | null;
   assigned_driver_2?: string | null;
+  // Add driver name properties for UI display
+  driver1_name?: string | null;
+  driver2_name?: string | null;
 };
 
 export const DriverDetailsModal = ({ isOpen, onClose, driverId, onDriverUpdate }: DriverDetailsModalProps) => {
@@ -31,6 +35,8 @@ export const DriverDetailsModal = ({ isOpen, onClose, driverId, onDriverUpdate }
   const [selectedShift, setSelectedShift] = useState<string>('');
   const [selectedVehicle, setSelectedVehicle] = useState<string>('');
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
+  const [deposit, setDeposit] = useState<string>('0');
+  const [totalTrips, setTotalTrips] = useState<string>('0');
 
   useEffect(() => {
     if (driverId && isOpen) {
@@ -53,6 +59,8 @@ export const DriverDetailsModal = ({ isOpen, onClose, driverId, onDriverUpdate }
       setIsOnline(data.online || false);
       setSelectedShift(data.shift || '');
       setSelectedVehicle(data.vehicle_number || '');
+      setDeposit(data.deposit_amount?.toString() || '0');
+      setTotalTrips(data.total_trip?.toString() || '0');
     } catch (error) {
       console.error('Error fetching driver details:', error);
       toast.error('Failed to load driver details');
@@ -253,13 +261,36 @@ export const DriverDetailsModal = ({ isOpen, onClose, driverId, onDriverUpdate }
     }
   };
 
+  const handleDepositChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    setDeposit(e.target.value);
+  };
+
+  const handleTotalTripsChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    setTotalTrips(e.target.value);
+  };
+
   const saveChanges = async () => {
+    setIsProcessing(true);
     try {
+      // Update deposit and total trips
+      const { error } = await supabase
+        .from('users')
+        .update({
+          deposit_amount: parseFloat(deposit) || 0,
+          total_trip: parseFloat(totalTrips) || 0
+        })
+        .eq('id', driverId);
+
+      if (error) throw error;
+      
+      toast.success('Driver information updated successfully');
       if (onDriverUpdate) onDriverUpdate();
       onClose();
     } catch (error) {
       console.error('Error saving changes:', error);
       toast.error('Failed to save changes');
+    } finally {
+      setIsProcessing(false);
     }
   };
 
@@ -343,6 +374,30 @@ export const DriverDetailsModal = ({ isOpen, onClose, driverId, onDriverUpdate }
                 ))}
               </SelectContent>
             </Select>
+          </div>
+
+          <div className="flex flex-col gap-1">
+            <Label htmlFor="deposit">Deposit Amount</Label>
+            <Input
+              id="deposit"
+              type="number"
+              value={deposit}
+              onChange={handleDepositChange}
+              placeholder="Enter deposit amount"
+              disabled={isProcessing}
+            />
+          </div>
+
+          <div className="flex flex-col gap-1">
+            <Label htmlFor="totalTrips">Total Trips</Label>
+            <Input
+              id="totalTrips"
+              type="number"
+              value={totalTrips}
+              onChange={handleTotalTripsChange}
+              placeholder="Enter total trips"
+              disabled={isProcessing}
+            />
           </div>
         </div>
         

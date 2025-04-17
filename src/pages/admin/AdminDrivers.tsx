@@ -1,3 +1,4 @@
+
 import React, { useEffect, useState } from 'react';
 import AdminLayout from '@/components/AdminLayout';
 import { supabase } from '@/integrations/supabase/client';
@@ -5,23 +6,36 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Eye, CheckCircle, XCircle } from 'lucide-react';
+import { Eye, CheckCircle, XCircle, Car, IndianRupee, Users } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { toast } from 'sonner';
 import { Tables } from '@/integrations/supabase/types';
 import { DriverDetailsModal } from '@/components/admin/drivers/DriverDetailsModal';
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
 
 type Driver = Tables<"users">;
 
 const AdminDrivers = () => {
   const [drivers, setDrivers] = useState<Driver[]>([]);
+  const [filteredDrivers, setFilteredDrivers] = useState<Driver[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedDriver, setSelectedDriver] = useState<Driver | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [showOnlineOnly, setShowOnlineOnly] = useState(false);
   
   useEffect(() => {
     fetchDrivers();
   }, []);
+  
+  useEffect(() => {
+    // Apply filter based on online status
+    if (showOnlineOnly) {
+      setFilteredDrivers(drivers.filter(driver => driver.online));
+    } else {
+      setFilteredDrivers(drivers);
+    }
+  }, [drivers, showOnlineOnly]);
   
   const fetchDrivers = async () => {
     try {
@@ -33,6 +47,7 @@ const AdminDrivers = () => {
       if (error) throw error;
       
       setDrivers(data || []);
+      setFilteredDrivers(data || []);
     } catch (error) {
       console.error('Error fetching drivers:', error);
       toast.error('Failed to load drivers data');
@@ -64,6 +79,10 @@ const AdminDrivers = () => {
       console.error('Error updating driver:', error);
       toast.error('Failed to update driver verification status');
     }
+  };
+
+  const handleOnlineFilterToggle = (checked: boolean) => {
+    setShowOnlineOnly(checked);
   };
   
   const MobileDriverCard = ({ driver }: { driver: Driver }) => (
@@ -123,6 +142,19 @@ const AdminDrivers = () => {
               {driver.pan ? <CheckCircle className="h-4 w-4 text-green-500" /> : <XCircle className="h-4 w-4 text-red-500" />}
             </div>
           </div>
+
+          <div className="flex justify-between">
+            <span className="text-sm text-muted-foreground">Total Trips:</span>
+            <span>{driver.total_trip || '0'}</span>
+          </div>
+
+          <div className="flex justify-between">
+            <span className="text-sm text-muted-foreground">Deposit:</span>
+            <span className="flex items-center">
+              <IndianRupee className="h-3 w-3 mr-1" /> 
+              {driver.deposit_amount || '0'}
+            </span>
+          </div>
         </div>
         
         <div className="mt-4 flex justify-end">
@@ -140,6 +172,25 @@ const AdminDrivers = () => {
   
   return (
     <AdminLayout title="Drivers Management">
+      <Card className="mb-4">
+        <CardContent className="p-4 flex items-center justify-between">
+          <div className="flex items-center space-x-2">
+            <Users className="h-5 w-5 text-muted-foreground" />
+            <span>Total Drivers: {drivers.length}</span>
+            <span className="ml-2 text-green-500">Online: {drivers.filter(d => d.online).length}</span>
+            <span className="ml-2 text-red-500">Offline: {drivers.filter(d => !d.online).length}</span>
+          </div>
+          <div className="flex items-center space-x-2">
+            <Switch 
+              id="online-filter" 
+              checked={showOnlineOnly} 
+              onCheckedChange={handleOnlineFilterToggle}
+            />
+            <Label htmlFor="online-filter">Show online drivers only</Label>
+          </div>
+        </CardContent>
+      </Card>
+
       <Card>
         <CardContent className="p-6">
           {loading ? (
@@ -149,10 +200,10 @@ const AdminDrivers = () => {
           ) : (
             <>
               <div className="md:hidden">
-                {drivers.length === 0 ? (
+                {filteredDrivers.length === 0 ? (
                   <p className="text-center py-8">No drivers found</p>
                 ) : (
-                  drivers.map((driver) => (
+                  filteredDrivers.map((driver) => (
                     <MobileDriverCard key={driver.id} driver={driver} />
                   ))
                 )}
@@ -170,18 +221,20 @@ const AdminDrivers = () => {
                       <TableHead>Status</TableHead>
                       <TableHead>Verified</TableHead>
                       <TableHead>Documents</TableHead>
+                      <TableHead>Trips</TableHead>
+                      <TableHead>Deposit</TableHead>
                       <TableHead className="text-right">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {drivers.length === 0 ? (
+                    {filteredDrivers.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={9} className="text-center py-8">
+                        <TableCell colSpan={11} className="text-center py-8">
                           No drivers found
                         </TableCell>
                       </TableRow>
                     ) : (
-                      drivers.map((driver) => (
+                      filteredDrivers.map((driver) => (
                         <TableRow key={driver.id}>
                           <TableCell>
                             <Avatar>
@@ -220,6 +273,13 @@ const AdminDrivers = () => {
                               {driver.license ? <CheckCircle className="h-4 w-4 text-green-500" /> : <XCircle className="h-4 w-4 text-red-500" />}
                               {driver.aadhar ? <CheckCircle className="h-4 w-4 text-green-500" /> : <XCircle className="h-4 w-4 text-red-500" />}
                               {driver.pan ? <CheckCircle className="h-4 w-4 text-green-500" /> : <XCircle className="h-4 w-4 text-red-500" />}
+                            </div>
+                          </TableCell>
+                          <TableCell>{driver.total_trip || '0'}</TableCell>
+                          <TableCell>
+                            <div className="flex items-center">
+                              <IndianRupee className="h-3 w-3 mr-1" />
+                              {driver.deposit_amount || '0'}
                             </div>
                           </TableCell>
                           <TableCell className="text-right">
