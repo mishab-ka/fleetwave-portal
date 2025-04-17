@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -17,9 +16,28 @@ import { toast } from 'sonner';
 import { Plus, Edit, Trash2, TrendingUp, TrendingDown, CalendarIcon } from 'lucide-react';
 import { formatter } from '@/lib/utils';
 
+interface Asset {
+  id: string;
+  type: string;
+  value: number;
+  description?: string;
+  purchase_date: string;
+  created_at?: string;
+}
+
+interface Liability {
+  id: string;
+  type: string;
+  due_date: string;
+  amount_due: number;
+  status: string;
+  description?: string;
+  created_at?: string;
+}
+
 const AssetsLiabilitiesSection = () => {
-  const [assets, setAssets] = useState([]);
-  const [liabilities, setLiabilities] = useState([]);
+  const [assets, setAssets] = useState<Asset[]>([]);
+  const [liabilities, setLiabilities] = useState<Liability[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('assets');
   const [isAddAssetDialogOpen, setIsAddAssetDialogOpen] = useState(false);
@@ -46,24 +64,43 @@ const AssetsLiabilitiesSection = () => {
     try {
       setLoading(true);
       
-      // Fetch assets
       const { data: assetsData, error: assetsError } = await supabase
-        .from('assets')
+        .from('transactions')
         .select('*')
+        .eq('type', 'Asset')
         .order('created_at', { ascending: false });
         
       if (assetsError) throw assetsError;
       
-      // Fetch liabilities
       const { data: liabilitiesData, error: liabilitiesError } = await supabase
-        .from('liabilities')
+        .from('transactions')
         .select('*')
-        .order('due_date', { ascending: true });
+        .eq('type', 'Liability')
+        .order('date', { ascending: true });
         
       if (liabilitiesError) throw liabilitiesError;
       
-      setAssets(assetsData || []);
-      setLiabilities(liabilitiesData || []);
+      const transformedAssets = (assetsData || []).map(item => ({
+        id: item.id.toString(),
+        type: item.description || 'Unknown Asset',
+        value: item.amount || 0,
+        description: item.description,
+        purchase_date: item.date,
+        created_at: item.created_at
+      }));
+      
+      const transformedLiabilities = (liabilitiesData || []).map(item => ({
+        id: item.id.toString(),
+        type: item.description || 'Loan',
+        due_date: item.date,
+        amount_due: Math.abs(item.amount) || 0,
+        status: item.status || 'Pending',
+        description: item.description,
+        created_at: item.created_at
+      }));
+      
+      setAssets(transformedAssets);
+      setLiabilities(transformedLiabilities);
     } catch (error) {
       console.error('Error fetching data:', error);
       toast.error('Failed to load assets and liabilities data');
@@ -130,8 +167,13 @@ const AssetsLiabilitiesSection = () => {
       }
       
       const { error } = await supabase
-        .from('assets')
-        .insert([assetFormData]);
+        .from('transactions')
+        .insert([{
+          amount: parseFloat(assetFormData.value as string),
+          type: 'Asset',
+          description: assetFormData.type + (assetFormData.description ? ` - ${assetFormData.description}` : ''),
+          date: assetFormData.purchase_date
+        }]);
         
       if (error) throw error;
       
@@ -153,8 +195,14 @@ const AssetsLiabilitiesSection = () => {
       }
       
       const { error } = await supabase
-        .from('liabilities')
-        .insert([liabilityFormData]);
+        .from('transactions')
+        .insert([{
+          amount: -Math.abs(parseFloat(liabilityFormData.amount_due as string)),
+          type: 'Liability',
+          description: liabilityFormData.type + (liabilityFormData.description ? ` - ${liabilityFormData.description}` : ''),
+          date: liabilityFormData.due_date,
+          status: liabilityFormData.status
+        }]);
         
       if (error) throw error;
       
@@ -171,7 +219,7 @@ const AssetsLiabilitiesSection = () => {
   const handleDeleteAsset = async (id) => {
     try {
       const { error } = await supabase
-        .from('assets')
+        .from('transactions')
         .delete()
         .eq('id', id);
         
@@ -188,7 +236,7 @@ const AssetsLiabilitiesSection = () => {
   const handleDeleteLiability = async (id) => {
     try {
       const { error } = await supabase
-        .from('liabilities')
+        .from('transactions')
         .delete()
         .eq('id', id);
         
@@ -204,9 +252,20 @@ const AssetsLiabilitiesSection = () => {
   
   const handleUpdateLiabilityStatus = async (id, newStatus) => {
     try {
+      const { data, error: fetchError } = await supabase
+        .from('transactions')
+        .select('*')
+        .eq('id', id)
+        .single();
+        
+      if (fetchError) throw fetchError;
+      
       const { error } = await supabase
-        .from('liabilities')
-        .update({ status: newStatus })
+        .from('transactions')
+        .update({ 
+          status: newStatus,
+          description: data.description
+        })
         .eq('id', id);
         
       if (error) throw error;
@@ -241,8 +300,8 @@ const AssetsLiabilitiesSection = () => {
   };
   
   const calculateTotals = () => {
-    const totalAssets = assets.reduce((sum, asset) => sum + parseFloat(asset.value || 0), 0);
-    const totalLiabilities = liabilities.reduce((sum, liability) => sum + parseFloat(liability.amount_due || 0), 0);
+    const totalAssets = assets.reduce((sum, asset) => sum + parseFloat(asset.value.toString() || '0'), 0);
+    const totalLiabilities = liabilities.reduce((sum, liability) => sum + parseFloat(liability.amount_due.toString() || '0'), 0);
     const netWorth = totalAssets - totalLiabilities;
     
     return {
@@ -266,7 +325,6 @@ const AssetsLiabilitiesSection = () => {
     <div className="space-y-6">
       <h2 className="text-3xl font-bold">Assets & Liabilities</h2>
       
-      {/* Financial Overview */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
@@ -310,7 +368,6 @@ const AssetsLiabilitiesSection = () => {
         </Card>
       </div>
       
-      {/* Assets and Liabilities Tabs */}
       <Tabs defaultValue="assets" onValueChange={setActiveTab}>
         <div className="flex justify-between items-center mb-4">
           <TabsList>
