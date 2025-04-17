@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
-import { PlusSquare, FolderIcon, FolderPlus } from 'lucide-react';
+import { PlusSquare, FolderIcon, FolderPlus, Pencil } from 'lucide-react';
 
 interface Category {
   id: number;
@@ -22,6 +22,8 @@ const CategoriesSection = () => {
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [isAddDialogOpen, setIsAddDialogOpen] = useState<boolean>(false);
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState<boolean>(false);
+  const [selectedCategory, setSelectedCategory] = useState<Category | null>(null);
   
   const [formData, setFormData] = useState({
     name: '',
@@ -75,6 +77,7 @@ const CategoriesSection = () => {
       name: '',
       type: 'income',
     });
+    setSelectedCategory(null);
   };
   
   const handleAddCategory = async () => {
@@ -100,6 +103,42 @@ const CategoriesSection = () => {
     } catch (error) {
       console.error('Error adding category:', error);
       toast.error('Failed to add category');
+    }
+  };
+
+  const handleEditClick = (category: Category) => {
+    setSelectedCategory(category);
+    setFormData({
+      name: category.name,
+      type: category.type,
+    });
+    setIsEditDialogOpen(true);
+  };
+
+  const handleEditCategory = async () => {
+    try {
+      if (!selectedCategory || !formData.name) {
+        toast.error('Please enter a category name');
+        return;
+      }
+
+      const { error } = await supabase
+        .from('categories')
+        .update({
+          name: formData.name,
+          type: formData.type,
+        })
+        .eq('id', selectedCategory.id);
+
+      if (error) throw error;
+
+      toast.success('Category updated successfully');
+      fetchCategories();
+      setIsEditDialogOpen(false);
+      resetForm();
+    } catch (error) {
+      console.error('Error updating category:', error);
+      toast.error('Failed to update category');
     }
   };
   
@@ -169,6 +208,58 @@ const CategoriesSection = () => {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+
+        {/* Edit Dialog */}
+        <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+          <DialogContent className="sm:max-w-[425px]">
+            <DialogHeader>
+              <DialogTitle>Edit Category</DialogTitle>
+              <DialogDescription>
+                Modify the existing category details.
+              </DialogDescription>
+            </DialogHeader>
+            
+            <div className="grid gap-4 py-4">
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="edit-name" className="text-right">Name</Label>
+                <Input 
+                  id="edit-name" 
+                  name="name" 
+                  value={formData.name} 
+                  onChange={handleInputChange} 
+                  className="col-span-3" 
+                  placeholder="Category name"
+                />
+              </div>
+              
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="edit-type" className="text-right">Type</Label>
+                <Select 
+                  value={formData.type} 
+                  onValueChange={(value) => handleSelectChange('type', value)}
+                >
+                  <SelectTrigger className="col-span-3">
+                    <SelectValue placeholder="Select type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="income">Income</SelectItem>
+                    <SelectItem value="expense">Expense</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            
+            <DialogFooter>
+              <Button variant="outline" onClick={() => {
+                setIsEditDialogOpen(false);
+                resetForm();
+              }}>Cancel</Button>
+              <Button onClick={handleEditCategory} className="bg-fleet-purple hover:bg-fleet-purple-dark">
+                Save Changes
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
       
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -185,8 +276,16 @@ const CategoriesSection = () => {
             <ScrollArea className="h-[300px]">
               <ul className="space-y-2">
                 {categories.filter(cat => cat.type === 'income').map((category) => (
-                  <li key={category.id} className="p-3 border rounded-md hover:bg-gray-50">
-                    {category.name}
+                  <li key={category.id} className="p-3 border rounded-md hover:bg-gray-50 flex justify-between items-center">
+                    <span>{category.name}</span>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleEditClick(category)}
+                      className="ml-2"
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </Button>
                   </li>
                 ))}
                 
@@ -213,8 +312,16 @@ const CategoriesSection = () => {
             <ScrollArea className="h-[300px]">
               <ul className="space-y-2">
                 {categories.filter(cat => cat.type === 'expense').map((category) => (
-                  <li key={category.id} className="p-3 border rounded-md hover:bg-gray-50">
-                    {category.name}
+                  <li key={category.id} className="p-3 border rounded-md hover:bg-gray-50 flex justify-between items-center">
+                    <span>{category.name}</span>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleEditClick(category)}
+                      className="ml-2"
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </Button>
                   </li>
                 ))}
                 
@@ -233,3 +340,4 @@ const CategoriesSection = () => {
 };
 
 export default CategoriesSection;
+
