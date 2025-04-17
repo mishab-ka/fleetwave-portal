@@ -1,301 +1,510 @@
+import React, { useEffect, useState } from "react";
+import AdminLayout from "@/components/AdminLayout";
+import { supabase } from "@/integrations/supabase/client";
+import { format } from "date-fns";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { Card, CardContent } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+  Eye,
+  CheckCircle,
+  XCircle,
+  Download,
+  CalendarIcon,
+} from "lucide-react";
+import { toast } from "sonner";
+import { Input } from "@/components/ui/input"; // Assuming you have a DatePicker component
+import DatePicker from "@/components/DatePicker";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
+import {
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+  Select,
+} from "@/components/ui/select";
 
-import React, { useEffect, useState } from 'react';
-import AdminLayout from '@/components/AdminLayout';
-import { supabase } from '@/integrations/supabase/client';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Eye, CheckCircle, XCircle, Download, IndianRupee, TrendingUp, TrendingDown, Wallet, CreditCard } from 'lucide-react';
-import { toast } from 'sonner';
-import { Tables } from '@/integrations/supabase/types';
-
-type Report = Tables<"fleet_reports">;
+interface Report {
+  id: number;
+  driver_name: string;
+  vehicle_number: string;
+  total_trips: number;
+  total_earnings: number;
+  rent_paid_status: boolean;
+  total_cashcollect: number;
+  rent_paid_amount: number;
+  rent_verified: boolean;
+  submission_date: string;
+  rent_date: string;
+  shift: string;
+  uber_screenshot: string | null;
+  payment_screenshot: string | null;
+  status: string | null;
+  remarks: string | null;
+}
 
 const AdminReports = () => {
   const [reports, setReports] = useState<Report[]>([]);
   const [loading, setLoading] = useState(true);
-  const [financialSummary, setFinancialSummary] = useState({
-    totalRentCollected: 0,
-    fleetExpenses: 0,
-    netProfit: 0,
-    cashInUber: 0,
-    cashInHand: 0
-  });
-  
+  const [searchQuery, setSearchQuery] = useState("");
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [vehicles, setVehicles] = useState<
+    { id: number; vehicle_number: string; total_trips: number }[]
+  >([]);
+  const [dateRange, setDateRange] = useState<{ start?: Date; end?: Date }>({});
+
+  const [dateFilter, setDateFilter] = useState<
+    "today" | "week" | "custom" | null
+  >(null);
+  const [customDate, setCustomDate] = useState<Date | null>(null);
+
   useEffect(() => {
     fetchReports();
+    setupRealtimeUpdates();
   }, []);
-  
-  const fetchReports = async () => {
-    try {
-      const { data: reportsData, error } = await supabase
-        .from('fleet_reports')
-        .select('*')
-        .order('submission_date', { ascending: false });
-        
-      if (error) throw error;
-      
-      setReports(reportsData || []);
 
-      // Calculate financial summary
-      const summary = (reportsData || []).reduce((acc, report) => {
-        const rentPaid = report.rent_paid_amount || 0;
-        const totalEarnings = report.total_earnings || 0;
-        const cashCollected = report.total_cashcollect || 0;
+  useEffect(() => {
+    const fetchVehicles = async () => {
+      const { data: vehiclesData } = await supabase
+        .from("vehicles")
+        .select("*")
+        .eq("online", true);
 
-        acc.totalRentCollected += rentPaid;
-        // Simple fleet expense calculation (can be enhanced based on business logic)
-        acc.fleetExpenses += (report.total_trips || 0) * 50; // Assuming ₹50 per trip as expense
-        acc.netProfit = acc.totalRentCollected - acc.fleetExpenses;
-        
-        // If rent is positive, add to cash in hand/bank
-        // If negative (dues), add to cash in uber
-        if (rentPaid >= 0) {
-          acc.cashInHand += rentPaid;
-        } else {
-          acc.cashInUber += Math.abs(rentPaid);
+      if (vehiclesData)
+        setVehicles(
+          vehiclesData.map((v) => ({
+            id: v.id,
+            vehicle_number: v.vehicle_number,
+            total_trips: v.total_trips,
+          }))
+        );
+      try {
+        const { data, error } = await supabase
+          .from("vehicles")
+          .select("*")
+          .eq("online", true);
+
+        if (error) {
+          console.error("Error fetching vehicles:", error);
+          return;
         }
 
-        return acc;
-      }, {
-        totalRentCollected: 0,
-        fleetExpenses: 0,
-        netProfit: 0,
-        cashInUber: 0,
-        cashInHand: 0
-      });
+        setVehicles(data || []);
+      } catch (error) {
+        console.error("Unexpected error fetching vehicles:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchVehicles();
+  }, []);
 
-      setFinancialSummary(summary);
+  const fetchReports = async () => {
+    try {
+      const { data, error } = await supabase
+        .from("fleet_reports")
+        .select("*")
+        .order("rent_date", { ascending: false });
+
+      if (error) throw error;
+
+      setReports(data || []);
     } catch (error) {
-      console.error('Error fetching reports:', error);
-      toast.error('Failed to load reports data');
+      console.error("Error fetching reports:", error);
+      toast.error("Failed to load reports data");
     } finally {
       setLoading(false);
     }
   };
-  
-  const updateReportStatus = async (id: string, newStatus: string) => {
+
+  const setupRealtimeUpdates = () => {
+    const subscription = supabase
+      .channel("realtime-reports")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "fleet_reports" },
+        (payload) => {
+          if (payload.eventType === "INSERT") {
+            setReports((prev) => [payload.new as Report, ...prev]);
+          } else if (payload.eventType === "UPDATE") {
+            setReports((prev) =>
+              prev.map((report) =>
+                report.id === payload.new.id ? (payload.new as Report) : report
+              )
+            );
+          } else if (payload.eventType === "DELETE") {
+            setReports((prev) =>
+              prev.filter((report) => report.id !== payload.old.id)
+            );
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(subscription);
+    };
+  };
+
+  const [selectedReport, setSelectedReport] = useState<Report | null>(null);
+
+  const updateReportStatus = async (id: number, newStatus: string) => {
     try {
       const { error } = await supabase
-        .from('fleet_reports')
-        .update({ status: newStatus })
-        .eq('id', id);
-        
+        .from("fleet_reports")
+        .update({
+          status: newStatus,
+          rent_paid_status: true,
+          rent_verified: true,
+        })
+        .eq("id", id);
+
       if (error) throw error;
-      
-      setReports(reports.map(report => 
-        report.id === id ? { ...report, status: newStatus } : report
-      ));
-      
+
+      setReports(
+        reports.map((report) =>
+          report.id === id ? { ...report, status: newStatus } : report
+        )
+      );
+
       toast.success(`Report marked as ${newStatus}`);
     } catch (error) {
-      console.error('Error updating report:', error);
-      toast.error('Failed to update report status');
+      console.error("Error updating report:", error);
+      toast.error("Failed to update report status");
     }
   };
-  
+
   const getStatusBadge = (status: string | null) => {
-    switch(status) {
-      case 'approved':
+    switch (status) {
+      case "approved":
         return <Badge variant="success">Approved</Badge>;
-      case 'rejected':
+      case "rejected":
         return <Badge variant="destructive">Rejected</Badge>;
+      case "leave":
+        return <Badge variant="yellow">Leave</Badge>;
       default:
         return <Badge variant="outline">Pending</Badge>;
     }
   };
-  
-  const renderMobileCard = (report: Report) => (
-    <Card key={report.id} className="mb-4">
-      <CardContent className="p-4">
-        <div className="space-y-3">
-          <div className="flex justify-between items-start">
-            <div>
-              <p className="font-medium">{report.driver_name}</p>
-              <p className="text-sm text-gray-500">
-                {new Date(report.submission_date).toLocaleDateString()}
-              </p>
-            </div>
-            {getStatusBadge(report.status)}
-          </div>
-          
-          <div className="grid grid-cols-2 gap-2 text-sm">
-            <div>
-              <p className="text-gray-500">Vehicle</p>
-              <p>{report.vehicle_number}</p>
-            </div>
-            <div>
-              <p className="text-gray-500">Trips</p>
-              <p>{report.total_trips}</p>
-            </div>
-            <div>
-              <p className="text-gray-500">Earnings</p>
-              <p>₹{report.total_earnings?.toLocaleString() || '0'}</p>
-            </div>
-            <div>
-              <p className="text-gray-500">Cash Collected</p>
-              <p>₹{report.total_cashcollect?.toLocaleString() || '0'}</p>
-            </div>
-          </div>
-          
-          <div className="flex items-center justify-between pt-2">
-            <div className="flex space-x-1">
-              {report.uber_screenshot ? <CheckCircle className="h-4 w-4 text-green-500" /> : <XCircle className="h-4 w-4 text-red-500" />}
-              {report.payment_screenshot ? <CheckCircle className="h-4 w-4 text-green-500" /> : <XCircle className="h-4 w-4 text-red-500" />}
-            </div>
-            <div className="flex space-x-1">
-              <Button 
-                variant="ghost" 
-                size="sm" 
-                className="text-green-600"
-                onClick={() => updateReportStatus(report.id, 'approved')}
-                disabled={report.status === 'approved'}
-              >
-                <CheckCircle className="h-4 w-4" />
-              </Button>
-              <Button 
-                variant="ghost" 
-                size="sm"
-                className="text-red-600"
-                onClick={() => updateReportStatus(report.id, 'rejected')}
-                disabled={report.status === 'rejected'}
-              >
-                <XCircle className="h-4 w-4" />
-              </Button>
-              <Button variant="ghost" size="sm">
-                <Eye className="h-4 w-4" />
-              </Button>
-            </div>
-          </div>
-        </div>
-      </CardContent>
-    </Card>
-  );
 
+  const [statusFilter, setStatusFilter] = useState<
+    "all" | "pending_verification" | "approved" | "leave"
+  >("all");
+
+  const calculateFleetRent = (tripCount: number): number => {
+    if (tripCount < 64) return 980;
+    if (tripCount >= 64 && tripCount < 80) return 830;
+    if (tripCount >= 80 && tripCount < 110) return 740;
+    if (tripCount >= 110 && tripCount < 125) return 560;
+    if (tripCount >= 125 && tripCount < 140) return 410;
+    return 290; // 140 or more trips
+  };
+
+  const totalRent = vehicles.reduce(
+    (sum, vehicle) => sum + calculateFleetRent(vehicle.total_trips),
+    0
+  );
+  // Filter reports based on search query and date filter
+  const filteredReports = reports.filter((report) => {
+    const matchesSearch =
+      report.driver_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      report.vehicle_number?.toLowerCase().includes(searchQuery.toLowerCase());
+
+    const matchesStatus =
+      statusFilter === "all" || // Show all reports if "All" is selected
+      (statusFilter === "pending_verification" &&
+        report.status === "pending_verification") ||
+      (statusFilter === "approved" && report.status === "approved") ||
+      (statusFilter === "leave" && report.status === "leave");
+
+    const reportDate = new Date(report.rent_date);
+    const today = new Date();
+    const startOfWeek = new Date(today);
+
+    // Adjust to start from Monday
+    const dayOfWeek = today.getDay(); // 0 = Sunday, 1 = Monday, etc.
+    const daysToSubtract = dayOfWeek === 0 ? 6 : dayOfWeek - 1; // Move back to Monday
+    startOfWeek.setDate(today.getDate() - daysToSubtract);
+
+    startOfWeek.setHours(0, 0, 0, 0); // Set time to midnight for precise filtering
+
+    // Calculate the end of the week (Sunday 11:59 PM)
+    const endOfWeek = new Date(startOfWeek);
+    endOfWeek.setDate(startOfWeek.getDate() + 6);
+    endOfWeek.setHours(23, 59, 59, 999);
+
+    if (dateFilter === "today") {
+      return (
+        matchesSearch &&
+        matchesStatus &&
+        reportDate.toDateString() === today.toDateString()
+      );
+    } else if (dateFilter === "week") {
+      return (
+        matchesSearch &&
+        matchesStatus &&
+        reportDate >= startOfWeek &&
+        reportDate <= endOfWeek
+      );
+    } else if (dateFilter === "custom" && dateRange.start && dateRange.end) {
+      return (
+        matchesSearch &&
+        matchesStatus &&
+        reportDate >= dateRange.start &&
+        reportDate <= dateRange.end
+      );
+    } else {
+      return matchesSearch && matchesStatus;
+    }
+  });
+
+  // Calculate summary statistics
+  const totalEarnings = filteredReports.reduce(
+    (sum, report) => sum + report.total_earnings,
+    0
+  );
+  const totalCashCollect = filteredReports.reduce(
+    (sum, report) => sum + report.total_cashcollect,
+    0
+  );
+  const totalRentPaid = filteredReports.reduce(
+    (sum, report) => sum + report.rent_paid_amount,
+    0
+  );
+  function calculateRent(trips) {
+    if (trips >= 11) {
+      return 485;
+    } else if (trips >= 10) {
+      return 585;
+    } else if (trips >= 8) {
+      return 665;
+    } else if (trips >= 5) {
+      return 695;
+    } else {
+      return 765;
+    }
+  }
+
+  const earnings = filteredReports.reduce((total, report) => {
+    return (
+      total + (report.total_trips === 0 ? 0 : calculateRent(report.total_trips))
+    );
+  }, 0);
+
+  const cashInUber = totalEarnings - totalCashCollect;
+  const cashInHand = totalRentPaid;
+
+  const earningsPerRow = 600; // Assuming each row contains 600rs
+  const verifyRent = async (reportId: number) => {
+    const { error } = await supabase
+      .from("fleet_reports")
+      .update({ rent_verified: true })
+      .eq("id", reportId);
+
+    if (error) {
+      toast.error("Failed to verify rent!");
+      console.error("Error verifying rent:", error);
+    } else {
+      toast.success("Rent verified successfully!");
+    }
+  };
   return (
     <AdminLayout title="Reports Management">
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-        <Card className="bg-gradient-to-br from-emerald-100 to-emerald-50">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-emerald-800">Total Rent Collected</CardTitle>
-            <IndianRupee className="h-5 w-5 text-emerald-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-emerald-900">
-              ₹{financialSummary.totalRentCollected.toLocaleString()}
-            </div>
-            <div className="flex items-center text-xs text-emerald-600 mt-2">
-              <TrendingUp className="h-4 w-4 mr-1" />
-              <span>From all reports</span>
-            </div>
-          </CardContent>
-        </Card>
+      <div className="flex justify-between mb-6">
+        <Input
+          placeholder="Search by driver or vehicle..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          className="w-[300px]"
+        />
 
-        <Card className="bg-gradient-to-br from-amber-100 to-amber-50">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-amber-800">Fleet Expenses</CardTitle>
-            <CreditCard className="h-5 w-5 text-amber-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-amber-900">
-              ₹{financialSummary.fleetExpenses.toLocaleString()}
-            </div>
-            <div className="flex items-center text-xs text-amber-600 mt-2">
-              <span>Based on trip counts</span>
-            </div>
-          </CardContent>
-        </Card>
+        <div className="w-[200px]">
+          <Select
+            value={statusFilter}
+            onValueChange={(value) =>
+              setStatusFilter(
+                value as "all" | "pending_verification" | "approved" | "leave"
+              )
+            }
+          >
+            <SelectTrigger>
+              <SelectValue placeholder="Filter by Status" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All</SelectItem>
+              <SelectItem value="pending_verification">Pending</SelectItem>
+              <SelectItem value="approved">Approved</SelectItem>
+              <SelectItem value="leave">Leave</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
 
-        <Card className={`bg-gradient-to-br ${
-          financialSummary.netProfit >= 0 
-            ? 'from-green-100 to-green-50' 
-            : 'from-red-100 to-red-50'
-        }`}>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className={`text-sm font-medium ${
-              financialSummary.netProfit >= 0 
-                ? 'text-green-800' 
-                : 'text-red-800'
-            }`}>Net Profit</CardTitle>
-            {financialSummary.netProfit >= 0 ? (
-              <TrendingUp className="h-5 w-5 text-green-600" />
-            ) : (
-              <TrendingDown className="h-5 w-5 text-red-600" />
-            )}
-          </CardHeader>
-          <CardContent>
-            <div className={`text-2xl font-bold ${
-              financialSummary.netProfit >= 0 
-                ? 'text-green-900' 
-                : 'text-red-900'
-            }`}>
-              ₹{Math.abs(financialSummary.netProfit).toLocaleString()}
-            </div>
-          </CardContent>
-        </Card>
+        <div className="flex space-x-2">
+          <Button
+            variant={dateFilter === "today" ? "default" : "outline"}
+            onClick={() => setDateFilter("today")}
+          >
+            Today
+          </Button>
+          <Button
+            variant={dateFilter === "week" ? "default" : "outline"}
+            onClick={() => setDateFilter("week")}
+          >
+            This Week
+          </Button>
+          {/* <DatePicker
+            selected={customDate}
+            onSelect={(date) => {
+              setCustomDate(date);
+              setDateFilter("custom");
+            }}
+            placeholder="Custom Date"
+          /> */}
 
-        <Card className="bg-gradient-to-br from-blue-100 to-blue-50">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-blue-800">Cash Status</CardTitle>
-            <Wallet className="h-5 w-5 text-blue-600" />
-          </CardHeader>
-          <CardContent className="space-y-2">
-            <div className="flex justify-between items-center">
-              <span className="text-sm text-blue-600">In Hand/Bank:</span>
-              <span className="text-green-600 font-semibold">
-                ₹{financialSummary.cashInHand.toLocaleString()}
-              </span>
-            </div>
-            <div className="flex justify-between items-center">
-              <span className="text-sm text-blue-600">In Uber:</span>
-              <span className="text-red-600 font-semibold">
-                ₹{financialSummary.cashInUber.toLocaleString()}
-              </span>
-            </div>
-          </CardContent>
-        </Card>
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button
+                variant={dateFilter === "custom" ? "default" : "outline"}
+                className="gap-2"
+              >
+                <CalendarIcon className="h-4 w-4" />
+                Custom
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-auto p-0">
+              <Calendar
+                mode="range"
+                selected={{ from: dateRange.start, to: dateRange.end }}
+                onSelect={(range) => {
+                  setDateFilter("custom");
+                  setDateRange({
+                    start: range?.from,
+                    end: range?.to,
+                  });
+                }}
+                numberOfMonths={2}
+              />
+            </PopoverContent>
+          </Popover>
+          <Button
+            variant="outline"
+            onClick={() => {
+              setDateFilter(null);
+              setCustomDate(null);
+            }}
+          >
+            Clear Filters
+          </Button>
+          <Button>
+            <Download className="h-4 w-4 mr-2" /> Export Reports
+          </Button>
+        </div>
       </div>
 
-      <div className="flex justify-end mb-6">
-        <Button>
-          <Download className="h-4 w-4 mr-2" /> Export Reports
-        </Button>
-      </div>
-      
-      <div className="md:hidden">
-        {loading ? (
-          <div className="flex items-center justify-center h-64">
-            <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-fleet-purple"></div>
-          </div>
-        ) : (
-          <div>
-            {reports.length === 0 ? (
-              <Card>
-                <CardContent className="p-6 text-center">
-                  No reports found
-                </CardContent>
-              </Card>
-            ) : (
-              reports.map(renderMobileCard)
-            )}
-          </div>
-        )}
-      </div>
-
-      <div className="hidden md:block">
+      {/* Summary Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4 mb-6">
         <Card>
-          <CardContent className="p-6">
-            {loading ? (
-              <div className="flex items-center justify-center h-64">
-                <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-fleet-purple"></div>
+          <CardContent className="p-4  rounded-lg">
+            <div className="text-sm font-medium text-gray-500">
+              Fleet Earnings
+            </div>
+            <div className="text-2xl font-bold text-green-500">
+              ₹{earnings.toLocaleString()}
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="p-4  rounded-lg">
+            <div className="text-sm font-medium text-gray-500">
+              Fleet Car Expence
+            </div>
+            <div className="text-2xl font-bold text-red-500">
+              ₹{totalRent * 7}
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4  rounded-lg">
+            <div className="text-sm font-medium text-gray-500">Net Profit</div>
+            <div className="text-2xl font-bold text-blue-500">
+              ₹{earnings - totalRent * 7}
+            </div>
+          </CardContent>
+        </Card>
+        {/* <Card>
+          <CardContent className="p-4">
+            <div className="text-sm font-medium text-gray-500">
+              Total Cash Collected
+            </div>
+            <div className="text-2xl font-bold">
+              ₹{totalCashCollect.toLocaleString()}
+            </div>
+          </CardContent>
+        </Card> */}
+        <Card>
+          <CardContent className="p-4">
+            <div className="text-sm font-medium text-gray-500">
+              Cash in Uber
+            </div>
+            <div className="text-2xl font-bold">
+              ₹{cashInUber.toLocaleString()}
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <div className="text-sm font-medium text-gray-500">
+              Cash in Hand
+            </div>
+            <div className="text-2xl font-bold">
+              ₹{cashInHand.toLocaleString()}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      <Card>
+        <CardContent className="p-6">
+          {loading ? (
+            <div className="flex items-center justify-center h-64">
+              <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-fleet-purple"></div>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="text-xl font-semibold text-gray-800">
+                  Recent Reports
+                </h2>
+                <span className="text-sm text-muted-foreground">
+                  {reports.length} total reports
+                </span>
               </div>
-            ) : (
-              <div className="overflow-x-auto">
+              <div className="h-[600px] overflow-y-auto">
                 <Table>
-                  <TableHeader>
+                  <TableHeader className="text-md">
                     <TableRow>
-                      <TableHead>Date</TableHead>
+                      <TableHead>id</TableHead>
+                      <TableHead>Date&time</TableHead>
                       <TableHead>Driver</TableHead>
                       <TableHead>Vehicle</TableHead>
                       <TableHead>Trips</TableHead>
@@ -308,52 +517,89 @@ const AdminReports = () => {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {reports.length === 0 ? (
+                    {filteredReports.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={10} className="text-center py-8">
+                        <TableCell colSpan={11} className="text-center py-8">
                           No reports found
                         </TableCell>
                       </TableRow>
                     ) : (
-                      reports.map((report) => (
-                        <TableRow key={report.id}>
+                      filteredReports.map((report, index) => (
+                        <TableRow key={report.id} className="text-sm">
+                          <TableCell>{index + 1}</TableCell>
                           <TableCell>
-                            {new Date(report.submission_date).toLocaleDateString()}
+                            {format(
+                              new Date(report.rent_date),
+                              "d MMMM yyyy, hh:mm a"
+                            )}
                           </TableCell>
-                          <TableCell className="font-medium">{report.driver_name}</TableCell>
+                          <TableCell className="font-medium">
+                            {report.driver_name}
+                          </TableCell>
                           <TableCell>{report.vehicle_number}</TableCell>
                           <TableCell>{report.total_trips}</TableCell>
-                          <TableCell>₹{report.total_earnings?.toLocaleString() || '0'}</TableCell>
-                          <TableCell>₹{report.total_cashcollect?.toLocaleString() || '0'}</TableCell>
-                          <TableCell>₹{report.rent_paid_amount?.toLocaleString() || '0'}</TableCell>
+                          <TableCell>
+                            ₹{report.total_earnings.toLocaleString()}
+                          </TableCell>
+                          <TableCell>
+                            ₹{report.total_cashcollect.toLocaleString()}
+                          </TableCell>
+                          <TableCell
+                            className={`px-4 py-2 text-xs font-medium ${
+                              report.rent_paid_amount < 0
+                                ? "text-red-500"
+                                : "text-green-400"
+                            }`}
+                          >
+                            ₹{report.rent_paid_amount.toLocaleString()}
+                          </TableCell>
                           <TableCell>
                             <div className="flex space-x-1">
-                              {report.uber_screenshot ? <CheckCircle className="h-4 w-4 text-green-500" /> : <XCircle className="h-4 w-4 text-red-500" />}
-                              {report.payment_screenshot ? <CheckCircle className="h-4 w-4 text-green-500" /> : <XCircle className="h-4 w-4 text-red-500" />}
+                              {report.uber_screenshot ? (
+                                <CheckCircle className="h-4 w-4 text-green-500" />
+                              ) : (
+                                <XCircle className="h-4 w-4 text-red-500" />
+                              )}
+                              {report.payment_screenshot ? (
+                                <CheckCircle className="h-4 w-4 text-green-500" />
+                              ) : (
+                                <XCircle className="h-4 w-4 text-red-500" />
+                              )}
                             </div>
                           </TableCell>
                           <TableCell>{getStatusBadge(report.status)}</TableCell>
                           <TableCell className="text-right">
                             <div className="flex justify-end space-x-1">
-                              <Button 
-                                variant="ghost" 
-                                size="sm" 
+                              <Button
+                                variant="ghost"
+                                size="sm"
                                 className="text-green-600"
-                                onClick={() => updateReportStatus(report.id, 'approved')}
-                                disabled={report.status === 'approved'}
+                                onClick={() =>
+                                  updateReportStatus(report.id, "approved")
+                                }
+                                disabled={report.status === "approved"}
                               >
                                 <CheckCircle className="h-4 w-4" />
                               </Button>
-                              <Button 
-                                variant="ghost" 
+                              <Button
+                                variant="ghost"
                                 size="sm"
                                 className="text-red-600"
-                                onClick={() => updateReportStatus(report.id, 'rejected')}
-                                disabled={report.status === 'rejected'}
+                                onClick={() =>
+                                  updateReportStatus(report.id, "rejected")
+                                }
+                                disabled={report.status === "rejected"}
                               >
                                 <XCircle className="h-4 w-4" />
                               </Button>
-                              <Button variant="ghost" size="sm">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => {
+                                  setSelectedReport(report);
+                                  setIsModalOpen(true);
+                                }}
+                              >
                                 <Eye className="h-4 w-4" />
                               </Button>
                             </div>
@@ -364,10 +610,249 @@ const AdminReports = () => {
                   </TableBody>
                 </Table>
               </div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
+              {selectedReport && (
+                <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
+                  <DialogContent className="border-border/50 max-w-2xl">
+                    <DialogHeader>
+                      <DialogTitle>Report Details</DialogTitle>
+                    </DialogHeader>
+                    <div className="space-y-6">
+                      <div className="grid grid-cols-2 gap-4">
+                        {/* <p>Shift: {selectedReport.shift}</p>
+                        <p>Remarks: {selectedReport.remarks}</p>
+                        <p>
+                          Rent Verified:
+                          {!selectedReport.rent_verified && (
+                            <button
+                              className="bg-green-600 text-white px-3 py-1 rounded"
+                              onClick={() => verifyRent(selectedReport.id)}
+                            >
+                              Verify
+                            </button>
+                          )}
+                        </p> */}
+                        <div className="space-y-2">
+                          <label>Vehicle Number</label>
+                          <Select
+                            value={selectedReport.vehicle_number}
+                            onValueChange={(value) =>
+                              setSelectedReport((prev) => ({
+                                ...prev,
+                                vehicle_number: value,
+                              }))
+                            }
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select vehicle" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <>
+                                <SelectItem key="none" value="Not Assined">
+                                  No vehicle
+                                </SelectItem>
+                                {vehicles.map((vehicle) => (
+                                  <SelectItem
+                                    key={vehicle.vehicle_number}
+                                    value={vehicle.vehicle_number}
+                                  >
+                                    {vehicle.vehicle_number}
+                                  </SelectItem>
+                                ))}
+                              </>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-2">
+                          <label>Driver Name</label>
+                          <Input
+                            value={selectedReport.driver_name}
+                            onChange={(e) =>
+                              setSelectedReport((prev) => ({
+                                ...prev,
+                                driver_name: e.target.value,
+                              }))
+                            }
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <label>Rent Date</label>
+                          <Input
+                            type="date"
+                            value={
+                              selectedReport.rent_date?.split("T")[0] || ""
+                            }
+                            onChange={(e) =>
+                              setSelectedReport((prev) => ({
+                                ...prev,
+                                rent_date: new Date(
+                                  e.target.value
+                                ).toISOString(),
+                              }))
+                            }
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <label>Total Earnings</label>
+                          <Input
+                            type="number"
+                            value={selectedReport.total_earnings}
+                            onChange={(e) =>
+                              setSelectedReport((prev) => ({
+                                ...prev,
+                                total_earnings: Number(e.target.value),
+                              }))
+                            }
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <label>Cash Collected</label>
+                          <Input
+                            type="number"
+                            value={selectedReport.total_cashcollect}
+                            onChange={(e) =>
+                              setSelectedReport((prev) => ({
+                                ...prev,
+                                total_cashcollect: Number(e.target.value),
+                              }))
+                            }
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <label>Total Trips</label>
+                          <Input
+                            type="number"
+                            value={selectedReport.total_trips}
+                            onChange={(e) =>
+                              setSelectedReport((prev) => ({
+                                ...prev,
+                                total_trips: Number(e.target.value),
+                              }))
+                            }
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <label>Rent Paid Amount</label>
+                          <Input
+                            type="number"
+                            value={selectedReport.rent_paid_amount}
+                            onChange={(e) =>
+                              setSelectedReport((prev) => ({
+                                ...prev,
+                                rent_paid_amount: Number(e.target.value),
+                              }))
+                            }
+                          />
+                        </div>
+                      </div>
+
+                      <div className="space-y-4">
+                        <div className="flex space-x-2">
+                          <h3 className="text-sm font-medium text-muted-foreground mb-2">
+                            Uber Screenshot
+                          </h3>
+                          <a
+                            href={`https://upnhxshwzpbcfmumclwz.supabase.co/storage/v1/object/public/uploads/${selectedReport.uber_screenshot}`}
+                            className="text-blue-600"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                          >
+                            View Image
+                          </a>
+                        </div>
+                        <div className="flex space-x-2">
+                          <h3 className="text-sm font-medium text-muted-foreground mb-2">
+                            Rent Screenshot
+                          </h3>
+                          <a
+                            href={`https://upnhxshwzpbcfmumclwz.supabase.co/storage/v1/object/public/uploads/${selectedReport.payment_screenshot}`}
+                            className="text-blue-600"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                          >
+                            view Image
+                          </a>
+                        </div>
+                      </div>
+
+                      <div className="flex justify-between items-center">
+                        <div className="flex gap-4">
+                          <Button
+                            variant="destructive"
+                            onClick={async () => {
+                              await supabase
+                                .from("fleet_reports")
+                                .delete()
+                                .eq("id", selectedReport.id);
+                              setIsModalOpen(false);
+                              setReports((prev) =>
+                                prev.filter(
+                                  (report) => report.id !== selectedReport.id
+                                )
+                              );
+                            }}
+                          >
+                            Delete Report
+                          </Button>
+
+                          <Select
+                            value={selectedReport.status}
+                            onValueChange={(value) =>
+                              setSelectedReport((prev) => ({
+                                ...prev,
+                                status: value,
+                              }))
+                            }
+                          >
+                            <SelectTrigger className="w-[180px]">
+                              <SelectValue placeholder="Verification Status" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="approved">Approved</SelectItem>
+                              <SelectItem value="leave">Leave</SelectItem>
+                              <SelectItem value="rejected">Rejected</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        <div className="flex gap-4">
+                          <Button
+                            variant="outline"
+                            onClick={() => setIsModalOpen(false)}
+                          >
+                            Cancel
+                          </Button>
+                          <Button
+                            variant="default"
+                            onClick={async () => {
+                              const { error } = await supabase
+                                .from("fleet_reports")
+                                .update(selectedReport)
+                                .eq("id", selectedReport.id);
+
+                              if (!error) {
+                                setReports((prev) =>
+                                  prev.map((report) =>
+                                    report.id === selectedReport.id
+                                      ? selectedReport
+                                      : report
+                                  )
+                                );
+                                setIsModalOpen(false);
+                              }
+                            }}
+                          >
+                            Save Changes
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  </DialogContent>
+                </Dialog>
+              )}
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </AdminLayout>
   );
 };
