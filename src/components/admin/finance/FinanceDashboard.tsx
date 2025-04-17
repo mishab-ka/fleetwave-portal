@@ -2,12 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
-import { ArrowUpRight, ArrowDownRight, DollarSign, Wallet, CreditCard, ArrowUpFromLine, ArrowDownToLine } from 'lucide-react';
+import { ArrowUpRight, ArrowDownRight, DollarSign, Wallet, CreditCard, ArrowUpFromLine } from 'lucide-react';
 import { formatter } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
-
-const categoryColors = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#A569BD'];
+import CashflowChart from './CashflowChart';
+import RecentTransactions from './RecentTransactions';
 
 const FinanceDashboard = () => {
   const [timeRange, setTimeRange] = useState('month');
@@ -22,7 +21,9 @@ const FinanceDashboard = () => {
     balanceChange: 0,
     monthlyData: [],
     expenseCategories: [],
-    incomeCategories: []
+    incomeCategories: [],
+    recentTransactions: [],
+    cashflowData: []
   });
   const [loading, setLoading] = useState(true);
 
@@ -33,7 +34,6 @@ const FinanceDashboard = () => {
   const fetchFinancialData = async (period: string) => {
     setLoading(true);
     try {
-      // Get the date range based on selected period
       const { startDate, endDate } = getDateRange(period);
       
       // Fetch all transactions for the selected period
@@ -94,11 +94,14 @@ const FinanceDashboard = () => {
       const expensesChange = prevExpenses > 0 ? ((totalExpenses - prevExpenses) / prevExpenses) * 100 : 0;
       const incomeChange = prevIncome > 0 ? ((netIncome - prevIncome) / prevIncome) * 100 : 0;
       
-      // Placeholder for balance change as we don't have historical balance data
-      const balanceChange = 5.2; // This would need a different approach to get historical balance
-      
-      // Prepare monthly data chart
+      // Get recent transactions
+      const recentTransactions = transactions
+        .slice(-5)
+        .reverse();
+
+      // Prepare monthly data chart and cashflow data
       const monthlyData = prepareMonthlyData(transactions);
+      const cashflowData = prepareCashflowData(transactions);
       
       // Prepare category data for pie charts
       const { expenseCategories, incomeCategories } = prepareCategoryData(transactions);
@@ -111,10 +114,12 @@ const FinanceDashboard = () => {
         revenueChange,
         expensesChange,
         incomeChange,
-        balanceChange,
+        balanceChange: 5.2,
         monthlyData,
         expenseCategories,
-        incomeCategories
+        incomeCategories,
+        recentTransactions,
+        cashflowData
       });
       
     } catch (error) {
@@ -241,6 +246,41 @@ const FinanceDashboard = () => {
     return { expenseCategories, incomeCategories };
   };
 
+  const prepareCashflowData = (transactions: any[]) => {
+    const dailyTotals: Record<string, { income: number; expenses: number; balance: number }> = {};
+    let runningBalance = 0;
+    
+    transactions.forEach(transaction => {
+      const date = new Date(transaction.date);
+      const dateKey = date.toLocaleDateString();
+      
+      if (!dailyTotals[dateKey]) {
+        dailyTotals[dateKey] = {
+          income: 0,
+          expenses: 0,
+          balance: runningBalance
+        };
+      }
+      
+      const amount = parseFloat(transaction.amount.toString());
+      
+      if (transaction.type === 'income') {
+        dailyTotals[dateKey].income += amount;
+        runningBalance += amount;
+      } else {
+        dailyTotals[dateKey].expenses += amount;
+        runningBalance -= amount;
+      }
+      
+      dailyTotals[dateKey].balance = runningBalance;
+    });
+    
+    return Object.entries(dailyTotals).map(([name, values]) => ({
+      name,
+      ...values
+    }));
+  };
+
   if (loading) {
     return (
       <div className="flex justify-center items-center h-64">
@@ -355,6 +395,16 @@ const FinanceDashboard = () => {
             </p>
           </CardContent>
         </Card>
+      </div>
+      
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="lg:col-span-2">
+          <CashflowChart data={financialData.cashflowData} />
+        </div>
+        
+        <div className="lg:col-span-1">
+          <RecentTransactions transactions={financialData.recentTransactions} />
+        </div>
       </div>
       
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
