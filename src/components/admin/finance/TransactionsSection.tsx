@@ -8,10 +8,12 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { DatePicker } from "@/components/ui/date-picker";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
-import { PlusSquare, ArrowUpRight, ArrowDownLeft, Calendar } from 'lucide-react';
+import { PlusSquare, ArrowUpRight, ArrowDownLeft, Calendar, ArrowUp, ArrowDown } from 'lucide-react';
 import { formatter } from '@/lib/utils';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 interface Account {
   id: number;
@@ -48,6 +50,7 @@ const TransactionsSection = () => {
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [isAddDialogOpen, setIsAddDialogOpen] = useState<boolean>(false);
+  const [activeTab, setActiveTab] = useState<string>("all");
   
   const [formData, setFormData] = useState({
     description: '',
@@ -184,6 +187,10 @@ const TransactionsSection = () => {
       toast.error('Failed to add transaction');
     }
   };
+
+  const filteredTransactions = activeTab === "all" 
+    ? transactions 
+    : transactions.filter(t => t.type === activeTab);
   
   if (loading) {
     return (
@@ -317,50 +324,69 @@ const TransactionsSection = () => {
       <Card>
         <CardHeader>
           <CardTitle>Transactions List</CardTitle>
+          <Tabs defaultValue="all" className="w-full" onValueChange={setActiveTab}>
+            <TabsList className="grid grid-cols-3 w-64">
+              <TabsTrigger value="all">All</TabsTrigger>
+              <TabsTrigger value="income">Income</TabsTrigger>
+              <TabsTrigger value="expense">Expense</TabsTrigger>
+            </TabsList>
+          </Tabs>
         </CardHeader>
         <CardContent>
           <ScrollArea className="h-[400px]">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b">
-                  <th className="text-left p-3">Description</th>
-                  <th className="text-left p-3">Amount</th>
-                  <th className="text-left p-3">Type</th>
-                  <th className="text-left p-3">Date</th>
-                  <th className="text-left p-3">Account</th>
-                  <th className="text-left p-3">Category</th>
-                </tr>
-              </thead>
-              <tbody>
-                {transactions.map((transaction) => (
-                  <tr key={transaction.id} className="border-b hover:bg-gray-50">
-                    <td className="p-3">{transaction.description}</td>
-                    <td className="p-3 font-medium">
-                      {transaction.type === 'expense' ? '-' : '+'}
-                      {formatter.format(transaction.amount)}
-                    </td>
-                    <td className="p-3 capitalize">{transaction.type}</td>
-                    <td className="p-3">
-                      {new Date(transaction.date).toLocaleDateString()}
-                    </td>
-                    <td className="p-3">
-                      {transaction.accounts?.name}
-                    </td>
-                    <td className="p-3">
-                      {transaction.categories?.name}
-                    </td>
-                  </tr>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Description</TableHead>
+                  <TableHead>Amount</TableHead>
+                  <TableHead>Type</TableHead>
+                  <TableHead>Date</TableHead>
+                  <TableHead>Account</TableHead>
+                  <TableHead>Category</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filteredTransactions.map((transaction) => (
+                  <TableRow key={transaction.id}>
+                    <TableCell>{transaction.description}</TableCell>
+                    <TableCell>
+                      <span className={`flex items-center font-medium ${
+                        transaction.type === 'expense' 
+                          ? 'text-red-500' 
+                          : 'text-green-500'
+                      }`}>
+                        {transaction.type === 'expense' ? (
+                          <ArrowDown className="mr-1 h-4 w-4" />
+                        ) : (
+                          <ArrowUp className="mr-1 h-4 w-4" />
+                        )}
+                        {formatter.format(transaction.amount)}
+                      </span>
+                    </TableCell>
+                    <TableCell>
+                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                        transaction.type === 'expense' 
+                          ? 'bg-red-100 text-red-800' 
+                          : 'bg-green-100 text-green-800'
+                      }`}>
+                        {transaction.type}
+                      </span>
+                    </TableCell>
+                    <TableCell>{new Date(transaction.date).toLocaleDateString()}</TableCell>
+                    <TableCell>{transaction.accounts?.name}</TableCell>
+                    <TableCell>{transaction.categories?.name}</TableCell>
+                  </TableRow>
                 ))}
                 
-                {transactions.length === 0 && (
-                  <tr>
-                    <td colSpan={6} className="p-4 text-center text-gray-500">
+                {filteredTransactions.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={6} className="text-center text-gray-500 py-8">
                       No transactions found
-                    </td>
-                  </tr>
+                    </TableCell>
+                  </TableRow>
                 )}
-              </tbody>
-            </table>
+              </TableBody>
+            </Table>
           </ScrollArea>
         </CardContent>
       </Card>

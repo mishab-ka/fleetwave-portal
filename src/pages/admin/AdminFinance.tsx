@@ -16,8 +16,8 @@ const AdminFinance = () => {
         <Tabs defaultValue="dashboard" className="w-full">
           <TabsList className="grid grid-cols-6 mb-8">
             <TabsTrigger value="dashboard">Dashboard</TabsTrigger>
-            <TabsTrigger value="accounts">Bank Accounts</TabsTrigger>
             <TabsTrigger value="transactions">Transactions</TabsTrigger>
+            <TabsTrigger value="accounts">Bank Accounts</TabsTrigger>
             <TabsTrigger value="categories">Categories</TabsTrigger>
             <TabsTrigger value="assets-liabilities">Assets & Liabilities</TabsTrigger>
             <TabsTrigger value="reports">Reports</TabsTrigger>
@@ -27,12 +27,12 @@ const AdminFinance = () => {
             <FinanceDashboard />
           </TabsContent>
           
-          <TabsContent value="accounts">
-            <BankAccountsSection />
-          </TabsContent>
-          
           <TabsContent value="transactions">
             <TransactionsSection />
+          </TabsContent>
+          
+          <TabsContent value="accounts">
+            <BankAccountsSection />
           </TabsContent>
           
           <TabsContent value="categories">

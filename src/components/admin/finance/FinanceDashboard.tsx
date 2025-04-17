@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -31,7 +30,7 @@ const FinanceDashboard = () => {
     fetchFinancialData(timeRange);
   }, [timeRange]);
 
-  const fetchFinancialData = async (period) => {
+  const fetchFinancialData = async (period: string) => {
     setLoading(true);
     try {
       // Get the date range based on selected period
@@ -54,11 +53,11 @@ const FinanceDashboard = () => {
       // Calculate summary metrics
       const totalRevenue = transactions
         .filter(t => t.type === 'income')
-        .reduce((sum, t) => sum + parseFloat(t.amount), 0);
+        .reduce((sum, t) => sum + parseFloat(t.amount.toString()), 0);
         
       const totalExpenses = transactions
         .filter(t => t.type === 'expense')
-        .reduce((sum, t) => sum + parseFloat(t.amount), 0);
+        .reduce((sum, t) => sum + parseFloat(t.amount.toString()), 0);
         
       const netIncome = totalRevenue - totalExpenses;
       
@@ -68,7 +67,7 @@ const FinanceDashboard = () => {
         .select('*');
         
       const cashBalance = accounts
-        ? accounts.reduce((sum, account) => sum + parseFloat(account.balance || 0), 0)
+        ? accounts.reduce((sum, account) => sum + parseFloat((account.balance || 0).toString()), 0)
         : 0;
 
       // Get previous period data for comparison
@@ -82,11 +81,11 @@ const FinanceDashboard = () => {
       
       // Calculate percentage changes
       const prevRevenue = prevTransactions
-        ? prevTransactions.filter(t => t.type === 'income').reduce((sum, t) => sum + parseFloat(t.amount), 0)
+        ? prevTransactions.filter(t => t.type === 'income').reduce((sum, t) => sum + parseFloat(t.amount.toString()), 0)
         : 0;
         
       const prevExpenses = prevTransactions
-        ? prevTransactions.filter(t => t.type === 'expense').reduce((sum, t) => sum + parseFloat(t.amount), 0)
+        ? prevTransactions.filter(t => t.type === 'expense').reduce((sum, t) => sum + parseFloat(t.amount.toString()), 0)
         : 0;
         
       const prevIncome = prevRevenue - prevExpenses;
@@ -125,9 +124,9 @@ const FinanceDashboard = () => {
     }
   };
 
-  const getDateRange = (period, previous = false) => {
+  const getDateRange = (period: string, previous = false) => {
     const now = new Date();
-    let startDate, endDate;
+    let startDate: Date, endDate: Date;
     
     if (previous) {
       // For previous period comparison
@@ -144,6 +143,10 @@ const FinanceDashboard = () => {
       } else if (period === 'year') {
         endDate = new Date(now.getFullYear() - 1, 11, 31); // Last day of previous year
         startDate = new Date(now.getFullYear() - 2, 0, 1); // First day of year before previous
+      } else {
+        // Default to month if invalid period
+        endDate = new Date(now.getFullYear(), now.getMonth() - 1, 0);
+        startDate = new Date(now.getFullYear(), now.getMonth() - 2, 1);
       }
     } else {
       // For current period
@@ -160,6 +163,10 @@ const FinanceDashboard = () => {
       } else if (period === 'year') {
         startDate = new Date(now.getFullYear(), 0, 1);
         endDate = now;
+      } else {
+        // Default to month if invalid period
+        startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+        endDate = now;
       }
     }
     
@@ -169,9 +176,9 @@ const FinanceDashboard = () => {
     };
   };
 
-  const prepareMonthlyData = (transactions) => {
+  const prepareMonthlyData = (transactions: any[]) => {
     // Group transactions by month and calculate totals
-    const monthlyTotals = {};
+    const monthlyTotals: Record<string, { name: string; income: number; expenses: number }> = {};
     
     transactions.forEach(transaction => {
       const date = new Date(transaction.date);
@@ -187,19 +194,19 @@ const FinanceDashboard = () => {
       }
       
       if (transaction.type === 'income') {
-        monthlyTotals[monthKey].income += parseFloat(transaction.amount);
+        monthlyTotals[monthKey].income += parseFloat(transaction.amount.toString());
       } else {
-        monthlyTotals[monthKey].expenses += parseFloat(transaction.amount);
+        monthlyTotals[monthKey].expenses += parseFloat(transaction.amount.toString());
       }
     });
     
     return Object.values(monthlyTotals);
   };
 
-  const prepareCategoryData = (transactions) => {
+  const prepareCategoryData = (transactions: any[]) => {
     // Group transactions by category
-    const expenseTotals = {};
-    const incomeTotals = {};
+    const expenseTotals: Record<string, number> = {};
+    const incomeTotals: Record<string, number> = {};
     
     transactions.forEach(transaction => {
       const category = transaction.categories ? transaction.categories.name : 'Uncategorized';
@@ -208,18 +215,18 @@ const FinanceDashboard = () => {
         if (!expenseTotals[category]) {
           expenseTotals[category] = 0;
         }
-        expenseTotals[category] += parseFloat(transaction.amount);
+        expenseTotals[category] += parseFloat(transaction.amount.toString());
       } else {
         if (!incomeTotals[category]) {
           incomeTotals[category] = 0;
         }
-        incomeTotals[category] += parseFloat(transaction.amount);
+        incomeTotals[category] += parseFloat(transaction.amount.toString());
       }
     });
     
     // Calculate percentages for the pie charts
-    const expenseTotal = Object.values(expenseTotals).reduce((sum, amount) => sum + parseFloat(amount), 0);
-    const incomeTotal = Object.values(incomeTotals).reduce((sum, amount) => sum + parseFloat(amount), 0);
+    const expenseTotal = Object.values(expenseTotals).reduce((sum, amount) => sum + amount, 0);
+    const incomeTotal = Object.values(incomeTotals).reduce((sum, amount) => sum + amount, 0);
     
     const expenseCategories = Object.entries(expenseTotals).map(([name, amount]) => ({
       name,
