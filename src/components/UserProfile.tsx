@@ -7,6 +7,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Tables } from "@/integrations/supabase/types";
+import { Badge } from "@/components/ui/badge";
+import { IndianRupee, Calendar, Car, TrendingUp, Shield } from "lucide-react";
 
 const UserProfile = () => {
   const { user } = useAuth();
@@ -62,60 +64,108 @@ const UserProfile = () => {
       .toUpperCase();
   };
 
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('en-IN', {
+      style: 'currency',
+      currency: 'INR',
+      maximumFractionDigits: 0,
+    }).format(amount);
+  };
+
   return (
-    <Card className="shadow-md">
-      <CardHeader>
-        <CardTitle className="flex items-center gap-4">
-          <Avatar className="h-16 w-16">
-            {profileData.profile_photo ? (
-              <AvatarImage src={profileData.profile_photo} alt={profileData.name} />
-            ) : (
-              <AvatarFallback className="bg-fleet-purple text-white text-xl">
-                {getInitials(profileData.name || "")}
-              </AvatarFallback>
-            )}
-          </Avatar>
-          <div>
-            <h2 className="text-2xl font-bold">{profileData.name}</h2>
-            <p className="text-gray-500">{profileData.email_id}</p>
-          </div>
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <h3 className="text-sm font-medium text-gray-500">Driver ID</h3>
-            <p className="text-lg">{profileData.driver_id || "Not assigned"}</p>
-          </div>
-          <div>
-            <h3 className="text-sm font-medium text-gray-500">Date of Birth</h3>
-            <p className="text-lg">{new Date(profileData.joining_date).toLocaleDateString()}</p>
-          </div>
-          <div>
-            <h3 className="text-sm font-medium text-gray-500">Vehicle</h3>
-            <p className="text-lg">{profileData.vehicle_number || "Not assigned"}</p>
-          </div>
-          <div>
-            <h3 className="text-sm font-medium text-gray-500">Shift</h3>
-            <p className="text-lg capitalize">{profileData.shift || "Not assigned"}</p>
-          </div>
-          <div>
-            <h3 className="text-sm font-medium text-gray-500">Status</h3>
-            <div className="flex items-center mt-1">
-              <span className={`h-3 w-3 rounded-full mr-2 ${profileData.online ? 'bg-green-500' : 'bg-gray-400'}`}></span>
-              <span>{profileData.online ? 'Online' : 'Offline'}</span>
+    <div className="space-y-6">
+      <Card className="shadow-md">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-4">
+            <Avatar className="h-16 w-16">
+              {profileData.profile_photo ? (
+                <AvatarImage src={profileData.profile_photo} alt={profileData.name} />
+              ) : (
+                <AvatarFallback className="bg-fleet-purple text-white text-xl">
+                  {getInitials(profileData.name || "")}
+                </AvatarFallback>
+              )}
+            </Avatar>
+            <div>
+              <h2 className="text-2xl font-bold">{profileData.name}</h2>
+              <p className="text-gray-500">{profileData.email_id}</p>
+            </div>
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className="p-4 bg-gray-50 rounded-lg">
+              <div className="flex items-center gap-2 text-sm font-medium text-gray-500 mb-1">
+                <Calendar className="h-4 w-4" />
+                Joining Date
+              </div>
+              <p className="text-lg font-semibold">
+                {new Date(profileData.joining_date).toLocaleDateString()}
+              </p>
+            </div>
+
+            <div className="p-4 bg-gray-50 rounded-lg">
+              <div className="flex items-center gap-2 text-sm font-medium text-gray-500 mb-1">
+                <Car className="h-4 w-4" />
+                Total Trips
+              </div>
+              <p className="text-lg font-semibold">
+                {profileData.total_trip || 0}
+              </p>
+            </div>
+
+            <div className="p-4 bg-gray-50 rounded-lg">
+              <div className="flex items-center gap-2 text-sm font-medium text-gray-500 mb-1">
+                <TrendingUp className="h-4 w-4" />
+                Total Earnings
+              </div>
+              <p className="text-lg font-semibold">
+                {formatCurrency(profileData.total_earning || 0)}
+              </p>
+            </div>
+
+            <div className="p-4 bg-gray-50 rounded-lg">
+              <div className="flex items-center gap-2 text-sm font-medium text-gray-500 mb-1">
+                <Shield className="h-4 w-4" />
+                Deposit Amount
+              </div>
+              <p className="text-lg font-semibold">
+                {formatCurrency(profileData.deposit_amount || 0)}
+              </p>
+            </div>
+
+            <div className="p-4 bg-gray-50 rounded-lg">
+              <div className="flex items-center gap-2 text-sm font-medium text-gray-500 mb-1">
+                Vehicle
+              </div>
+              <p className="text-lg font-semibold">
+                {profileData.vehicle_number || 'Not assigned'}
+              </p>
+            </div>
+
+            <div className="p-4 bg-gray-50 rounded-lg">
+              <div className="flex items-center gap-2 text-sm font-medium text-gray-500 mb-1">
+                Current Shift
+              </div>
+              <p className="text-lg font-semibold capitalize">
+                {profileData.shift || 'Not assigned'}
+              </p>
             </div>
           </div>
-          <div>
-            <h3 className="text-sm font-medium text-gray-500">Verification Status</h3>
-            <div className="flex items-center mt-1">
-              <span className={`h-3 w-3 rounded-full mr-2 ${profileData.is_verified ? 'bg-green-500' : 'bg-yellow-500'}`}></span>
-              <span>{profileData.is_verified ? 'Verified' : 'Pending Verification'}</span>
+
+          <div className="flex items-center justify-between border-t pt-4">
+            <div className="flex items-center gap-2">
+              <Badge variant={profileData.online ? 'success' : 'secondary'}>
+                {profileData.online ? 'Online' : 'Offline'}
+              </Badge>
+              <Badge variant={profileData.is_verified ? 'success' : 'warning'}>
+                {profileData.is_verified ? 'Verified' : 'Pending Verification'}
+              </Badge>
             </div>
           </div>
-        </div>
-      </CardContent>
-    </Card>
+        </CardContent>
+      </Card>
+    </div>
   );
 };
 
