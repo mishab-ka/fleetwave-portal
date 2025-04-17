@@ -291,12 +291,31 @@ const AdminReports = () => {
     (sum, report) => sum + report.rent_paid_amount,
     0
   );
+  function calculateRent(trips) {
+    if (trips >= 11) {
+      return 485;
+    } else if (trips >= 10) {
+      return 585;
+    } else if (trips >= 8) {
+      return 665;
+    } else if (trips >= 5) {
+      return 695;
+    } else {
+      return 765;
+    }
+  }
 
   const earnings = filteredReports.reduce((total, report) => {
     return (
-      total + (report.total_trips === 0 ? 0 : calculateFleetRent(report.total_trips))
+      total + (report.total_trips === 0 ? 0 : calculateRent(report.total_trips))
     );
   }, 0);
+
+  // const earnings = filteredReports.reduce((total, report) => {
+  //   return (
+  //     total + (report.total_trips === 0 ? 0 : calculateFleetRent(report.total_trips))
+  //   );
+  // }, 0);
 
   const cashInUber = totalEarnings - totalCashCollect;
   const cashInHand = totalRentPaid;
