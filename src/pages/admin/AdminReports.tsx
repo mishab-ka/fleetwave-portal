@@ -1,4 +1,3 @@
-
 import React, { useEffect, useState } from "react";
 import AdminLayout from "@/components/AdminLayout";
 import { supabase } from "@/integrations/supabase/client";
@@ -100,7 +99,6 @@ const AdminReports = () => {
           return;
         }
 
-        // Transform data to match the expected VehicleInfo type
         if (data) {
           setVehicles(
             data.map((v) => ({
@@ -128,7 +126,6 @@ const AdminReports = () => {
 
       if (error) throw error;
 
-      // Ensure data conforms to Report interface
       if (data) {
         setReports(data as Report[]);
       }
@@ -311,12 +308,6 @@ const AdminReports = () => {
     );
   }, 0);
 
-  // const earnings = filteredReports.reduce((total, report) => {
-  //   return (
-  //     total + (report.total_trips === 0 ? 0 : calculateFleetRent(report.total_trips))
-  //   );
-  // }, 0);
-
   const cashInUber = totalEarnings - totalCashCollect;
   const cashInHand = totalRentPaid;
 
@@ -492,360 +483,350 @@ const AdminReports = () => {
                 <h2 className="text-xl font-semibold text-gray-800">
                   Recent Reports
                 </h2>
-                <span className="text-sm text-muted-foreground">
+                <span className="text-sm text-muted-foreground hidden sm:inline-block">
                   {reports.length} total reports
                 </span>
               </div>
-              <div className="h-[600px] overflow-y-auto">
-                <Table>
-                  <TableHeader className="text-md">
-                    <TableRow>
-                      <TableHead>id</TableHead>
-                      <TableHead>Date&time</TableHead>
-                      <TableHead>Driver</TableHead>
-                      <TableHead>Vehicle</TableHead>
-                      <TableHead>Trips</TableHead>
-                      <TableHead>Earnings</TableHead>
-                      <TableHead>Cash Collected</TableHead>
-                      <TableHead>Rent Paid</TableHead>
-                      <TableHead>Screenshots</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead className="text-right">Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filteredReports.length === 0 ? (
+              <div className="min-w-full overflow-hidden">
+                <div className="max-h-[600px] overflow-y-auto">
+                  <Table>
+                    <TableHeader className="bg-muted/50 sticky top-0">
                       <TableRow>
-                        <TableCell colSpan={11} className="text-center py-8">
-                          No reports found
-                        </TableCell>
+                        <TableHead className="w-[50px]">ID</TableHead>
+                        <TableHead className="min-w-[150px]">Date&time</TableHead>
+                        <TableHead className="min-w-[120px]">Driver</TableHead>
+                        <TableHead className="min-w-[120px]">Vehicle</TableHead>
+                        <TableHead className="min-w-[80px]">Trips</TableHead>
+                        <TableHead className="min-w-[100px]">Earnings</TableHead>
+                        <TableHead className="min-w-[120px]">Cash Collected</TableHead>
+                        <TableHead className="min-w-[100px]">Rent Paid</TableHead>
+                        <TableHead className="min-w-[100px]">Screenshots</TableHead>
+                        <TableHead className="min-w-[100px]">Status</TableHead>
+                        <TableHead className="text-right min-w-[120px]">Actions</TableHead>
                       </TableRow>
-                    ) : (
-                      filteredReports.map((report, index) => (
-                        <TableRow key={report.id} className="text-sm">
-                          <TableCell>{index + 1}</TableCell>
-                          <TableCell>
-                            {format(
-                              new Date(report.rent_date),
-                              "d MMMM yyyy, hh:mm a"
-                            )}
-                          </TableCell>
-                          <TableCell className="font-medium">
-                            {report.driver_name}
-                          </TableCell>
-                          <TableCell>{report.vehicle_number}</TableCell>
-                          <TableCell>{report.total_trips}</TableCell>
-                          <TableCell>
-                            ₹{report.total_earnings.toLocaleString()}
-                          </TableCell>
-                          <TableCell>
-                            ₹{report.total_cashcollect.toLocaleString()}
-                          </TableCell>
-                          <TableCell
-                            className={`px-4 py-2 text-xs font-medium ${
-                              report.rent_paid_amount < 0
-                                ? "text-red-500"
-                                : "text-green-400"
-                            }`}
-                          >
-                            ₹{report.rent_paid_amount.toLocaleString()}
-                          </TableCell>
-                          <TableCell>
-                            <div className="flex space-x-1">
-                              {report.uber_screenshot ? (
-                                <CheckCircle className="h-4 w-4 text-green-500" />
-                              ) : (
-                                <XCircle className="h-4 w-4 text-red-500" />
-                              )}
-                              {report.payment_screenshot ? (
-                                <CheckCircle className="h-4 w-4 text-green-500" />
-                              ) : (
-                                <XCircle className="h-4 w-4 text-red-500" />
-                              )}
-                            </div>
-                          </TableCell>
-                          <TableCell>{getStatusBadge(report.status)}</TableCell>
-                          <TableCell className="text-right">
-                            <div className="flex justify-end space-x-1">
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="text-green-600"
-                                onClick={() =>
-                                  updateReportStatus(report.id, "approved")
-                                }
-                                disabled={report.status === "approved"}
-                              >
-                                <CheckCircle className="h-4 w-4" />
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="text-red-600"
-                                onClick={() =>
-                                  updateReportStatus(report.id, "rejected")
-                                }
-                                disabled={report.status === "rejected"}
-                              >
-                                <XCircle className="h-4 w-4" />
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => {
-                                  setSelectedReport(report);
-                                  setIsModalOpen(true);
-                                }}
-                              >
-                                <Eye className="h-4 w-4" />
-                              </Button>
-                            </div>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredReports.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={11} className="text-center py-8">
+                            No reports found
                           </TableCell>
                         </TableRow>
-                      ))
-                    )}
-                  </TableBody>
-                </Table>
+                      ) : (
+                        filteredReports.map((report, index) => (
+                          <TableRow key={report.id} className="text-sm">
+                            <TableCell className="font-medium">{index + 1}</TableCell>
+                            <TableCell className="whitespace-nowrap">
+                              {format(new Date(report.rent_date), "d MMM yyyy, hh:mm a")}
+                            </TableCell>
+                            <TableCell className="font-medium">
+                              {report.driver_name}
+                            </TableCell>
+                            <TableCell>{report.vehicle_number}</TableCell>
+                            <TableCell>{report.total_trips}</TableCell>
+                            <TableCell>₹{report.total_earnings.toLocaleString()}</TableCell>
+                            <TableCell>₹{report.total_cashcollect.toLocaleString()}</TableCell>
+                            <TableCell
+                              className={`whitespace-nowrap ${
+                                report.rent_paid_amount < 0
+                                  ? "text-red-500"
+                                  : "text-green-500"
+                              }`}
+                            >
+                              ₹{report.rent_paid_amount.toLocaleString()}
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex space-x-1">
+                                {report.uber_screenshot ? (
+                                  <CheckCircle className="h-4 w-4 text-green-500" />
+                                ) : (
+                                  <XCircle className="h-4 w-4 text-red-500" />
+                                )}
+                                {report.payment_screenshot ? (
+                                  <CheckCircle className="h-4 w-4 text-green-500" />
+                                ) : (
+                                  <XCircle className="h-4 w-4 text-red-500" />
+                                )}
+                              </div>
+                            </TableCell>
+                            <TableCell>{getStatusBadge(report.status)}</TableCell>
+                            <TableCell>
+                              <div className="flex justify-end space-x-1">
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="text-green-600 hidden sm:inline-flex"
+                                  onClick={() =>
+                                    updateReportStatus(report.id, "approved")
+                                  }
+                                  disabled={report.status === "approved"}
+                                >
+                                  <CheckCircle className="h-4 w-4" />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="text-red-600 hidden sm:inline-flex"
+                                  onClick={() =>
+                                    updateReportStatus(report.id, "rejected")
+                                  }
+                                  disabled={report.status === "rejected"}
+                                >
+                                  <XCircle className="h-4 w-4" />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => {
+                                    setSelectedReport(report);
+                                    setIsModalOpen(true);
+                                  }}
+                                >
+                                  <Eye className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        ))
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
               </div>
-              {selectedReport && (
-                <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
-                  <DialogContent className="border-border/50 max-w-2xl">
-                    <DialogHeader>
-                      <DialogTitle>Report Details</DialogTitle>
-                    </DialogHeader>
-                    <div className="space-y-6">
-                      <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-2">
-                          <label>Vehicle Number</label>
-                          <Select
-                            value={selectedReport.vehicle_number}
-                            onValueChange={(value) =>
-                              setSelectedReport((prev) => ({
-                                ...prev!,
-                                vehicle_number: value,
-                              }))
-                            }
-                          >
-                            <SelectTrigger>
-                              <SelectValue placeholder="Select vehicle" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <>
-                                <SelectItem key="none" value="Not Assined">
-                                  No vehicle
-                                </SelectItem>
-                                {vehicles.map((vehicle) => (
-                                  <SelectItem
-                                    key={vehicle.vehicle_number}
-                                    value={vehicle.vehicle_number}
-                                  >
-                                    {vehicle.vehicle_number}
-                                  </SelectItem>
-                                ))}
-                              </>
-                            </SelectContent>
-                          </Select>
-                        </div>
-                        <div className="space-y-2">
-                          <label>Driver Name</label>
-                          <Input
-                            value={selectedReport.driver_name}
-                            onChange={(e) =>
-                              setSelectedReport((prev) => ({
-                                ...prev!,
-                                driver_name: e.target.value,
-                              }))
-                            }
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <label>Rent Date</label>
-                          <Input
-                            type="date"
-                            value={
-                              selectedReport.rent_date?.split("T")[0] || ""
-                            }
-                            onChange={(e) =>
-                              setSelectedReport((prev) => ({
-                                ...prev!,
-                                rent_date: new Date(
-                                  e.target.value
-                                ).toISOString(),
-                              }))
-                            }
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <label>Total Earnings</label>
-                          <Input
-                            type="number"
-                            value={selectedReport.total_earnings}
-                            onChange={(e) =>
-                              setSelectedReport((prev) => ({
-                                ...prev!,
-                                total_earnings: Number(e.target.value),
-                              }))
-                            }
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <label>Cash Collected</label>
-                          <Input
-                            type="number"
-                            value={selectedReport.total_cashcollect}
-                            onChange={(e) =>
-                              setSelectedReport((prev) => ({
-                                ...prev!,
-                                total_cashcollect: Number(e.target.value),
-                              }))
-                            }
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <label>Total Trips</label>
-                          <Input
-                            type="number"
-                            value={selectedReport.total_trips}
-                            onChange={(e) =>
-                              setSelectedReport((prev) => ({
-                                ...prev!,
-                                total_trips: Number(e.target.value),
-                              }))
-                            }
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <label>Rent Paid Amount</label>
-                          <Input
-                            type="number"
-                            value={selectedReport.rent_paid_amount}
-                            onChange={(e) =>
-                              setSelectedReport((prev) => ({
-                                ...prev!,
-                                rent_paid_amount: Number(e.target.value),
-                              }))
-                            }
-                          />
-                        </div>
-                      </div>
-
-                      <div className="space-y-4">
-                        <div className="flex space-x-2">
-                          <h3 className="text-sm font-medium text-muted-foreground mb-2">
-                            Uber Screenshot
-                          </h3>
-                          <a
-                            href={`https://upnhxshwzpbcfmumclwz.supabase.co/storage/v1/object/public/uploads/${selectedReport.uber_screenshot}`}
-                            className="text-blue-600"
-                            target="_blank"
-                            rel="noopener noreferrer"
-                          >
-                            View Image
-                          </a>
-                        </div>
-                        <div className="flex space-x-2">
-                          <h3 className="text-sm font-medium text-muted-foreground mb-2">
-                            Rent Screenshot
-                          </h3>
-                          <a
-                            href={`https://upnhxshwzpbcfmumclwz.supabase.co/storage/v1/object/public/uploads/${selectedReport.payment_screenshot}`}
-                            className="text-blue-600"
-                            target="_blank"
-                            rel="noopener noreferrer"
-                          >
-                            view Image
-                          </a>
-                        </div>
-                      </div>
-
-                      <div className="flex justify-between items-center">
-                        <div className="flex gap-4">
-                          <Button
-                            variant="destructive"
-                            onClick={async () => {
-                              await supabase
-                                .from("fleet_reports")
-                                .delete()
-                                .eq("id", selectedReport.id);
-                              setIsModalOpen(false);
-                              setReports((prev) =>
-                                prev.filter(
-                                  (report) => report.id !== selectedReport.id
-                                )
-                              );
-                            }}
-                          >
-                            Delete Report
-                          </Button>
-
-                          <Select
-                            value={selectedReport.status || ""}
-                            onValueChange={(value) =>
-                              setSelectedReport((prev) => ({
-                                ...prev!,
-                                status: value,
-                              }))
-                            }
-                          >
-                            <SelectTrigger className="w-[180px]">
-                              <SelectValue placeholder="Verification Status" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="approved">Approved</SelectItem>
-                              <SelectItem value="leave">Leave</SelectItem>
-                              <SelectItem value="rejected">Rejected</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-
-                        <div className="flex gap-4">
-                          <Button
-                            variant="outline"
-                            onClick={() => setIsModalOpen(false)}
-                          >
-                            Cancel
-                          </Button>
-                          <Button
-                            variant="default"
-                            onClick={async () => {
-                              const { error } = await supabase
-                                .from("fleet_reports")
-                                .update({
-                                  driver_name: selectedReport.driver_name,
-                                  vehicle_number: selectedReport.vehicle_number,
-                                  total_trips: selectedReport.total_trips,
-                                  total_earnings: selectedReport.total_earnings,
-                                  rent_paid_amount: selectedReport.rent_paid_amount,
-                                  total_cashcollect: selectedReport.total_cashcollect,
-                                  rent_date: selectedReport.rent_date,
-                                  status: selectedReport.status,
-                                })
-                                .eq("id", selectedReport.id);
-
-                              if (!error) {
-                                setReports((prev) =>
-                                  prev.map((report) =>
-                                    report.id === selectedReport.id
-                                      ? selectedReport
-                                      : report
-                                  )
-                                );
-                                setIsModalOpen(false);
-                              }
-                            }}
-                          >
-                            Save Changes
-                          </Button>
-                        </div>
-                      </div>
-                    </div>
-                  </DialogContent>
-                </Dialog>
-              )}
             </div>
           )}
         </CardContent>
       </Card>
+
+      <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
+        <DialogContent className="border-border/50 max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Report Details</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-6">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <label>Vehicle Number</label>
+                <Select
+                  value={selectedReport?.vehicle_number}
+                  onValueChange={(value) =>
+                    setSelectedReport((prev) => ({
+                      ...prev!,
+                      vehicle_number: value,
+                    }))
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select vehicle" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <>
+                      <SelectItem key="none" value="Not Assined">
+                        No vehicle
+                      </SelectItem>
+                      {vehicles.map((vehicle) => (
+                        <SelectItem
+                          key={vehicle.vehicle_number}
+                          value={vehicle.vehicle_number}
+                        >
+                          {vehicle.vehicle_number}
+                        </SelectItem>
+                      ))}
+                    </>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <label>Driver Name</label>
+                <Input
+                  value={selectedReport?.driver_name}
+                  onChange={(e) =>
+                    setSelectedReport((prev) => ({
+                      ...prev!,
+                      driver_name: e.target.value,
+                    }))
+                  }
+                />
+              </div>
+              <div className="space-y-2">
+                <label>Rent Date</label>
+                <Input
+                  type="date"
+                  value={selectedReport?.rent_date?.split("T")[0] || ""}
+                  onChange={(e) =>
+                    setSelectedReport((prev) => ({
+                      ...prev!,
+                      rent_date: new Date(e.target.value).toISOString(),
+                    }))
+                  }
+                />
+              </div>
+              <div className="space-y-2">
+                <label>Total Earnings</label>
+                <Input
+                  type="number"
+                  value={selectedReport?.total_earnings}
+                  onChange={(e) =>
+                    setSelectedReport((prev) => ({
+                      ...prev!,
+                      total_earnings: Number(e.target.value),
+                    }))
+                  }
+                />
+              </div>
+              <div className="space-y-2">
+                <label>Cash Collected</label>
+                <Input
+                  type="number"
+                  value={selectedReport?.total_cashcollect}
+                  onChange={(e) =>
+                    setSelectedReport((prev) => ({
+                      ...prev!,
+                      total_cashcollect: Number(e.target.value),
+                    }))
+                  }
+                />
+              </div>
+              <div className="space-y-2">
+                <label>Total Trips</label>
+                <Input
+                  type="number"
+                  value={selectedReport?.total_trips}
+                  onChange={(e) =>
+                    setSelectedReport((prev) => ({
+                      ...prev!,
+                      total_trips: Number(e.target.value),
+                    }))
+                  }
+                />
+              </div>
+              <div className="space-y-2">
+                <label>Rent Paid Amount</label>
+                <Input
+                  type="number"
+                  value={selectedReport?.rent_paid_amount}
+                  onChange={(e) =>
+                    setSelectedReport((prev) => ({
+                      ...prev!,
+                      rent_paid_amount: Number(e.target.value),
+                    }))
+                  }
+                />
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <div className="flex space-x-2">
+                <h3 className="text-sm font-medium text-muted-foreground mb-2">
+                  Uber Screenshot
+                </h3>
+                <a
+                  href={`https://upnhxshwzpbcfmumclwz.supabase.co/storage/v1/object/public/uploads/${selectedReport?.uber_screenshot}`}
+                  className="text-blue-600"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  View Image
+                </a>
+              </div>
+              <div className="flex space-x-2">
+                <h3 className="text-sm font-medium text-muted-foreground mb-2">
+                  Rent Screenshot
+                </h3>
+                <a
+                  href={`https://upnhxshwzpbcfmumclwz.supabase.co/storage/v1/object/public/uploads/${selectedReport?.payment_screenshot}`}
+                  className="text-blue-600"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  view Image
+                </a>
+              </div>
+            </div>
+
+            <div className="flex justify-between items-center">
+              <div className="flex gap-4">
+                <Button
+                  variant="destructive"
+                  onClick={async () => {
+                    await supabase
+                      .from("fleet_reports")
+                      .delete()
+                      .eq("id", selectedReport?.id);
+                    setIsModalOpen(false);
+                    setReports((prev) =>
+                      prev.filter(
+                        (report) => report.id !== selectedReport?.id
+                      )
+                    );
+                  }}
+                >
+                  Delete Report
+                </Button>
+
+                <Select
+                  value={selectedReport?.status || ""}
+                  onValueChange={(value) =>
+                    setSelectedReport((prev) => ({
+                      ...prev!,
+                      status: value,
+                    }))
+                  }
+                >
+                  <SelectTrigger className="w-[180px]">
+                    <SelectValue placeholder="Verification Status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="approved">Approved</SelectItem>
+                    <SelectItem value="leave">Leave</SelectItem>
+                    <SelectItem value="rejected">Rejected</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="flex gap-4">
+                <Button
+                  variant="outline"
+                  onClick={() => setIsModalOpen(false)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  variant="default"
+                  onClick={async () => {
+                    const { error } = await supabase
+                      .from("fleet_reports")
+                      .update({
+                        driver_name: selectedReport?.driver_name,
+                        vehicle_number: selectedReport?.vehicle_number,
+                        total_trips: selectedReport?.total_trips,
+                        total_earnings: selectedReport?.total_earnings,
+                        rent_paid_amount: selectedReport?.rent_paid_amount,
+                        total_cashcollect: selectedReport?.total_cashcollect,
+                        rent_date: selectedReport?.rent_date,
+                        status: selectedReport?.status,
+                      })
+                      .eq("id", selectedReport?.id);
+
+                    if (!error) {
+                      setReports((prev) =>
+                        prev.map((report) =>
+                          report.id === selectedReport?.id
+                            ? selectedReport
+                            : report
+                        )
+                      );
+                      setIsModalOpen(false);
+                    }
+                  }}
+                >
+                  Save Changes
+                </Button>
+              </div>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </AdminLayout>
   );
 };
