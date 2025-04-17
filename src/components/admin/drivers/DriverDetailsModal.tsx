@@ -6,9 +6,15 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
-import { format } from 'date-fns';
+import { format, isValid, parseISO } from 'date-fns';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Separator } from "@/components/ui/separator";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { CheckCircle, XCircle, Mail, Phone, Calendar, FileText, Car, IndianRupee } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
 
 interface DriverDetailsModalProps {
   isOpen: boolean;
@@ -37,6 +43,7 @@ export const DriverDetailsModal = ({ isOpen, onClose, driverId, onDriverUpdate }
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
   const [deposit, setDeposit] = useState<string>('0');
   const [totalTrips, setTotalTrips] = useState<string>('0');
+  const [currentTab, setCurrentTab] = useState<string>('view');
 
   useEffect(() => {
     if (driverId && isOpen) {
@@ -294,6 +301,13 @@ export const DriverDetailsModal = ({ isOpen, onClose, driverId, onDriverUpdate }
     }
   };
 
+  // Format joining date if available
+  const formattedJoiningDate = driver?.joining_date ? 
+    (isValid(parseISO(driver.joining_date)) ? 
+      format(parseISO(driver.joining_date), 'PPP') : 
+      'Invalid date') : 
+    'Not available';
+
   if (loading) {
     return (
       <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
@@ -308,102 +322,223 @@ export const DriverDetailsModal = ({ isOpen, onClose, driverId, onDriverUpdate }
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Edit Driver</DialogTitle>
+          <DialogTitle>Driver Details</DialogTitle>
           <DialogDescription>
-            Make changes to driver {driver?.name}
+            View and manage driver information
           </DialogDescription>
         </DialogHeader>
         
-        <div className="grid gap-4 py-4">
-          <div className="flex flex-col gap-1">
-            <h3 className="text-sm font-medium">Driver Status</h3>
-            <div className="flex items-center space-x-2">
-              <Switch 
-                id="online-status" 
-                checked={isOnline} 
-                onCheckedChange={handleOnlineToggle}
-                disabled={isProcessing}
-              />
-              <Label htmlFor="online-status">
-                {isOnline ? 'Online' : 'Offline'}
-              </Label>
-              
-              {!isOnline && driver?.offline_from_date && (
-                <span className="text-xs text-muted-foreground">
-                  (Offline since {format(new Date(driver.offline_from_date), 'PP')})
-                </span>
-              )}
-            </div>
-          </div>
+        <Tabs defaultValue="view" value={currentTab} onValueChange={setCurrentTab}>
+          <TabsList className="grid w-full grid-cols-2">
+            <TabsTrigger value="view">View Details</TabsTrigger>
+            <TabsTrigger value="edit">Edit Details</TabsTrigger>
+          </TabsList>
           
-          <div className="flex flex-col gap-1">
-            <Label htmlFor="shift">Shift</Label>
-            <Select 
-              value={selectedShift} 
-              onValueChange={handleShiftChange}
-              disabled={isProcessing}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Select shift" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="morning">Morning</SelectItem>
-                <SelectItem value="night">Night</SelectItem>
-                <SelectItem value="24hr">24 Hours</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
+          <TabsContent value="view">
+            <Card>
+              <CardHeader className="pb-2">
+                <div className="flex items-center space-x-4">
+                  <Avatar className="h-12 w-12">
+                    <AvatarImage src={driver?.profile_photo || undefined} />
+                    <AvatarFallback>{driver?.name?.charAt(0) || 'U'}</AvatarFallback>
+                  </Avatar>
+                  <div>
+                    <CardTitle>{driver?.name}</CardTitle>
+                    <CardDescription>Driver ID: {driver?.driver_id}</CardDescription>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-2 gap-2">
+                  <Badge variant={driver?.online ? 'success' : 'destructive'}>
+                    {driver?.online ? 'Online' : 'Offline'}
+                  </Badge>
+                  {driver?.shift && (
+                    <Badge variant={driver?.shift === 'morning' ? 'default' : 'secondary'}>
+                      {driver?.shift}
+                    </Badge>
+                  )}
+                </div>
+
+                <Separator />
+
+                <div className="space-y-3">
+                  <div className="flex items-center space-x-2">
+                    <Mail className="h-4 w-4 text-muted-foreground" />
+                    <span className="text-sm font-medium">Email:</span>
+                    <span className="text-sm">{driver?.email_id || 'Not available'}</span>
+                  </div>
+                  
+                  <div className="flex items-center space-x-2">
+                    <Phone className="h-4 w-4 text-muted-foreground" />
+                    <span className="text-sm font-medium">Phone:</span>
+                    <span className="text-sm">{driver?.phone_number || 'Not available'}</span>
+                  </div>
+                  
+                  <div className="flex items-center space-x-2">
+                    <Calendar className="h-4 w-4 text-muted-foreground" />
+                    <span className="text-sm font-medium">Joining Date:</span>
+                    <span className="text-sm">{formattedJoiningDate}</span>
+                  </div>
+                  
+                  <div className="flex items-center space-x-2">
+                    <Car className="h-4 w-4 text-muted-foreground" />
+                    <span className="text-sm font-medium">Vehicle:</span>
+                    <span className="text-sm">{driver?.vehicle_number || 'Not assigned'}</span>
+                  </div>
+                </div>
+
+                <Separator />
+
+                <div>
+                  <h4 className="text-sm font-medium mb-2">Documents</h4>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="flex items-center space-x-2">
+                      <FileText className="h-4 w-4 text-muted-foreground" />
+                      <span className="text-sm">License:</span>
+                      {driver?.license ? 
+                        <CheckCircle className="h-4 w-4 text-green-500" /> : 
+                        <XCircle className="h-4 w-4 text-red-500" />
+                      }
+                    </div>
+                    
+                    <div className="flex items-center space-x-2">
+                      <FileText className="h-4 w-4 text-muted-foreground" />
+                      <span className="text-sm">Aadhar:</span>
+                      {driver?.aadhar ? 
+                        <CheckCircle className="h-4 w-4 text-green-500" /> : 
+                        <XCircle className="h-4 w-4 text-red-500" />
+                      }
+                    </div>
+                    
+                    <div className="flex items-center space-x-2">
+                      <FileText className="h-4 w-4 text-muted-foreground" />
+                      <span className="text-sm">PAN:</span>
+                      {driver?.pan ? 
+                        <CheckCircle className="h-4 w-4 text-green-500" /> : 
+                        <XCircle className="h-4 w-4 text-red-500" />
+                      }
+                    </div>
+                  </div>
+                </div>
+
+                <Separator />
+
+                <div className="space-y-2">
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm font-medium">Total Trips:</span>
+                    <span>{driver?.total_trip || '0'}</span>
+                  </div>
+                  
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm font-medium">Deposit Amount:</span>
+                    <div className="flex items-center">
+                      <IndianRupee className="h-3 w-3 mr-1" />
+                      <span>{driver?.deposit_amount || '0'}</span>
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
           
-          <div className="flex flex-col gap-1">
-            <Label htmlFor="vehicle">Assigned Vehicle</Label>
-            <Select 
-              value={selectedVehicle} 
-              onValueChange={handleVehicleChange}
-              disabled={isProcessing}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Select vehicle" />
-              </SelectTrigger>
-              <SelectContent>
-                {vehicles.map((vehicle) => (
-                  <SelectItem key={vehicle.id} value={vehicle.vehicle_number}>
-                    {vehicle.vehicle_number}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+          <TabsContent value="edit">
+            <Card>
+              <CardContent className="pt-6 space-y-4">
+                <div className="flex flex-col gap-1">
+                  <h3 className="text-sm font-medium">Driver Status</h3>
+                  <div className="flex items-center space-x-2">
+                    <Switch 
+                      id="online-status" 
+                      checked={isOnline} 
+                      onCheckedChange={handleOnlineToggle}
+                      disabled={isProcessing}
+                    />
+                    <Label htmlFor="online-status">
+                      {isOnline ? 'Online' : 'Offline'}
+                    </Label>
+                    
+                    {!isOnline && driver?.offline_from_date && (
+                      <span className="text-xs text-muted-foreground">
+                        (Offline since {format(new Date(driver.offline_from_date), 'PP')})
+                      </span>
+                    )}
+                  </div>
+                </div>
+                
+                <div className="flex flex-col gap-1">
+                  <Label htmlFor="shift">Shift</Label>
+                  <Select 
+                    value={selectedShift} 
+                    onValueChange={handleShiftChange}
+                    disabled={isProcessing}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select shift" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="morning">Morning</SelectItem>
+                      <SelectItem value="night">Night</SelectItem>
+                      <SelectItem value="24hr">24 Hours</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                
+                <div className="flex flex-col gap-1">
+                  <Label htmlFor="vehicle">Assigned Vehicle</Label>
+                  <Select 
+                    value={selectedVehicle} 
+                    onValueChange={handleVehicleChange}
+                    disabled={isProcessing}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select vehicle" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {vehicles.map((vehicle) => (
+                        <SelectItem key={vehicle.id} value={vehicle.vehicle_number}>
+                          {vehicle.vehicle_number}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
 
-          <div className="flex flex-col gap-1">
-            <Label htmlFor="deposit">Deposit Amount</Label>
-            <Input
-              id="deposit"
-              type="number"
-              value={deposit}
-              onChange={handleDepositChange}
-              placeholder="Enter deposit amount"
-              disabled={isProcessing}
-            />
-          </div>
+                <div className="flex flex-col gap-1">
+                  <Label htmlFor="deposit">Deposit Amount</Label>
+                  <Input
+                    id="deposit"
+                    type="number"
+                    value={deposit}
+                    onChange={handleDepositChange}
+                    placeholder="Enter deposit amount"
+                    disabled={isProcessing}
+                  />
+                </div>
 
-          <div className="flex flex-col gap-1">
-            <Label htmlFor="totalTrips">Total Trips</Label>
-            <Input
-              id="totalTrips"
-              type="number"
-              value={totalTrips}
-              onChange={handleTotalTripsChange}
-              placeholder="Enter total trips"
-              disabled={isProcessing}
-            />
-          </div>
-        </div>
+                <div className="flex flex-col gap-1">
+                  <Label htmlFor="totalTrips">Total Trips</Label>
+                  <Input
+                    id="totalTrips"
+                    type="number"
+                    value={totalTrips}
+                    onChange={handleTotalTripsChange}
+                    placeholder="Enter total trips"
+                    disabled={isProcessing}
+                  />
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+        </Tabs>
         
         <DialogFooter>
-          <Button variant="outline" onClick={onClose}>Cancel</Button>
-          <Button onClick={saveChanges} disabled={isProcessing}>Save Changes</Button>
+          <Button variant="outline" onClick={onClose}>Close</Button>
+          {currentTab === 'edit' && (
+            <Button onClick={saveChanges} disabled={isProcessing}>Save Changes</Button>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>
