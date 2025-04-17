@@ -2,7 +2,6 @@
 import React from "react";
 import { useAuth } from "@/context/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
-import { format } from "date-fns";
 import {
   Table,
   TableBody,
@@ -13,7 +12,7 @@ import {
 } from "@/components/ui/table";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Trophy, Award, TrendingUp } from "lucide-react";
+import { Trophy, Award } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 
 const Leaderboard = () => {
@@ -26,10 +25,7 @@ const Leaderboard = () => {
         .from('weekly_leaderboard')
         .select(`
           *,
-          users (
-            name,
-            profile_photo
-          )
+          user:users(name)
         `)
         .order('rank', { ascending: true })
         .limit(10);
@@ -84,7 +80,7 @@ const Leaderboard = () => {
                       ) : entry.rank}
                     </TableCell>
                     <TableCell className="font-medium">
-                      {entry.users?.name || 'Unknown Driver'}
+                      {entry.user?.name || 'Unknown Driver'}
                     </TableCell>
                     <TableCell>{entry.total_trips}</TableCell>
                     <TableCell>₹{entry.total_earnings.toLocaleString()}</TableCell>

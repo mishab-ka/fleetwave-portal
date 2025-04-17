@@ -4,6 +4,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, Legend } from 'recharts';
 import { Car, Users, FileText, DollarSign, TrendingUp, TrendingDown, ArrowUpRight, ArrowDownRight, Wallet, Building2, CreditCard } from 'lucide-react';
+import Leaderboard from '@/components/Leaderboard';
 
 const AdminDashboard = () => {
   const [stats, setStats] = useState({
@@ -185,7 +186,7 @@ const AdminDashboard = () => {
         </Card>
       </div>
       
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
         <Card>
           <CardHeader>
             <CardTitle>Revenue Trends</CardTitle>
@@ -268,6 +269,10 @@ const AdminDashboard = () => {
             </ResponsiveContainer>
           </CardContent>
         </Card>
+      </div>
+
+      <div className="mb-8">
+        <Leaderboard />
       </div>
     </AdminLayout>
   );
