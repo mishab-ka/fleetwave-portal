@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -13,7 +12,6 @@ import { toast } from 'sonner';
 import { PlusSquare, ArrowUpRight, ArrowDownLeft, Calendar } from 'lucide-react';
 import { formatter } from '@/lib/utils';
 
-// Define interfaces for the transaction-related data
 interface Account {
   id: number;
   name: string;
@@ -36,8 +34,6 @@ interface Transaction {
   created_at: string;
   account_id: number;
   category_id: number;
-  accounts?: Account;
-  categories?: Category;
 }
 
 interface TransactionWithRelations extends Transaction {
@@ -69,22 +65,15 @@ const TransactionsSection = () => {
         .from('transactions')
         .select(`
           *,
-          accounts:account_id (id, name, type, balance),
-          categories:category_id (id, name, type)
+          accounts:account_id(id, name, type, balance),
+          categories:category_id(id, name, type)
         `)
         .order('date', { ascending: false });
         
       if (error) throw error;
       
       if (data) {
-        // Transform the data to match the Transaction interface
-        const formattedTransactions = data.map(item => ({
-          ...item,
-          accounts: item.accounts as Account,
-          categories: item.categories as Category
-        }));
-        
-        setTransactions(formattedTransactions);
+        setTransactions(data as TransactionWithRelations[]);
       }
     } catch (error) {
       console.error('Error fetching transactions:', error);
@@ -279,7 +268,7 @@ const TransactionsSection = () => {
                 <Label htmlFor="account_id" className="text-right">Account</Label>
                 <Select 
                   value={formData.account_id} 
-                  onValueChange={(value) => handleSelectChange('account_id', value)}
+                  onValueChange={(value) => setFormData(prev => ({ ...prev, account_id: value }))}
                 >
                   <SelectTrigger className="col-span-3">
                     <SelectValue placeholder="Select account" />
@@ -298,7 +287,7 @@ const TransactionsSection = () => {
                 <Label htmlFor="category_id" className="text-right">Category</Label>
                 <Select 
                   value={formData.category_id} 
-                  onValueChange={(value) => handleSelectChange('category_id', value)}
+                  onValueChange={(value) => setFormData(prev => ({ ...prev, category_id: value }))}
                 >
                   <SelectTrigger className="col-span-3">
                     <SelectValue placeholder="Select category" />
@@ -324,7 +313,6 @@ const TransactionsSection = () => {
         </Dialog>
       </div>
       
-      {/* Transactions Table */}
       <Card>
         <CardHeader>
           <CardTitle>Transactions List</CardTitle>
