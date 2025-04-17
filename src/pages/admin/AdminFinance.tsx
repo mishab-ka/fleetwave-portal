@@ -7,16 +7,18 @@ import TransactionsSection from '@/components/admin/finance/TransactionsSection'
 import FinanceDashboard from '@/components/admin/finance/FinanceDashboard';
 import AssetsLiabilitiesSection from '@/components/admin/finance/AssetsLiabilitiesSection';
 import ReportsSection from '@/components/admin/finance/ReportsSection';
+import CategoriesSection from '@/components/admin/finance/CategoriesSection';
 
 const AdminFinance = () => {
   return (
     <AdminLayout title="Finance Management">
       <div className="p-4">
         <Tabs defaultValue="dashboard" className="w-full">
-          <TabsList className="grid grid-cols-5 mb-8">
+          <TabsList className="grid grid-cols-6 mb-8">
             <TabsTrigger value="dashboard">Dashboard</TabsTrigger>
             <TabsTrigger value="accounts">Bank Accounts</TabsTrigger>
             <TabsTrigger value="transactions">Transactions</TabsTrigger>
+            <TabsTrigger value="categories">Categories</TabsTrigger>
             <TabsTrigger value="assets-liabilities">Assets & Liabilities</TabsTrigger>
             <TabsTrigger value="reports">Reports</TabsTrigger>
           </TabsList>
@@ -31,6 +33,10 @@ const AdminFinance = () => {
           
           <TabsContent value="transactions">
             <TransactionsSection />
+          </TabsContent>
+          
+          <TabsContent value="categories">
+            <CategoriesSection />
           </TabsContent>
           
           <TabsContent value="assets-liabilities">
