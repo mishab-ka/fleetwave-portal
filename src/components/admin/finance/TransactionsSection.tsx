@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -168,6 +167,8 @@ const TransactionsSection = () => {
         return;
       }
       
+      console.log("Adding transaction with type:", formData.type);
+      
       const { error } = await supabase
         .from('transactions')
         .insert([{
@@ -179,7 +180,10 @@ const TransactionsSection = () => {
           category_id: parseInt(formData.category_id),
         }]);
         
-      if (error) throw error;
+      if (error) {
+        console.error('Insertion error details:', error);
+        throw error;
+      }
       
       toast.success('Transaction added successfully');
       fetchTransactions();
@@ -212,6 +216,8 @@ const TransactionsSection = () => {
         return;
       }
       
+      console.log("Updating transaction with type:", formData.type);
+      
       const { error } = await supabase
         .from('transactions')
         .update({
@@ -224,7 +230,10 @@ const TransactionsSection = () => {
         })
         .eq('id', selectedTransaction.id);
         
-      if (error) throw error;
+      if (error) {
+        console.error('Update error details:', error);
+        throw error;
+      }
       
       toast.success('Transaction updated successfully');
       fetchTransactions();
@@ -386,7 +395,6 @@ const TransactionsSection = () => {
           </DialogContent>
         </Dialog>
 
-        {/* Edit Transaction Dialog */}
         <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
           <DialogContent className="sm:max-w-[500px]">
             <DialogHeader>
