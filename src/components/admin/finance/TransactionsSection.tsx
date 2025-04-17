@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -39,8 +40,13 @@ interface Transaction {
   categories?: Category;
 }
 
+interface TransactionWithRelations extends Transaction {
+  accounts: Account;
+  categories: Category;
+}
+
 const TransactionsSection = () => {
-  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [transactions, setTransactions] = useState<TransactionWithRelations[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
@@ -51,8 +57,8 @@ const TransactionsSection = () => {
     amount: 0,
     type: 'income',
     date: new Date(),
-    account_id: 0,
-    category_id: 0,
+    account_id: '',
+    category_id: '',
   });
   
   const fetchTransactions = async () => {
@@ -63,8 +69,8 @@ const TransactionsSection = () => {
         .from('transactions')
         .select(`
           *,
-          accounts:account_id(id, name, type, balance),
-          categories:category_id(id, name, type)
+          accounts:account_id (id, name, type, balance),
+          categories:category_id (id, name, type)
         `)
         .order('date', { ascending: false });
         
@@ -72,7 +78,7 @@ const TransactionsSection = () => {
       
       if (data) {
         // Transform the data to match the Transaction interface
-        const formattedTransactions: Transaction[] = data.map(item => ({
+        const formattedTransactions = data.map(item => ({
           ...item,
           accounts: item.accounts as Account,
           categories: item.categories as Category
@@ -132,7 +138,7 @@ const TransactionsSection = () => {
     }));
   };
   
-  const handleSelectChange = (name: string, value: number) => {
+  const handleSelectChange = (name: string, value: string) => {
     setFormData(prev => ({
       ...prev,
       [name]: value,
@@ -154,8 +160,8 @@ const TransactionsSection = () => {
       amount: 0,
       type: 'income',
       date: new Date(),
-      account_id: 0,
-      category_id: 0,
+      account_id: '',
+      category_id: '',
     });
   };
   
@@ -173,8 +179,8 @@ const TransactionsSection = () => {
           amount: formData.amount,
           type: formData.type,
           date: formData.date.toISOString(),
-          account_id: formData.account_id,
-          category_id: formData.category_id,
+          account_id: parseInt(formData.account_id),
+          category_id: parseInt(formData.category_id),
         }]);
         
       if (error) throw error;
@@ -262,7 +268,7 @@ const TransactionsSection = () => {
               <div className="grid grid-cols-4 items-center gap-4">
                 <Label htmlFor="date" className="text-right">Date</Label>
                 <DatePicker
-                  id="date"
+                  date={formData.date}
                   onSelect={handleDateChange}
                   defaultValue={formData.date}
                   className="col-span-3"
@@ -273,7 +279,7 @@ const TransactionsSection = () => {
                 <Label htmlFor="account_id" className="text-right">Account</Label>
                 <Select 
                   value={formData.account_id} 
-                  onValueChange={(value) => handleSelectChange('account_id', Number(value))}
+                  onValueChange={(value) => handleSelectChange('account_id', value)}
                 >
                   <SelectTrigger className="col-span-3">
                     <SelectValue placeholder="Select account" />
@@ -292,7 +298,7 @@ const TransactionsSection = () => {
                 <Label htmlFor="category_id" className="text-right">Category</Label>
                 <Select 
                   value={formData.category_id} 
-                  onValueChange={(value) => handleSelectChange('category_id', Number(value))}
+                  onValueChange={(value) => handleSelectChange('category_id', value)}
                 >
                   <SelectTrigger className="col-span-3">
                     <SelectValue placeholder="Select category" />
