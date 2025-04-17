@@ -181,13 +181,23 @@ export const RentCalendarGrid = ({
                                   ₹{rentData.earnings.toLocaleString()}
                                 </div>
                               )}
+                              {rentData?.shiftForDate && rentData.shiftForDate !== driver.shift && (
+                                <div className="text-xs mt-1">
+                                  <Badge variant="outline" className={cn("text-[10px]", getShiftBadgeColor(rentData.shiftForDate))}>
+                                    {rentData.shiftForDate}
+                                  </Badge>
+                                </div>
+                              )}
                             </div>
                           </TooltipTrigger>
                           <TooltipContent side="right" className="w-[200px]">
                             <div className="space-y-2">
                               <div className="font-bold">{driver.name}</div>
                               <div>Status: {getStatusLabel(driverStatus)}</div>
-                              <div>Shift: {driver.shift || 'N/A'}</div>
+                              <div>Current Shift: {driver.shift || 'N/A'}</div>
+                              {rentData?.shiftForDate && rentData.shiftForDate !== driver.shift && (
+                                <div>Shift on this date: {rentData.shiftForDate}</div>
+                              )}
                               {rentData?.earnings !== undefined && (
                                 <div>Earnings: ₹{rentData.earnings.toLocaleString()}</div>
                               )}
@@ -215,3 +225,4 @@ export const RentCalendarGrid = ({
     </ScrollArea>
   );
 };
+

@@ -2,18 +2,18 @@ import { format, parseISO, isAfter, addMinutes, isBefore, addDays, startOfDay } 
 
 export type RentStatus = 'paid' | 'overdue' | 'pending' | 'leave' | 'offline' | 'not_joined';
 
-export type ReportData = {
+export interface ReportData {
   date: string;
   userId: string;
   driverName: string;
-  vehicleNumber: string;
+  vehicleNumber?: string;
   status: RentStatus;
   shift: string;
-  submissionTime?: string;
+  shiftForDate?: string | null;
   earnings?: number;
   notes?: string;
-  joiningDate?: string; // Added joining date for better filtering
-};
+  joiningDate?: string;
+}
 
 // Process report data and determine status
 export const processReportData = (report: any): ReportData => {
@@ -30,6 +30,7 @@ export const processReportData = (report: any): ReportData => {
       earnings: report.total_earnings,
       notes: `Offline since ${report.users.offline_from_date ? format(parseISO(report.users.offline_from_date), 'PP') : 'unknown date'}`,
       joiningDate: report.users.joining_date,
+      shiftForDate: report.shift,
     };
   }
 
@@ -46,6 +47,7 @@ export const processReportData = (report: any): ReportData => {
       earnings: report.total_earnings,
       notes: report.remarks,
       joiningDate: report.users.joining_date,
+      shiftForDate: report.shift,
     };
   }
 
@@ -138,6 +140,7 @@ export const processReportData = (report: any): ReportData => {
     earnings: report.total_earnings,
     notes: report.remarks,
     joiningDate: report.users.joining_date,
+    shiftForDate: report.shift,
   };
 };
 

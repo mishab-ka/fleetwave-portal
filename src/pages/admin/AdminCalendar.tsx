@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { format, parseISO } from 'date-fns';
 import { supabase } from '@/integrations/supabase/client';
@@ -26,6 +27,7 @@ const AdminCalendar = () => {
   const [selectedDriverData, setSelectedDriverData] = useState<ReportData | null>(null);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
   const [rentHistory, setRentHistory] = useState<any[]>([]);
+  const [shiftHistory, setShiftHistory] = useState<any[]>([]);
   const isMobile = useIsMobile();
   
   const {
@@ -42,6 +44,7 @@ const AdminCalendar = () => {
     fetchDrivers();
     fetchCalendarData();
     fetchRentHistory();
+    fetchShiftHistory();
   }, [weekOffset, selectedDriver, selectedShift, startDate, endDate]);
 
   const fetchDrivers = async () => {
@@ -73,6 +76,23 @@ const AdminCalendar = () => {
       setRentHistory(data || []);
     } catch (error) {
       console.error('Error fetching rent history:', error);
+    }
+  };
+
+  const fetchShiftHistory = async () => {
+    try {
+      const formattedStartDate = format(startDate, 'yyyy-MM-dd');
+      const formattedEndDate = format(endDate, 'yyyy-MM-dd');
+      
+      const { data, error } = await supabase
+        .from('shift_history')
+        .select('*')
+        .lte('effective_from_date', formattedEndDate);
+        
+      if (error) throw error;
+      setShiftHistory(data || []);
+    } catch (error) {
+      console.error('Error fetching shift history:', error);
     }
   };
 
@@ -136,6 +156,9 @@ const AdminCalendar = () => {
             const existingReport = processedData.find(
               report => report.userId === driver.id && report.date === dateStr
             );
+
+            // Find the shift for this date based on shift history
+            const shiftForDate = getShiftForDate(driver.id, dateStr);
             
             // If no report exists, create a placeholder with "not_joined" status
             if (!existingReport) {
@@ -164,9 +187,13 @@ const AdminCalendar = () => {
                 vehicleNumber: driver.vehicle_number || '',
                 status,
                 shift: driver.shift || 'unknown',
+                shiftForDate,
                 notes,
                 joiningDate: driver.joining_date,
               });
+            } else if (shiftForDate && shiftForDate !== existingReport.shift) {
+              // Update existing report with shift history information
+              existingReport.shiftForDate = shiftForDate;
             }
           }
         }
@@ -179,6 +206,26 @@ const AdminCalendar = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  // Helper function to determine shift for a specific date based on shift history
+  const getShiftForDate = (userId: string, dateStr: string) => {
+    // Get all shift changes for this user
+    const userShiftHistory = shiftHistory.filter(history => history.user_id === userId);
+    
+    if (userShiftHistory.length === 0) return null;
+    
+    // Sort by effective date descending
+    userShiftHistory.sort((a, b) => 
+      new Date(b.effective_from_date).getTime() - new Date(a.effective_from_date).getTime()
+    );
+    
+    // Find the most recent shift change that occurred before or on the given date
+    const relevantShift = userShiftHistory.find(history => 
+      new Date(history.effective_from_date) <= new Date(dateStr)
+    );
+    
+    return relevantShift ? relevantShift.shift : null;
   };
 
   const handleOpenDriverDetail = (driverData: ReportData) => {
