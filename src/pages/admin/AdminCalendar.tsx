@@ -1,476 +1,245 @@
-import React, { useState, useEffect } from 'react';
-import { format, parseISO } from 'date-fns';
-import { supabase } from '@/integrations/supabase/client';
-import AdminLayout from '@/components/AdminLayout';
-import { Card, CardContent } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { CalendarHeader } from '@/components/admin/calendar/CalendarHeader';
-import { RentCalendarGrid } from '@/components/admin/calendar/RentCalendarGrid';
-import { useIsMobile } from '@/hooks/use-mobile';
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import { toast } from 'sonner';
-import { cn } from '@/lib/utils';
-import { DateRangeFilter } from '@/components/admin/calendar/DateRangeFilter';
-import { DriverDetailModal } from '@/components/admin/calendar/DriverDetailModal';
-import { useCalendarDateRange } from '@/hooks/useCalendarDateRange';
-import { processReportData, ReportData, getStatusColor, getStatusLabel, shouldIncludeDriver, RentStatus } from '@/components/admin/calendar/CalendarUtils';
+import { useEffect, useState } from "react";
+import { format, startOfWeek, addDays, addWeeks, isToday } from "date-fns";
+import { supabase } from "@/integrations/supabase/client";
+import RentCalendarTable from "./ui/RentCalanderTable";
 
-const AdminCalendar = () => {
-  const [calendarData, setCalendarData] = useState<ReportData[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [drivers, setDrivers] = useState<any[]>([]);
-  const [selectedDriver, setSelectedDriver] = useState<string>('all');
-  const [selectedShift, setSelectedShift] = useState<string>('all');
-  const [searchQuery, setSearchQuery] = useState('');
-  const [weekOffset, setWeekOffset] = useState(0);
-  const [selectedDriverData, setSelectedDriverData] = useState<ReportData | null>(null);
-  const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
-  const [rentHistory, setRentHistory] = useState<any[]>([]);
-  const [shiftHistory, setShiftHistory] = useState<any[]>([]);
-  const isMobile = useIsMobile();
-  
-  const {
-    startDate,
-    endDate,
-    preset: selectedDatePreset,
-    setDateRangeByPreset,
-    setCustomDateRange
-  } = useCalendarDateRange();
-  
-  const [currentDate, setCurrentDate] = useState(new Date());
+const RentDueCalendar = () => {
+  const [weekDays, setWeekDays] = useState<Date[]>([]);
+  const [shiftData, setShiftData] = useState<any[]>([]);
+  const [currentWeek, setCurrentWeek] = useState(new Date());
+  const [filterShift, setFilterShift] = useState("all");
+  const [loading, setLoading] = useState(false);
+
+  // Generate week days
+  useEffect(() => {
+    const start = startOfWeek(currentWeek, { weekStartsOn: 1 });
+    const days = Array.from({ length: 7 }).map((_, i) => addDays(start, i));
+    setWeekDays(days);
+  }, [currentWeek]);
+
+  // Fetch data from Supabase
+  const fetchRentData = async () => {
+    setLoading(true);
+    const { data, error } = await supabase
+      .from("rent_due_view")
+      .select("*")
+      .order("driver_id", { ascending: true });
+
+    if (!error) setShiftData(data);
+    // console.log("Fetched data:", data);
+    setLoading(false);
+  };
 
   useEffect(() => {
-    fetchDrivers();
-    fetchCalendarData();
-    fetchRentHistory();
-    fetchShiftHistory();
-  }, [weekOffset, selectedDriver, selectedShift, startDate, endDate]);
+    fetchRentData();
 
-  const fetchDrivers = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('users')
-        .select('*')
-        .order('name');
-
-      if (error) throw error;
-      setDrivers(data || []);
-    } catch (error) {
-      console.error('Error fetching drivers:', error);
-    }
-  };
-
-  const fetchRentHistory = async () => {
-    try {
-      const formattedStartDate = format(startDate, 'yyyy-MM-dd');
-      const formattedEndDate = format(endDate, 'yyyy-MM-dd');
-      
-      const { data, error } = await supabase
-        .from('rent_history')
-        .select('*')
-        .gte('rent_date', formattedStartDate)
-        .lte('rent_date', formattedEndDate);
-        
-      if (error) throw error;
-      setRentHistory(data || []);
-    } catch (error) {
-      console.error('Error fetching rent history:', error);
-    }
-  };
-
-  const fetchShiftHistory = async () => {
-    try {
-      const formattedStartDate = format(startDate, 'yyyy-MM-dd');
-      const formattedEndDate = format(endDate, 'yyyy-MM-dd');
-      
-      const { data, error } = await supabase
-        .from('shift_history')
-        .select('*')
-        .lte('effective_from_date', formattedEndDate);
-        
-      if (error) throw error;
-      setShiftHistory(data || []);
-    } catch (error) {
-      console.error('Error fetching shift history:', error);
-    }
-  };
-
-  const fetchCalendarData = async () => {
-    setLoading(true);
-    try {
-      const formattedStartDate = format(startDate, 'yyyy-MM-dd');
-      const formattedEndDate = format(endDate, 'yyyy-MM-dd');
-      
-      let query = supabase
-        .from('fleet_reports')
-        .select(`
-          id, user_id, driver_name, vehicle_number, submission_date, 
-          rent_date, shift, rent_paid_status, total_earnings, status,
-          remarks, created_at, users!inner(joining_date, online, offline_from_date)
-        `)
-        .gte('rent_date', formattedStartDate)
-        .lte('rent_date', formattedEndDate);
-      
-      if (selectedDriver !== 'all') {
-        query = query.eq('user_id', selectedDriver);
-      }
-      
-      if (selectedShift !== 'all') {
-        query = query.eq('shift', selectedShift);
-      }
-      
-      const { data: reportsData, error: reportsError } = await query;
-
-      if (reportsError) throw reportsError;
-
-      // Get all online drivers
-      const { data: onlineDrivers, error: driversError } = await supabase
-        .from('users')
-        .select('id, name, vehicle_number, joining_date, shift, online')
-        .eq('online', true);
-        
-      if (driversError) throw driversError;
-      
-      // Create an array of all dates in the date range
-      const allDates: string[] = [];
-      let currentDateInRange = new Date(formattedStartDate);
-      const endDateObj = new Date(formattedEndDate);
-      
-      while (currentDateInRange <= endDateObj) {
-        allDates.push(format(currentDateInRange, 'yyyy-MM-dd'));
-        currentDateInRange.setDate(currentDateInRange.getDate() + 1);
-      }
-      
-      // Process existing reports
-      let processedData: ReportData[] = reportsData?.map(report => processReportData(report)) || [];
-      
-      // Create "not_joined" entries for drivers without reports
-      if (onlineDrivers) {
-        for (const driver of onlineDrivers) {
-          for (const dateStr of allDates) {
-            // Skip if the driver hadn't joined yet
-            if (!shouldIncludeDriver(driver, dateStr)) continue;
-            
-            // Check if a report exists for this driver and date
-            const existingReport = processedData.find(
-              report => report.userId === driver.id && report.date === dateStr
-            );
-
-            // Find the shift for this date based on shift history
-            const shiftForDate = getShiftForDate(driver.id, dateStr);
-            
-            // If no report exists, create a placeholder with "not_joined" status
-            if (!existingReport) {
-              // Check rent history if this was marked as leave or offline
-              const historyEntry = rentHistory.find(
-                entry => entry.user_id === driver.id && entry.rent_date === dateStr
-              );
-              
-              let status: RentStatus = 'not_joined';
-              let notes = '';
-              
-              if (historyEntry) {
-                if (historyEntry.payment_status === 'leave') {
-                  status = 'leave';
-                  notes = 'Driver on leave';
-                } else if (!historyEntry.is_online) {
-                  status = 'offline';
-                  notes = 'Driver offline on this date';
-                }
-              }
-              
-              processedData.push({
-                date: dateStr,
-                userId: driver.id,
-                driverName: driver.name || 'Unknown',
-                vehicleNumber: driver.vehicle_number || '',
-                status,
-                shift: driver.shift || 'unknown',
-                shiftForDate,
-                notes,
-                joiningDate: driver.joining_date,
-              });
-            } else if (shiftForDate && shiftForDate !== existingReport.shift) {
-              // Update existing report with shift history information
-              existingReport.shiftForDate = shiftForDate;
-            }
-          }
+    // Set up realtime subscription
+    const rentDueChannel = supabase
+      .channel("rent_due_changes")
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "fleet_reports",
+        },
+        (payload) => {
+          console.log("Change received!", payload);
+          fetchRentData(); // Refresh data when changes occur
         }
-      }
-      
-      setCalendarData(processedData);
-    } catch (error) {
-      console.error('Error fetching calendar data:', error);
-      toast.error('Failed to load calendar data');
-    } finally {
-      setLoading(false);
+      )
+      .subscribe();
+
+    // Cleanup function to unsubscribe when component unmounts
+    return () => {
+      supabase.removeChannel(rentDueChannel);
+    };
+  }, [currentWeek]);
+
+  // Deadline calculation helpers
+  const getDeadline = (date: Date, shift: string) => {
+    const baseDate = new Date(date);
+    switch (shift) {
+      case "morning":
+        return new Date(baseDate.setHours(17, 0, 0)); // 5 PM deadline
+      case "night":
+        return new Date(
+          new Date(baseDate.setDate(baseDate.getDate() + 1)).setHours(5, 0, 0)
+        ); // 5 AM next day deadline
+      case "24":
+        return new Date(
+          new Date(baseDate.setDate(baseDate.getDate() + 1)).setHours(5, 0, 0)
+        ); // 5 AM next day deadline
+      default:
+        return new Date();
     }
   };
 
-  const getShiftForDate = (userId: string, dateStr: string) => {
-    const userShiftHistory = shiftHistory.filter(history => history.user_id === userId);
-    
-    if (userShiftHistory.length === 0) return null;
-    
-    userShiftHistory.sort((a, b) => 
-      new Date(b.effective_from_date).getTime() - new Date(a.effective_from_date).getTime()
+  const isOverdue = (submissionDate: string | null, deadline: Date) => {
+    if (!submissionDate) return true;
+    return new Date(submissionDate) < deadline;
+  };
+
+  // Payment status calculation
+  const getPaymentStatus = (driver: any, date: Date) => {
+    const joinedDate = new Date(driver.joining_date);
+    if (date < joinedDate) return null;
+
+    const rentRecord = shiftData.find(
+      (record) =>
+        record.user_id === driver.user_id &&
+        format(new Date(record.rent_date), "yyyy-MM-dd") ===
+          format(date, "yyyy-MM-dd")
     );
-    
-    const relevantShift = userShiftHistory.find(history => 
-      new Date(history.effective_from_date) <= new Date(dateStr)
+
+    const deadline = getDeadline(date, rentRecord?.shift || driver.shift);
+
+    if (!rentRecord) {
+      // if (driver.is_online === false) return "Offline"; // 👈 Skip offline drivers who didn't submit
+      if (driver.is_online === false) return null; // 👈 Skip offline drivers who didn't submit
+      return new Date() > deadline ? "overdue" : "not paid";
+    }
+
+    if (rentRecord.rent_status === "Leave") return "leave";
+    // if (rentRecord.is_online === false) return "Offline";
+    // console.log("Rent Record:", rentRecord.is_online);
+
+    if (rentRecord.rent_verified) return "paid";
+    if (new Date(rentRecord.rent_date) > deadline) return "overdue";
+
+    return "pending";
+  };
+
+  const uniqueDrivers = Array.from(
+    new Map(shiftData.map((d) => [d.user_id, d])).values()
+  );
+
+  // Handle payment submission
+  const handleMarkAsLeave = async (
+    driverId: string,
+    driverName: string,
+    vehicleNumber: string,
+    shift: "morning" | "night",
+    date: Date
+  ) => {
+    const formattedDate = format(date, "yyyy-MM-dd"); // Ensure correct date format
+
+    console.log(
+      "Marking as leave:",
+      driverId,
+      driverName,
+      vehicleNumber,
+      shift,
+      formattedDate
     );
-    
-    return relevantShift ? relevantShift.shift : null;
-  };
 
-  const handleOpenDriverDetail = (driverData: ReportData) => {
-    setSelectedDriverData(driverData);
-    setIsDetailModalOpen(true);
-  };
+    const { error } = await supabase.from("fleet_reports").upsert({
+      user_id: driverId,
+      driver_name: driverName,
+      vehicle_number: vehicleNumber,
+      shift: shift,
+      submission_date: formattedDate,
+      rent_date: formattedDate,
+      rent_paid_status: false, // Since the driver is on leave, rent is not paid
+      rent_verified: false, // No verification needed for leave
+      status: "leave", // ✅ Explicitly marking as leave
+    });
 
-  const handleDateRangeChange = (start: Date, end: Date) => {
-    setCustomDateRange(start, end);
-  };
-
-  const handleDatePresetChange = (preset: string) => {
-    setDateRangeByPreset(preset);
-  };
-
-  const filteredDrivers = drivers.filter(driver => {
-    if (searchQuery && !((driver.name && driver.name.toLowerCase().includes(searchQuery.toLowerCase())) ||
-      (driver.driver_id && driver.driver_id.toLowerCase().includes(searchQuery.toLowerCase())) ||
-      (driver.vehicle_number && driver.vehicle_number.toLowerCase().includes(searchQuery.toLowerCase())))) {
-      return false;
+    if (error) {
+      console.error("Error updating leave status:", error.message);
+    } else {
+      fetchRentData(); // Refresh data
     }
-    
-    if (!driver.online) {
-      return false;
-    }
-    
-    return true;
-  });
-
-  const getShiftFilteredDrivers = (shiftType: string) => {
-    return filteredDrivers.filter(driver => driver.shift === shiftType);
   };
 
-  const morningShiftDrivers = getShiftFilteredDrivers('morning');
-  const nightShiftDrivers = getShiftFilteredDrivers('night');
-  const fullDayShiftDrivers = getShiftFilteredDrivers('24hr');
+  const handleChangeShift = async (
+    driverId: string,
+    date: Date,
+    newShift: "morning" | "night" | "24"
+  ) => {
+    const formattedDate = format(date, "yyyy-MM-dd");
 
-  const morningShiftData = calendarData.filter(data => data.shift === 'morning');
-  const nightShiftData = calendarData.filter(data => data.shift === 'night');
-  const fullDayShiftData = calendarData.filter(data => data.shift === '24hr');
+    const { error } = await supabase.from("shift_history").upsert({
+      user_id: driverId,
+      shift: newShift,
+      effective_from_date: formattedDate,
+      // submission_date: formattedDate,
+    });
 
-  const statusLegend = [
-    { status: 'paid', label: 'Paid' },
-    { status: 'pending', label: 'Pending Verification' },
-    { status: 'overdue', label: 'Overdue' },
-    { status: 'leave', label: 'Leave' },
-    { status: 'not_joined', label: 'Not Paid' }
-  ];
+    if (error) {
+      console.error("Error changing shift:", error.message);
+    } else {
+      fetchRentData();
+    }
+  };
 
   return (
-    <AdminLayout title="Rent Due Calendar">
-      <div className="space-y-4">
-        <div className="flex flex-col sm:flex-row justify-between gap-4">
-          <DateRangeFilter 
-            startDate={startDate}
-            endDate={endDate}
-            onDateRangeChange={handleDateRangeChange}
-            onPresetChange={handleDatePresetChange}
-            selectedPreset={selectedDatePreset}
-          />
-          
-          {!isMobile && (
-            <Input
-              placeholder="Search drivers..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="max-w-xs"
-            />
-          )}
+    <div className="p-6 bg-white rounded-lg shadow">
+      <div className="flex flex-col md:flex-row justify-between mb-6 gap-4">
+        <h2 className="text-2xl font-bold text-gray-800">Rent Due Calendar</h2>
+
+        <div className="flex gap-4 items-center">
+          <select
+            className="bg-gray-800 text-white px-4 py-2 rounded focus:outline-none"
+            value={filterShift}
+            onChange={(e) => setFilterShift(e.target.value)}
+          >
+            <option value="all">All Shifts</option>
+            <option value="morning">Morning</option>
+            <option value="night">Night</option>
+            <option value="24">24 Hours</option>
+          </select>
+
+          <div className="flex gap-2">
+            <button
+              className="px-3 py-1 bg-gray-100 rounded hover:bg-gray-200"
+              onClick={() => setCurrentWeek((prev) => addWeeks(prev, -1))}
+            >
+              ←
+            </button>
+            <span className="px-4 py-2 bg-gray-100 rounded">
+              {format(currentWeek, "MMM yyyy")}
+            </span>
+            <button
+              className="px-3 py-1 bg-gray-100 rounded hover:bg-gray-200"
+              onClick={() => setCurrentWeek((prev) => addWeeks(prev, 1))}
+            >
+              →
+            </button>
+          </div>
         </div>
-        
-        <div className="flex flex-wrap gap-3 mb-4">
-          {statusLegend.map((item) => (
-            <div key={item.status} className="flex items-center gap-2">
-              <div className={cn(
-                "w-3 h-3 rounded",
-                getStatusColor(item.status)
-              )}></div>
-              <span className="text-xs">{item.label}</span>
-            </div>
-          ))}
-        </div>
-
-        <Tabs defaultValue="all" className="w-full">
-          <TabsList className="w-full mb-4 grid grid-cols-4">
-            <TabsTrigger value="all">All Shifts</TabsTrigger>
-            <TabsTrigger value="morning">Morning</TabsTrigger>
-            <TabsTrigger value="night">Night</TabsTrigger>
-            <TabsTrigger value="fullday">24 Hours</TabsTrigger>
-          </TabsList>
-          
-          <TabsContent value="all">
-            <Card>
-              <CardContent className="p-6">
-                {loading ? (
-                  <div className="flex items-center justify-center h-64">
-                    <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-fleet-purple"></div>
-                  </div>
-                ) : (
-                  <>
-                    <CalendarHeader
-                      currentDate={currentDate}
-                      weekOffset={weekOffset}
-                      onPreviousWeek={() => setWeekOffset(weekOffset - 1)}
-                      onNextWeek={() => setWeekOffset(weekOffset + 1)}
-                      onTodayClick={() => {
-                        setWeekOffset(0);
-                        setCurrentDate(new Date());
-                      }}
-                      selectedShift={selectedShift}
-                      onShiftChange={setSelectedShift}
-                      isMobile={isMobile}
-                    />
-                    <RentCalendarGrid
-                      currentDate={currentDate}
-                      weekOffset={weekOffset}
-                      filteredDrivers={filteredDrivers}
-                      calendarData={calendarData}
-                      isMobile={isMobile}
-                      onCellClick={handleOpenDriverDetail}
-                    />
-                  </>
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="morning">
-            <Card>
-              <CardContent className="p-6">
-                {loading ? (
-                  <div className="flex items-center justify-center h-64">
-                    <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-fleet-purple"></div>
-                  </div>
-                ) : (
-                  <>
-                    <CalendarHeader
-                      currentDate={currentDate}
-                      weekOffset={weekOffset}
-                      onPreviousWeek={() => setWeekOffset(weekOffset - 1)}
-                      onNextWeek={() => setWeekOffset(weekOffset + 1)}
-                      onTodayClick={() => {
-                        setWeekOffset(0);
-                        setCurrentDate(new Date());
-                      }}
-                      selectedShift="morning"
-                      onShiftChange={() => {}}
-                      isMobile={isMobile}
-                      hideShiftSelector
-                    />
-                    <RentCalendarGrid
-                      currentDate={currentDate}
-                      weekOffset={weekOffset}
-                      filteredDrivers={morningShiftDrivers}
-                      calendarData={morningShiftData}
-                      isMobile={isMobile}
-                      shiftType="morning"
-                      onCellClick={handleOpenDriverDetail}
-                    />
-                  </>
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="night">
-            <Card>
-              <CardContent className="p-6">
-                {loading ? (
-                  <div className="flex items-center justify-center h-64">
-                    <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-fleet-purple"></div>
-                  </div>
-                ) : (
-                  <>
-                    <CalendarHeader
-                      currentDate={currentDate}
-                      weekOffset={weekOffset}
-                      onPreviousWeek={() => setWeekOffset(weekOffset - 1)}
-                      onNextWeek={() => setWeekOffset(weekOffset + 1)}
-                      onTodayClick={() => {
-                        setWeekOffset(0);
-                        setCurrentDate(new Date());
-                      }}
-                      selectedShift="night"
-                      onShiftChange={() => {}}
-                      isMobile={isMobile}
-                      hideShiftSelector
-                    />
-                    <RentCalendarGrid
-                      currentDate={currentDate}
-                      weekOffset={weekOffset}
-                      filteredDrivers={nightShiftDrivers}
-                      calendarData={nightShiftData}
-                      isMobile={isMobile}
-                      shiftType="night"
-                      onCellClick={handleOpenDriverDetail}
-                    />
-                  </>
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="fullday">
-            <Card>
-              <CardContent className="p-6">
-                {loading ? (
-                  <div className="flex items-center justify-center h-64">
-                    <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-fleet-purple"></div>
-                  </div>
-                ) : (
-                  <>
-                    <CalendarHeader
-                      currentDate={currentDate}
-                      weekOffset={weekOffset}
-                      onPreviousWeek={() => setWeekOffset(weekOffset - 1)}
-                      onNextWeek={() => setWeekOffset(weekOffset + 1)}
-                      onTodayClick={() => {
-                        setWeekOffset(0);
-                        setCurrentDate(new Date());
-                      }}
-                      selectedShift="24hr"
-                      onShiftChange={() => {}}
-                      isMobile={isMobile}
-                      hideShiftSelector
-                    />
-                    <RentCalendarGrid
-                      currentDate={currentDate}
-                      weekOffset={weekOffset}
-                      filteredDrivers={fullDayShiftDrivers}
-                      calendarData={fullDayShiftData}
-                      isMobile={isMobile}
-                      shiftType="24hr"
-                      onCellClick={handleOpenDriverDetail}
-                    />
-                  </>
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
-        </Tabs>
-        
-        <DriverDetailModal 
-          isOpen={isDetailModalOpen}
-          onClose={() => setIsDetailModalOpen(false)}
-          driverData={selectedDriverData}
-        />
       </div>
-    </AdminLayout>
+
+      <div className="mb-4 flex gap-4">
+        <div className="flex items-center gap-2">
+          <div className="w-4 h-4 bg-red-100 rounded"></div>
+          <span className="text-sm">Overdue</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="w-4 h-4 bg-green-100 rounded"></div>
+          <span className="text-sm">Paid</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="w-4 h-4 bg-yellow-100 rounded"></div>
+          <span className="text-sm">Pending Verification</span>
+        </div>
+      </div>
+
+      {loading ? (
+        <div className="flex justify-center items-center h-64">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-800"></div>
+        </div>
+      ) : (
+        <RentCalendarTable
+          weekDays={weekDays}
+          uniqueDrivers={uniqueDrivers}
+          filterShift={filterShift}
+          getPaymentStatus={getPaymentStatus}
+          handleMarkAsLeave={handleMarkAsLeave}
+        />
+      )}
+    </div>
   );
 };
 
-export default AdminCalendar;
+export default RentDueCalendar;
