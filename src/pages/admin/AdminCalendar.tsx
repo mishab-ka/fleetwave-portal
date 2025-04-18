@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { format, startOfWeek, addDays, addWeeks, isToday } from "date-fns";
 import { supabase } from "@/integrations/supabase/client";
-import RentCalendarTable from "@/components/admin/calendar/RentCalendarTable";
+import RentCalendarTable from "@/components/admin/calendar/RentCalendarGrid";
 
 const RentDueCalendar = () => {
   const [weekDays, setWeekDays] = useState<Date[]>([]);
@@ -10,14 +10,12 @@ const RentDueCalendar = () => {
   const [filterShift, setFilterShift] = useState("all");
   const [loading, setLoading] = useState(false);
 
-  // Generate week days
   useEffect(() => {
     const start = startOfWeek(currentWeek, { weekStartsOn: 1 });
     const days = Array.from({ length: 7 }).map((_, i) => addDays(start, i));
     setWeekDays(days);
   }, [currentWeek]);
 
-  // Fetch data from Supabase
   const fetchRentData = async () => {
     setLoading(true);
     const { data, error } = await supabase
@@ -26,14 +24,12 @@ const RentDueCalendar = () => {
       .order("driver_id", { ascending: true });
 
     if (!error) setShiftData(data);
-    // console.log("Fetched data:", data);
     setLoading(false);
   };
 
   useEffect(() => {
     fetchRentData();
 
-    // Set up realtime subscription
     const rentDueChannel = supabase
       .channel("rent_due_changes")
       .on(
@@ -45,31 +41,29 @@ const RentDueCalendar = () => {
         },
         (payload) => {
           console.log("Change received!", payload);
-          fetchRentData(); // Refresh data when changes occur
+          fetchRentData();
         }
       )
       .subscribe();
 
-    // Cleanup function to unsubscribe when component unmounts
     return () => {
       supabase.removeChannel(rentDueChannel);
     };
   }, [currentWeek]);
 
-  // Deadline calculation helpers
   const getDeadline = (date: Date, shift: string) => {
     const baseDate = new Date(date);
     switch (shift) {
       case "morning":
-        return new Date(baseDate.setHours(17, 0, 0)); // 5 PM deadline
+        return new Date(baseDate.setHours(17, 0, 0));
       case "night":
         return new Date(
           new Date(baseDate.setDate(baseDate.getDate() + 1)).setHours(5, 0, 0)
-        ); // 5 AM next day deadline
+        );
       case "24":
         return new Date(
           new Date(baseDate.setDate(baseDate.getDate() + 1)).setHours(5, 0, 0)
-        ); // 5 AM next day deadline
+        );
       default:
         return new Date();
     }
@@ -80,7 +74,6 @@ const RentDueCalendar = () => {
     return new Date(submissionDate) < deadline;
   };
 
-  // Payment status calculation
   const getPaymentStatus = (driver: any, date: Date) => {
     const joinedDate = new Date(driver.joining_date);
     if (date < joinedDate) return null;
@@ -95,15 +88,11 @@ const RentDueCalendar = () => {
     const deadline = getDeadline(date, rentRecord?.shift || driver.shift);
 
     if (!rentRecord) {
-      // if (driver.is_online === false) return "Offline"; // 👈 Skip offline drivers who didn't submit
-      if (driver.is_online === false) return null; // 👈 Skip offline drivers who didn't submit
+      if (driver.is_online === false) return null;
       return new Date() > deadline ? "overdue" : "not paid";
     }
 
     if (rentRecord.rent_status === "Leave") return "leave";
-    // if (rentRecord.is_online === false) return "Offline";
-    // console.log("Rent Record:", rentRecord.is_online);
-
     if (rentRecord.rent_verified) return "paid";
     if (new Date(rentRecord.rent_date) > deadline) return "overdue";
 
@@ -114,7 +103,6 @@ const RentDueCalendar = () => {
     new Map(shiftData.map((d) => [d.user_id, d])).values()
   );
 
-  // Handle payment submission
   const handleMarkAsLeave = async (
     driverId: string,
     driverName: string,
@@ -122,7 +110,7 @@ const RentDueCalendar = () => {
     shift: "morning" | "night",
     date: Date
   ) => {
-    const formattedDate = format(date, "yyyy-MM-dd"); // Ensure correct date format
+    const formattedDate = format(date, "yyyy-MM-dd");
 
     console.log(
       "Marking as leave:",
@@ -140,15 +128,15 @@ const RentDueCalendar = () => {
       shift: shift,
       submission_date: formattedDate,
       rent_date: formattedDate,
-      rent_paid_status: false, // Since the driver is on leave, rent is not paid
-      rent_verified: false, // No verification needed for leave
-      status: "leave", // ✅ Explicitly marking as leave
+      rent_paid_status: false,
+      rent_verified: false,
+      status: "leave",
     });
 
     if (error) {
       console.error("Error updating leave status:", error.message);
     } else {
-      fetchRentData(); // Refresh data
+      fetchRentData();
     }
   };
 
@@ -163,7 +151,6 @@ const RentDueCalendar = () => {
       user_id: driverId,
       shift: newShift,
       effective_from_date: formattedDate,
-      // submission_date: formattedDate,
     });
 
     if (error) {
