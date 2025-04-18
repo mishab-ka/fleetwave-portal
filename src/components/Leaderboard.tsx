@@ -1,115 +1,152 @@
 
-import React from "react";
-import { useAuth } from "@/context/AuthContext";
-import { supabase } from "@/integrations/supabase/client";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Trophy, Award } from "lucide-react";
-import { useQuery } from "@tanstack/react-query";
+import React, { useState, useEffect } from 'react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Trophy, ArrowUp, Medal } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { supabase } from '@/integrations/supabase/client';
+import { toast } from 'sonner';
 
-const Leaderboard = () => {
-  const { user } = useAuth();
+interface LeaderboardEntry {
+  id: string;
+  rank: number;
+  score: number;
+  total_earnings: number;
+  total_trips: number;
+  on_time_payments: number;
+  user_id: string;
+  user?: {
+    name: string | null;
+    profile_photo: string | null;
+    driver_id: string | null;
+    vehicle_number: string | null;
+  } | null;
+}
 
-  const { data: leaderboard, isLoading } = useQuery({
-    queryKey: ['leaderboard'],
-    queryFn: async () => {
-      const { data, error } = await supabase
+export const Leaderboard = () => {
+  const [entries, setEntries] = useState<LeaderboardEntry[]>([]);
+  const [loading, setLoading] = useState(true);
+  
+  useEffect(() => {
+    fetchLeaderboard();
+  }, []);
+  
+  const fetchLeaderboard = async () => {
+    try {
+      setLoading(true);
+      
+      // Get the leaderboard entries
+      const { data: leaderboardData, error: leaderboardError } = await supabase
         .from('weekly_leaderboard')
-        .select(`
-          *,
-          user:users(name)
-        `)
+        .select('*')
         .order('rank', { ascending: true })
         .limit(10);
-
-      if (error) throw error;
-      return data;
-    },
-  });
-
-  if (isLoading) {
+        
+      if (leaderboardError) throw leaderboardError;
+      
+      if (leaderboardData && leaderboardData.length > 0) {
+        // Get all user IDs from leaderboard
+        const userIds = leaderboardData.map(entry => entry.user_id);
+        
+        // Fetch user details for these IDs
+        const { data: userData, error: userError } = await supabase
+          .from('users')
+          .select('id, name, profile_photo, driver_id, vehicle_number')
+          .in('id', userIds);
+          
+        if (userError) throw userError;
+        
+        // Combine leaderboard data with user data
+        const combinedData = leaderboardData.map(entry => {
+          const user = userData?.find(u => u.id === entry.user_id);
+          return { ...entry, user };
+        });
+        
+        setEntries(combinedData);
+      } else {
+        setEntries([]);
+      }
+    } catch (error) {
+      console.error('Error fetching leaderboard:', error);
+      toast.error('Failed to load leaderboard data');
+    } finally {
+      setLoading(false);
+    }
+  };
+  
+  const getRankDisplay = (rank: number) => {
+    switch(rank) {
+      case 1:
+        return <Trophy className="h-5 w-5 text-yellow-500" />;
+      case 2:
+        return <Trophy className="h-5 w-5 text-gray-400" />;
+      case 3:
+        return <Trophy className="h-5 w-5 text-amber-700" />;
+      default:
+        return <span className="text-sm font-medium">{rank}</span>;
+    }
+  };
+  
+  if (loading) {
     return (
-      <div className="flex items-center justify-center p-8">
-        <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-fleet-purple" />
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-6">
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Trophy className="h-5 w-5 text-yellow-500" />
-            Weekly Leaderboard
-          </CardTitle>
+          <CardTitle className="text-xl">Weekly Leaderboard</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="rounded-md border">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-16">Rank</TableHead>
-                  <TableHead>Driver</TableHead>
-                  <TableHead>Trips</TableHead>
-                  <TableHead>Earnings</TableHead>
-                  <TableHead>On-time Payments</TableHead>
-                  <TableHead>Score</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {leaderboard?.map((entry) => (
-                  <TableRow 
-                    key={entry.id}
-                    className={entry.user_id === user?.id ? "bg-muted/50" : ""}
-                  >
-                    <TableCell>
-                      {entry.rank === 1 ? (
-                        <Badge variant="success" className="flex items-center gap-1">
-                          <Trophy className="h-3 w-3" />
-                          1st
-                        </Badge>
-                      ) : entry.rank}
-                    </TableCell>
-                    <TableCell className="font-medium">
-                      {entry.user && typeof entry.user === 'object' && entry.user !== null && 'name' in entry.user 
-                        ? entry.user.name 
-                        : 'Unknown Driver'}
-                    </TableCell>
-                    <TableCell>{entry.total_trips}</TableCell>
-                    <TableCell>₹{entry.total_earnings.toLocaleString()}</TableCell>
-                    <TableCell>{entry.on_time_payments}</TableCell>
-                    <TableCell>
-                      <Badge variant="secondary" className="flex items-center gap-1">
-                        <Award className="h-3 w-3" />
-                        {entry.score}
-                      </Badge>
-                    </TableCell>
-                  </TableRow>
-                ))}
-
-                {(!leaderboard || leaderboard.length === 0) && (
-                  <TableRow>
-                    <TableCell colSpan={6} className="h-24 text-center">
-                      No leaderboard data available for this week
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
+          <div className="flex justify-center items-center h-40">
+            <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-fleet-purple"></div>
           </div>
         </CardContent>
       </Card>
-    </div>
+    );
+  }
+  
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-xl">Weekly Leaderboard</CardTitle>
+      </CardHeader>
+      <CardContent>
+        {entries.length === 0 ? (
+          <div className="text-center py-8 text-muted-foreground">
+            No leaderboard data available yet.
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {entries.map((entry, index) => (
+              <div key={entry.id} className="flex items-center space-x-3">
+                <div className="flex-shrink-0 w-8 flex justify-center">
+                  {getRankDisplay(entry.rank || index + 1)}
+                </div>
+                
+                <Avatar className="h-10 w-10">
+                  <AvatarImage src={entry.user?.profile_photo || undefined} />
+                  <AvatarFallback>{entry.user?.name?.charAt(0) || 'U'}</AvatarFallback>
+                </Avatar>
+                
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium truncate">{entry.user?.name || 'Unknown Driver'}</p>
+                  <p className="text-xs text-muted-foreground truncate">
+                    {entry.user?.vehicle_number || 'No Vehicle'} • {entry.user?.driver_id || 'No ID'}
+                  </p>
+                </div>
+                
+                <div className="flex flex-col items-end">
+                  <div className="flex items-center">
+                    <Medal className="h-3 w-3 mr-1 text-fleet-purple" />
+                    <span className="text-sm font-medium">{entry.score}</span>
+                  </div>
+                  <div className="flex items-center text-xs text-muted-foreground">
+                    <ArrowUp className="h-3 w-3 mr-1 text-green-500" />
+                    <span>₹{entry.total_earnings.toLocaleString()}</span>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 };
-
-export default Leaderboard;
