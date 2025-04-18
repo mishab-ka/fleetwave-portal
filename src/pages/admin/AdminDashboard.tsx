@@ -4,7 +4,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, Legend } from 'recharts';
 import { Car, Users, FileText, DollarSign, TrendingUp, TrendingDown, ArrowUpRight, ArrowDownRight, Wallet, Building2, CreditCard } from 'lucide-react';
-import Leaderboard from '@/components/Leaderboard';
+import { Leaderboard } from '@/components/Leaderboard';
 
 const AdminDashboard = () => {
   const [stats, setStats] = useState({

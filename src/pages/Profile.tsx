@@ -7,7 +7,7 @@ import Footer from "@/components/Footer";
 import UserProfile from "@/components/UserProfile";
 import DocumentsSection from "@/components/DocumentsSection";
 import PaymentHistory from "@/components/PaymentHistory";
-import Leaderboard from "@/components/Leaderboard";
+import { Leaderboard } from "@/components/Leaderboard";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { FilePlus } from "lucide-react";
