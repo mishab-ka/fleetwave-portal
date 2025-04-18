@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -6,12 +5,22 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
-import { AlertCircle, ArrowDown, ArrowUp, Plus } from 'lucide-react';
+import { AlertCircle, ArrowDown, ArrowUp, Plus, Edit, Trash } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useAuth } from '@/context/AuthContext';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog"
+import { formatter } from "@/lib/utils";
 
 interface BalanceTransactionsProps {
   driverId: string;
@@ -44,6 +53,8 @@ export const BalanceTransactions = ({
   const [transactionType, setTransactionType] = useState<TransactionType>('due');
   const [isAdding, setIsAdding] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [selectedTransaction, setSelectedTransaction] = useState<BalanceTransaction | null>(null);
+  const [isEditing, setIsEditing] = useState<boolean>(false);
 
   useEffect(() => {
     if (driverId) {
@@ -125,6 +136,77 @@ export const BalanceTransactions = ({
     }
   };
 
+  const handleDeleteTransaction = async (transactionId: string) => {
+    try {
+      const { error } = await supabase
+        .from('driver_balance_transactions')
+        .delete()
+        .eq('id', transactionId);
+
+      if (error) throw error;
+      
+      toast.success('Transaction deleted successfully');
+      fetchTransactions();
+      if (onBalanceUpdate) onBalanceUpdate();
+    } catch (error) {
+      console.error('Error deleting transaction:', error);
+      toast.error('Failed to delete transaction');
+    }
+  };
+
+  const handleEditTransaction = async (transaction: BalanceTransaction) => {
+    setAmount(transaction.amount.toString());
+    setDescription(transaction.description || '');
+    setTransactionType(transaction.type);
+    setSelectedTransaction(transaction);
+    setIsAdding(false);
+    setIsEditing(true);
+  };
+
+  const handleUpdateTransaction = async () => {
+    if (!selectedTransaction || !amount || parseFloat(amount) <= 0 || !transactionType) {
+      toast.error('Please enter a valid amount and select a transaction type');
+      return;
+    }
+
+    try {
+      setIsSubmitting(true);
+      
+      // Determine if this transaction will add or subtract from balance
+      const isPositive = ['deposit', 'refund', 'bonus'].includes(transactionType);
+      const numericAmount = parseFloat(amount);
+      
+      // Update transaction record
+      const { error: txError } = await supabase
+        .from('driver_balance_transactions')
+        .update({
+          amount: numericAmount,
+          type: transactionType,
+          description: description || undefined
+        })
+        .eq('id', selectedTransaction.id);
+
+      if (txError) throw txError;
+      
+      toast.success('Transaction updated successfully');
+
+      // Reset form
+      setAmount('');
+      setDescription('');
+      setIsEditing(false);
+      setSelectedTransaction(null);
+
+      // Refresh data
+      fetchTransactions();
+      if (onBalanceUpdate) onBalanceUpdate();
+    } catch (error) {
+      console.error('Error updating transaction:', error);
+      toast.error('Failed to update transaction');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   const getTransactionLabel = (type: TransactionType) => {
     switch (type) {
       case 'due':
@@ -141,6 +223,12 @@ export const BalanceTransactions = ({
         return type;
     }
   };
+
+  const isPositiveTransaction = (type: TransactionType) => {
+    return ['deposit', 'refund', 'bonus'].includes(type);
+  };
+
+  const filteredTransactions = transactions;
 
   return (
     <div className="space-y-6">
@@ -219,6 +307,63 @@ export const BalanceTransactions = ({
               </div>
             </div>
           )}
+
+          {isEditing && selectedTransaction && (
+            <div className="mt-4 p-4 border rounded-md space-y-4">
+              <h3 className="text-lg font-semibold">Edit Transaction</h3>
+              <div className="space-y-2">
+                <Label htmlFor="edit-amount">Amount</Label>
+                <Input
+                  id="edit-amount"
+                  type="number"
+                  placeholder="Enter amount"
+                  value={amount}
+                  onChange={e => setAmount(e.target.value)}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="edit-type">Transaction Type</Label>
+                <Select
+                  value={transactionType}
+                  onValueChange={value => setTransactionType(value as TransactionType)}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="due">Due (Driver owes)</SelectItem>
+                    <SelectItem value="deposit">Deposit</SelectItem>
+                    <SelectItem value="refund">Refund</SelectItem>
+                    <SelectItem value="penalty">Penalty</SelectItem>
+                    <SelectItem value="bonus">Bonus</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="edit-description">Description (Optional)</Label>
+                <Input
+                  id="edit-description"
+                  placeholder="Enter description"
+                  value={description}
+                  onChange={e => setDescription(e.target.value)}
+                />
+              </div>
+
+              <div className="flex justify-end space-x-2">
+                <Button variant="outline" onClick={() => {setIsEditing(false); setSelectedTransaction(null);}}>
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleUpdateTransaction}
+                  disabled={isSubmitting}
+                >
+                  {isSubmitting ? 'Updating...' : 'Update Transaction'}
+                </Button>
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
       
@@ -238,43 +383,99 @@ export const BalanceTransactions = ({
             </div>
           ) : (
             <ScrollArea className="h-[300px]">
-              <div className="space-y-4">
-                {transactions.map(transaction => {
-                  const isPositiveTransaction = ['deposit', 'refund', 'bonus'].includes(transaction.type);
-                  return (
-                    <div key={transaction.id} className="flex items-start p-3 border rounded-md">
-                      <div className={`p-2 rounded-full mr-3 ${isPositiveTransaction ? 'bg-green-100' : 'bg-red-100'}`}>
-                        {isPositiveTransaction ? (
-                          <ArrowUp className="h-5 w-5 text-green-600" />
-                        ) : (
-                          <ArrowDown className="h-5 w-5 text-red-600" />
-                        )}
-                      </div>
-                      
-                      <div className="flex-1">
-                        <div className="flex justify-between">
-                          <div className="font-medium">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Description</TableHead>
+                    <TableHead>Amount</TableHead>
+                    <TableHead>Type</TableHead>
+                    <TableHead>Date</TableHead>
+                    <TableHead>Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filteredTransactions.map((transaction) => {
+                    const isPositiveTransaction = ['deposit', 'refund', 'bonus'].includes(transaction.type);
+                    return (
+                      <TableRow key={transaction.id}>
+                        <TableCell>{transaction.description}</TableCell>
+                        <TableCell>
+                          <span className={`flex items-center font-medium ${
+                            transaction.type === 'expense' 
+                              ? 'text-red-500' 
+                              : 'text-green-500'
+                          }`}>
+                            {isPositiveTransaction ? (
+                              <ArrowUp className="mr-1 h-4 w-4 text-green-600" />
+                            ) : (
+                              <ArrowDown className="mr-1 h-4 w-4 text-red-600" />
+                            )}
+                            {formatter.format(transaction.amount)}
+                          </span>
+                        </TableCell>
+                        <TableCell>
+                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                            isPositiveTransaction 
+                              ? 'bg-green-100 text-green-800'
+                              : 'bg-red-100 text-red-800'
+                          }`}>
                             {getTransactionLabel(transaction.type)}
+                          </span>
+                        </TableCell>
+                        <TableCell>{new Date(transaction.created_at).toLocaleDateString()}</TableCell>
+                        <TableCell>
+                          <div className="flex space-x-2">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleEditTransaction(transaction)}
+                            >
+                              <Edit className="h-4 w-4" />
+                            </Button>
+                            
+                            <AlertDialog>
+                              <AlertDialogTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="text-red-500 hover:text-red-700"
+                                >
+                                  <Trash className="h-4 w-4" />
+                                </Button>
+                              </AlertDialogTrigger>
+                              <AlertDialogContent>
+                                <AlertDialogHeader>
+                                  <AlertDialogTitle>Delete Transaction?</AlertDialogTitle>
+                                  <AlertDialogDescription>
+                                    This action cannot be undone. This will permanently delete the transaction.
+                                  </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                  <AlertDialogAction
+                                    onClick={() => handleDeleteTransaction(transaction.id)}
+                                    className="bg-red-500 hover:bg-red-600"
+                                  >
+                                    Delete
+                                  </AlertDialogAction>
+                                </AlertDialogFooter>
+                              </AlertDialogContent>
+                            </AlertDialog>
                           </div>
-                          <div className={`font-bold ${isPositiveTransaction ? 'text-green-600' : 'text-red-600'}`}>
-                            {isPositiveTransaction ? '+' : '-'}₹{transaction.amount.toLocaleString()}
-                          </div>
-                        </div>
-                        
-                        {transaction.description && (
-                          <p className="text-sm text-muted-foreground mt-1">
-                            {transaction.description}
-                          </p>
-                        )}
-                        
-                        <p className="text-xs text-muted-foreground mt-2">
-                          {format(new Date(transaction.created_at), 'PPp')}
-                        </p>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                  
+                  {filteredTransactions.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={5} className="text-center text-gray-500 py-8">
+                        No transactions found
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
             </ScrollArea>
           )}
         </CardContent>
