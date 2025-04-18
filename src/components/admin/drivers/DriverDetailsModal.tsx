@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -609,11 +610,13 @@ export const DriverDetailsModal = ({ isOpen, onClose, driverId, onDriverUpdate }
             </TabsContent>
 
             <TabsContent value="balance">
-              <BalanceTransactions 
-                driverId={driverId || ''} 
-                currentBalance={driver?.pending_balance || 0}
-                onBalanceUpdate={fetchDriverDetails}
-              />
+              {driverId && (
+                <BalanceTransactions 
+                  driverId={driverId} 
+                  currentBalance={driver?.pending_balance || 0}
+                  onBalanceUpdate={fetchDriverDetails}
+                />
+              )}
             </TabsContent>
           </ScrollArea>
         </Tabs>

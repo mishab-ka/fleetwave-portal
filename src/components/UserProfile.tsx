@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
@@ -7,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Tables } from "@/integrations/supabase/types";
 import { Badge } from "@/components/ui/badge";
-import { IndianRupee, Calendar, Car, TrendingUp, Shield } from "lucide-react";
+import { IndianRupee, Calendar, Car, TrendingUp, Shield, Wallet } from "lucide-react";
 
 const UserProfile = () => {
   const { user } = useAuth();
@@ -130,6 +131,16 @@ const UserProfile = () => {
               </div>
               <p className="text-lg font-semibold">
                 {formatCurrency(profileData.deposit_amount || 0)}
+              </p>
+            </div>
+
+            <div className="p-4 bg-gray-50 rounded-lg">
+              <div className="flex items-center gap-2 text-sm font-medium text-gray-500 mb-1">
+                <Wallet className="h-4 w-4" />
+                Pending Balance
+              </div>
+              <p className="text-lg font-semibold">
+                {formatCurrency(profileData.pending_balance || 0)}
               </p>
             </div>
 

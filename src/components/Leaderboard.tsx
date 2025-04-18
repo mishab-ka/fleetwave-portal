@@ -80,7 +80,7 @@ const Leaderboard = () => {
                       ) : entry.rank}
                     </TableCell>
                     <TableCell className="font-medium">
-                      {entry.user && typeof entry.user === 'object' && 'name' in entry.user 
+                      {entry.user && typeof entry.user === 'object' && entry.user !== null && 'name' in entry.user 
                         ? entry.user.name 
                         : 'Unknown Driver'}
                     </TableCell>
