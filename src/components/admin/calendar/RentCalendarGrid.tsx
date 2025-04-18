@@ -16,6 +16,7 @@ interface RentCalendarGridProps {
   isMobile?: boolean;
   shiftType?: string;
   onCellClick?: (data: ReportData) => void;
+  mobileStartIndex?: number; // New prop to track which day to start from on mobile
 }
 
 export const RentCalendarGrid = ({
@@ -26,13 +27,19 @@ export const RentCalendarGrid = ({
   isMobile = false,
   shiftType,
   onCellClick,
+  mobileStartIndex = 0, // Default to the first day of the week
 }: RentCalendarGridProps) => {
   // Determine number of days to display based on device
   const daysToShow = isMobile ? 2 : 7;
   
-  const weekDays = Array.from({ length: daysToShow }, (_, i) => 
-    addDays(startOfWeek(addDays(currentDate, weekOffset * 7), { weekStartsOn: 1 }), i)
-  );
+  // Create the full week array
+  const weekStart = startOfWeek(addDays(currentDate, weekOffset * 7), { weekStartsOn: 1 });
+  const fullWeekDays = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
+  
+  // For mobile, only show the subset of days based on mobileStartIndex
+  const weekDays = isMobile 
+    ? fullWeekDays.slice(mobileStartIndex, mobileStartIndex + daysToShow)
+    : fullWeekDays;
 
   const getStatusForDay = (driverId: string, date: Date) => {
     return calendarData.find(

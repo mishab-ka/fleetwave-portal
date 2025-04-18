@@ -15,6 +15,9 @@ interface CalendarHeaderProps {
   onShiftChange: (value: string) => void;
   isMobile?: boolean;
   hideShiftSelector?: boolean;
+  onPreviousDay?: () => void;  // New prop for mobile day navigation
+  onNextDay?: () => void;      // New prop for mobile day navigation
+  mobileStartIndex?: number;   // New prop to track current mobile view position
 }
 
 export const CalendarHeader = ({
@@ -27,25 +30,48 @@ export const CalendarHeader = ({
   onShiftChange,
   isMobile = false,
   hideShiftSelector = false,
+  onPreviousDay,
+  onNextDay,
+  mobileStartIndex = 0,
 }: CalendarHeaderProps) => {
   const weekStart = startOfWeek(addDays(currentDate, weekOffset * 7), { weekStartsOn: 1 });
   const weekEnd = addDays(weekStart, isMobile ? 1 : 6);
+  
+  // For mobile view, calculate which days are being shown
+  const mobileViewStart = isMobile ? addDays(weekStart, mobileStartIndex) : weekStart;
+  const mobileViewEnd = isMobile ? addDays(mobileViewStart, 1) : weekEnd;
 
   return (
     <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between mb-6">
       <div className="flex items-center gap-2">
-        <Button variant="outline" size="sm" onClick={onPreviousWeek}>
-          <ChevronLeft className="h-4 w-4" />
-        </Button>
-        <Button variant="outline" size="sm" onClick={onTodayClick}>
-          Today
-        </Button>
-        <Button variant="outline" size="sm" onClick={onNextWeek}>
-          <ChevronRight className="h-4 w-4" />
-        </Button>
+        {isMobile ? (
+          <>
+            <Button variant="outline" size="sm" onClick={onPreviousDay}>
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <Button variant="outline" size="sm" onClick={onTodayClick}>
+              Today
+            </Button>
+            <Button variant="outline" size="sm" onClick={onNextDay}>
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </>
+        ) : (
+          <>
+            <Button variant="outline" size="sm" onClick={onPreviousWeek}>
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <Button variant="outline" size="sm" onClick={onTodayClick}>
+              Today
+            </Button>
+            <Button variant="outline" size="sm" onClick={onNextWeek}>
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </>
+        )}
         <span className="text-sm font-medium">
           {isMobile 
-            ? `${format(weekStart, 'd MMM')} - ${format(weekEnd, 'd MMM')}`
+            ? `${format(mobileViewStart, 'd MMM')} - ${format(mobileViewEnd, 'd MMM')}`
             : `${format(weekStart, 'MMM d')} - ${format(weekEnd, 'MMM d, yyyy')}`
           }
         </span>

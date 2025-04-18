@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { format, parseISO } from 'date-fns';
 import { supabase } from '@/integrations/supabase/client';
@@ -27,6 +28,7 @@ const AdminCalendar = () => {
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
   const [rentHistory, setRentHistory] = useState<any[]>([]);
   const [shiftHistory, setShiftHistory] = useState<any[]>([]);
+  const [mobileStartIndex, setMobileStartIndex] = useState(0); // Track which days are visible on mobile
   const isMobile = useIsMobile();
   
   const {
@@ -45,6 +47,29 @@ const AdminCalendar = () => {
     fetchRentHistory();
     fetchShiftHistory();
   }, [weekOffset, selectedDriver, selectedShift, startDate, endDate]);
+
+  // Handle navigation for mobile day-by-day view
+  const handlePreviousDay = () => {
+    if (mobileStartIndex > 0) {
+      // If we can navigate within the current week
+      setMobileStartIndex(mobileStartIndex - 1);
+    } else {
+      // If we're at the start of the week, move to the previous week
+      setWeekOffset(weekOffset - 1);
+      setMobileStartIndex(5); // Show the last 2 days of the previous week
+    }
+  };
+
+  const handleNextDay = () => {
+    if (mobileStartIndex < 5) {
+      // If we can navigate within the current week
+      setMobileStartIndex(mobileStartIndex + 1);
+    } else {
+      // If we're at the end of the week, move to the next week
+      setWeekOffset(weekOffset + 1);
+      setMobileStartIndex(0); // Show the first 2 days of the next week
+    }
+  };
 
   const fetchDrivers = async () => {
     try {
@@ -270,6 +295,13 @@ const AdminCalendar = () => {
     { status: 'not_joined', label: 'Not Paid' }
   ];
 
+  // When clicking "Today", reset the mobile view to start from the first day of the current week
+  const handleTodayClick = () => {
+    setWeekOffset(0);
+    setCurrentDate(new Date());
+    setMobileStartIndex(0);
+  };
+
   return (
     <AdminLayout title="Rent Due Calendar">
       <div className="space-y-4">
@@ -326,13 +358,13 @@ const AdminCalendar = () => {
                       weekOffset={weekOffset}
                       onPreviousWeek={() => setWeekOffset(weekOffset - 1)}
                       onNextWeek={() => setWeekOffset(weekOffset + 1)}
-                      onTodayClick={() => {
-                        setWeekOffset(0);
-                        setCurrentDate(new Date());
-                      }}
+                      onTodayClick={handleTodayClick}
                       selectedShift={selectedShift}
                       onShiftChange={setSelectedShift}
                       isMobile={isMobile}
+                      onPreviousDay={handlePreviousDay}
+                      onNextDay={handleNextDay}
+                      mobileStartIndex={mobileStartIndex}
                     />
                     <RentCalendarGrid
                       currentDate={currentDate}
@@ -341,6 +373,7 @@ const AdminCalendar = () => {
                       calendarData={calendarData}
                       isMobile={isMobile}
                       onCellClick={handleOpenDriverDetail}
+                      mobileStartIndex={mobileStartIndex}
                     />
                   </>
                 )}
@@ -362,14 +395,14 @@ const AdminCalendar = () => {
                       weekOffset={weekOffset}
                       onPreviousWeek={() => setWeekOffset(weekOffset - 1)}
                       onNextWeek={() => setWeekOffset(weekOffset + 1)}
-                      onTodayClick={() => {
-                        setWeekOffset(0);
-                        setCurrentDate(new Date());
-                      }}
+                      onTodayClick={handleTodayClick}
                       selectedShift="morning"
                       onShiftChange={() => {}}
                       isMobile={isMobile}
                       hideShiftSelector
+                      onPreviousDay={handlePreviousDay}
+                      onNextDay={handleNextDay}
+                      mobileStartIndex={mobileStartIndex}
                     />
                     <RentCalendarGrid
                       currentDate={currentDate}
@@ -379,6 +412,7 @@ const AdminCalendar = () => {
                       isMobile={isMobile}
                       shiftType="morning"
                       onCellClick={handleOpenDriverDetail}
+                      mobileStartIndex={mobileStartIndex}
                     />
                   </>
                 )}
@@ -400,14 +434,14 @@ const AdminCalendar = () => {
                       weekOffset={weekOffset}
                       onPreviousWeek={() => setWeekOffset(weekOffset - 1)}
                       onNextWeek={() => setWeekOffset(weekOffset + 1)}
-                      onTodayClick={() => {
-                        setWeekOffset(0);
-                        setCurrentDate(new Date());
-                      }}
+                      onTodayClick={handleTodayClick}
                       selectedShift="night"
                       onShiftChange={() => {}}
                       isMobile={isMobile}
                       hideShiftSelector
+                      onPreviousDay={handlePreviousDay}
+                      onNextDay={handleNextDay}
+                      mobileStartIndex={mobileStartIndex}
                     />
                     <RentCalendarGrid
                       currentDate={currentDate}
@@ -417,6 +451,7 @@ const AdminCalendar = () => {
                       isMobile={isMobile}
                       shiftType="night"
                       onCellClick={handleOpenDriverDetail}
+                      mobileStartIndex={mobileStartIndex}
                     />
                   </>
                 )}
@@ -438,14 +473,14 @@ const AdminCalendar = () => {
                       weekOffset={weekOffset}
                       onPreviousWeek={() => setWeekOffset(weekOffset - 1)}
                       onNextWeek={() => setWeekOffset(weekOffset + 1)}
-                      onTodayClick={() => {
-                        setWeekOffset(0);
-                        setCurrentDate(new Date());
-                      }}
+                      onTodayClick={handleTodayClick}
                       selectedShift="24hr"
                       onShiftChange={() => {}}
                       isMobile={isMobile}
                       hideShiftSelector
+                      onPreviousDay={handlePreviousDay}
+                      onNextDay={handleNextDay}
+                      mobileStartIndex={mobileStartIndex}
                     />
                     <RentCalendarGrid
                       currentDate={currentDate}
@@ -455,6 +490,7 @@ const AdminCalendar = () => {
                       isMobile={isMobile}
                       shiftType="24hr"
                       onCellClick={handleOpenDriverDetail}
+                      mobileStartIndex={mobileStartIndex}
                     />
                   </>
                 )}

@@ -29,7 +29,7 @@ export const DriverDetailModal = ({
   
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className={isMobile ? "sm:max-w-md" : "sm:max-w-lg"}>
+      <DialogContent className={isMobile ? "w-[95vw] max-w-md" : "max-w-lg"}>
         <DialogHeader>
           <DialogTitle>Driver Details</DialogTitle>
           <DialogDescription>
