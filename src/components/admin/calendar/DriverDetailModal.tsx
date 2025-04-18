@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { 
   Dialog, 
@@ -11,6 +12,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { ReportData } from './CalendarUtils';
+import { useIsMobile } from '@/hooks/use-mobile';
 
 interface DriverDetailModalProps {
   isOpen: boolean;
@@ -23,9 +25,11 @@ export const DriverDetailModal = ({
   onClose, 
   driverData 
 }: DriverDetailModalProps) => {
+  const isMobile = useIsMobile();
+  
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className={isMobile ? "sm:max-w-md" : "sm:max-w-lg"}>
         <DialogHeader>
           <DialogTitle>Driver Details</DialogTitle>
           <DialogDescription>
@@ -34,7 +38,7 @@ export const DriverDetailModal = ({
         </DialogHeader>
         
         {driverData ? (
-          <div className="space-y-4">
+          <div className="space-y-4 w-full">
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <div className="text-sm text-muted-foreground">Driver Name</div>
@@ -88,7 +92,7 @@ export const DriverDetailModal = ({
               </div>
             )}
             
-            <DialogFooter>
+            <DialogFooter className="mt-4">
               <Button variant="outline" onClick={onClose}>Close</Button>
             </DialogFooter>
           </div>

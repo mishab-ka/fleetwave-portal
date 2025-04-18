@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -17,6 +16,7 @@ import { CheckCircle, XCircle, Mail, Phone, Calendar, FileText, Car, IndianRupee
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { BalanceTransactions } from '@/components/admin/drivers/BalanceTransactions';
+import { useIsMobile } from '@/hooks/use-mobile';
 
 interface DriverDetailsModalProps {
   isOpen: boolean;
@@ -50,6 +50,7 @@ export const DriverDetailsModal = ({ isOpen, onClose, driverId, onDriverUpdate }
   const [phone, setPhone] = useState<string>('');
   const [joiningDate, setJoiningDate] = useState<string>('');
   const [driverId2, setDriverId2] = useState<string>('');
+  const isMobile = useIsMobile();
 
   useEffect(() => {
     if (driverId && isOpen) {
@@ -338,7 +339,7 @@ export const DriverDetailsModal = ({ isOpen, onClose, driverId, onDriverUpdate }
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className={isMobile ? "sm:max-w-lg" : "max-w-4xl"}>
         <DialogHeader>
           <DialogTitle>Driver Details</DialogTitle>
           <DialogDescription>
@@ -353,8 +354,8 @@ export const DriverDetailsModal = ({ isOpen, onClose, driverId, onDriverUpdate }
             <TabsTrigger value="balance">Balance</TabsTrigger>
           </TabsList>
           
-          <ScrollArea className="h-[calc(100vh-220px)]">
-            <TabsContent value="view">
+          <ScrollArea className="h-[calc(100vh-220px)] w-full">
+            <TabsContent value="view" className="w-full">
               <Card>
                 <CardHeader className="pb-2">
                   <div className="flex items-center space-x-4">
@@ -462,7 +463,7 @@ export const DriverDetailsModal = ({ isOpen, onClose, driverId, onDriverUpdate }
               </Card>
             </TabsContent>
             
-            <TabsContent value="edit">
+            <TabsContent value="edit" className="w-full">
               <Card>
                 <CardContent className="pt-6 space-y-4">
                   <div className="space-y-2">
@@ -609,13 +610,15 @@ export const DriverDetailsModal = ({ isOpen, onClose, driverId, onDriverUpdate }
               </Card>
             </TabsContent>
 
-            <TabsContent value="balance">
+            <TabsContent value="balance" className="w-full">
               {driverId && (
-                <BalanceTransactions 
-                  driverId={driverId} 
-                  currentBalance={driver?.pending_balance || 0}
-                  onBalanceUpdate={fetchDriverDetails}
-                />
+                <div className="w-full">
+                  <BalanceTransactions 
+                    driverId={driverId} 
+                    currentBalance={driver?.pending_balance || 0}
+                    onBalanceUpdate={fetchDriverDetails}
+                  />
+                </div>
               )}
             </TabsContent>
           </ScrollArea>

@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -9,9 +8,9 @@ import { Separator } from '@/components/ui/separator';
 import { AlertCircle, ArrowDown, ArrowUp, Plus, Edit, Trash } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
-import { format } from 'date-fns';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useAuth } from '@/context/AuthContext';
+import { useIsMobile } from '@/hooks/use-mobile';
 import {
   Table,
   TableBody,
@@ -47,6 +46,7 @@ export const BalanceTransactions = ({
   onBalanceUpdate
 }: BalanceTransactionsProps) => {
   const { user } = useAuth();
+  const isMobile = useIsMobile();
   const [transactions, setTransactions] = useState<BalanceTransaction[]>([]);
   const [loading, setLoading] = useState(false);
   const [amount, setAmount] = useState<string>('');
@@ -91,12 +91,10 @@ export const BalanceTransactions = ({
     try {
       setIsSubmitting(true);
 
-      // Determine if this transaction will add or subtract from balance
       const isPositive = ['deposit', 'refund', 'bonus'].includes(transactionType);
       const numericAmount = parseFloat(amount);
       const balanceChange = isPositive ? numericAmount : -numericAmount;
 
-      // Insert transaction record
       const { error: txError } = await supabase
         .from('driver_balance_transactions')
         .insert({
@@ -109,7 +107,6 @@ export const BalanceTransactions = ({
 
       if (txError) throw txError;
 
-      // Update user's pending balance
       const { error: userError } = await supabase
         .from('users')
         .update({
@@ -121,12 +118,10 @@ export const BalanceTransactions = ({
       
       toast.success('Transaction added successfully');
 
-      // Reset form
       setAmount('');
       setDescription('');
       setIsAdding(false);
 
-      // Refresh data
       fetchTransactions();
       if (onBalanceUpdate) onBalanceUpdate();
     } catch (error) {
@@ -173,11 +168,9 @@ export const BalanceTransactions = ({
     try {
       setIsSubmitting(true);
       
-      // Determine if this transaction will add or subtract from balance
       const isPositive = ['deposit', 'refund', 'bonus'].includes(transactionType);
       const numericAmount = parseFloat(amount);
       
-      // Update transaction record
       const { error: txError } = await supabase
         .from('driver_balance_transactions')
         .update({
@@ -191,13 +184,11 @@ export const BalanceTransactions = ({
       
       toast.success('Transaction updated successfully');
 
-      // Reset form
       setAmount('');
       setDescription('');
       setIsEditing(false);
       setSelectedTransaction(null);
 
-      // Refresh data
       fetchTransactions();
       if (onBalanceUpdate) onBalanceUpdate();
     } catch (error) {
@@ -232,8 +223,8 @@ export const BalanceTransactions = ({
   const filteredTransactions = transactions;
 
   return (
-    <div className="space-y-6">
-      <Card>
+    <div className="space-y-6 w-full">
+      <Card className="w-full">
         <CardHeader className="pb-3">
           <CardTitle className="text-lg font-medium">Current Balance</CardTitle>
           <div className="mt-1 text-2xl font-bold">
@@ -253,7 +244,6 @@ export const BalanceTransactions = ({
             Add Transaction
           </Button>
           
-          {/* Add Transaction Form - Made responsive */}
           {isAdding && (
             <div className="mt-4 p-4 border rounded-md space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -312,7 +302,6 @@ export const BalanceTransactions = ({
             </div>
           )}
 
-          {/* Edit Transaction Form - Made responsive */}
           {isEditing && selectedTransaction && (
             <div className="mt-4 p-4 border rounded-md space-y-4">
               <h3 className="text-lg font-semibold">Edit Transaction</h3>
@@ -374,8 +363,7 @@ export const BalanceTransactions = ({
         </CardContent>
       </Card>
       
-      {/* Transaction History Card - Made responsive */}
-      <Card>
+      <Card className="w-full">
         <CardHeader>
           <CardTitle className="text-lg font-medium">Transaction History</CardTitle>
         </CardHeader>
@@ -390,98 +378,101 @@ export const BalanceTransactions = ({
               <p>No transactions found</p>
             </div>
           ) : (
-            <div className="hidden md:block">
-              <ScrollArea className="h-[300px]">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Description</TableHead>
-                      <TableHead>Amount</TableHead>
-                      <TableHead>Type</TableHead>
-                      <TableHead>Date</TableHead>
-                      <TableHead>Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filteredTransactions.map((transaction) => {
-                      const isPositiveTransaction = ['deposit', 'refund', 'bonus'].includes(transaction.type);
-                      return (
-                        <TableRow key={transaction.id}>
-                          <TableCell>{transaction.description}</TableCell>
-                          <TableCell>
-                            <span className={`flex items-center font-medium ${
-                              isPositiveTransaction ? 'text-green-500' : 'text-red-500'
-                            }`}>
-                              {isPositiveTransaction ? (
-                                <ArrowUp className="mr-1 h-4 w-4 text-green-600" />
-                              ) : (
-                                <ArrowDown className="mr-1 h-4 w-4 text-red-600" />
-                              )}
-                              {formatter.format(transaction.amount)}
-                            </span>
-                          </TableCell>
-                          <TableCell>
-                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                              isPositiveTransaction 
-                                ? 'bg-green-100 text-green-800'
-                                : 'bg-red-100 text-red-800'
-                            }`}>
-                              {getTransactionLabel(transaction.type)}
-                            </span>
-                          </TableCell>
-                          <TableCell>{new Date(transaction.created_at).toLocaleDateString()}</TableCell>
-                          <TableCell>
-                            <div className="flex space-x-2">
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => handleEditTransaction(transaction)}
-                              >
-                                <Edit className="h-4 w-4" />
-                              </Button>
-                              
-                              <AlertDialog>
-                                <AlertDialogTrigger asChild>
+            <>
+              <div className="hidden md:block w-full">
+                <ScrollArea className="h-[300px] w-full">
+                  <div className="w-full">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Description</TableHead>
+                          <TableHead>Amount</TableHead>
+                          <TableHead>Type</TableHead>
+                          <TableHead>Date</TableHead>
+                          <TableHead>Actions</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {filteredTransactions.map((transaction) => {
+                          const isPositiveTransaction = ['deposit', 'refund', 'bonus'].includes(transaction.type);
+                          return (
+                            <TableRow key={transaction.id}>
+                              <TableCell>{transaction.description}</TableCell>
+                              <TableCell>
+                                <span className={`flex items-center font-medium ${
+                                  isPositiveTransaction ? 'text-green-500' : 'text-red-500'
+                                }`}>
+                                  {isPositiveTransaction ? (
+                                    <ArrowUp className="mr-1 h-4 w-4 text-green-600" />
+                                  ) : (
+                                    <ArrowDown className="mr-1 h-4 w-4 text-red-600" />
+                                  )}
+                                  {formatter.format(transaction.amount)}
+                                </span>
+                              </TableCell>
+                              <TableCell>
+                                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                                  isPositiveTransaction 
+                                    ? 'bg-green-100 text-green-800'
+                                    : 'bg-red-100 text-red-800'
+                                }`}>
+                                  {getTransactionLabel(transaction.type)}
+                                </span>
+                              </TableCell>
+                              <TableCell>{new Date(transaction.created_at).toLocaleDateString()}</TableCell>
+                              <TableCell>
+                                <div className="flex space-x-2">
                                   <Button
                                     variant="ghost"
                                     size="sm"
-                                    className="text-red-500 hover:text-red-700"
+                                    onClick={() => handleEditTransaction(transaction)}
                                   >
-                                    <Trash className="h-4 w-4" />
+                                    <Edit className="h-4 w-4" />
                                   </Button>
-                                </AlertDialogTrigger>
-                                <AlertDialogContent>
-                                  <AlertDialogHeader>
-                                    <AlertDialogTitle>Delete Transaction?</AlertDialogTitle>
-                                    <AlertDialogDescription>
-                                      This action cannot be undone. This will permanently delete the transaction.
-                                    </AlertDialogDescription>
-                                  </AlertDialogHeader>
-                                  <AlertDialogFooter>
-                                    <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                    <AlertDialogAction
-                                      onClick={() => handleDeleteTransaction(transaction.id)}
-                                      className="bg-red-500 hover:bg-red-600"
-                                    >
-                                      Delete
-                                    </AlertDialogAction>
-                                  </AlertDialogFooter>
-                                </AlertDialogContent>
-                              </AlertDialog>
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })}
-                  </TableBody>
-                </Table>
-              </ScrollArea>
-            </div>
+                                  
+                                  <AlertDialog>
+                                    <AlertDialogTrigger asChild>
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        className="text-red-500 hover:text-red-700"
+                                      >
+                                        <Trash className="h-4 w-4" />
+                                      </Button>
+                                    </AlertDialogTrigger>
+                                    <AlertDialogContent>
+                                      <AlertDialogHeader>
+                                        <AlertDialogTitle>Delete Transaction?</AlertDialogTitle>
+                                        <AlertDialogDescription>
+                                          This action cannot be undone. This will permanently delete the transaction.
+                                        </AlertDialogDescription>
+                                      </AlertDialogHeader>
+                                      <AlertDialogFooter>
+                                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                        <AlertDialogAction
+                                          onClick={() => handleDeleteTransaction(transaction.id)}
+                                          className="bg-red-500 hover:bg-red-600"
+                                        >
+                                          Delete
+                                        </AlertDialogAction>
+                                      </AlertDialogFooter>
+                                    </AlertDialogContent>
+                                  </AlertDialog>
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </ScrollArea>
+              </div>
+            </>
           )}
 
-          {/* Mobile view for transactions */}
-          <div className="md:hidden">
-            <ScrollArea className="h-[300px]">
+          <div className="md:hidden w-full">
+            <ScrollArea className="h-[300px] w-full">
               {filteredTransactions.map((transaction) => {
                 const isPositiveTransaction = ['deposit', 'refund', 'bonus'].includes(transaction.type);
                 return (
