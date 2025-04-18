@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { format, startOfWeek, addDays, addWeeks, isToday } from "date-fns";
 import { supabase } from "@/integrations/supabase/client";
-import RentCalendarTable from "./ui/RentCalanderTable";
+import RentCalendarTable from "@/components/admin/calendar/RentCalendarTable";
 
 const RentDueCalendar = () => {
   const [weekDays, setWeekDays] = useState<Date[]>([]);
