@@ -517,7 +517,7 @@ const AdminReports = () => {
                           <TableRow key={report.id} className="text-sm">
                             <TableCell className="font-medium">{index + 1}</TableCell>
                             <TableCell className="whitespace-nowrap">
-                              {format(new Date(report.rent_date), "d MMM yyyy, hh:mm a")}
+                              {format(new Date(report.submission_date), "d MMM yyyy, hh:mm a")}
                             </TableCell>
                             <TableCell className="font-medium">
                               {report.driver_name}
