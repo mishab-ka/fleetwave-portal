@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
@@ -9,25 +8,21 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Tables } from "@/integrations/supabase/types";
 import { Badge } from "@/components/ui/badge";
 import { IndianRupee, Calendar, Car, TrendingUp, Shield, Wallet } from "lucide-react";
-
 const UserProfile = () => {
-  const { user } = useAuth();
+  const {
+    user
+  } = useAuth();
   const [profileData, setProfileData] = useState<Tables<"users"> | null>(null);
   const [loading, setLoading] = useState(true);
-
   useEffect(() => {
     const fetchUserProfile = async () => {
       try {
         if (!user) return;
-        
-        const { data, error } = await supabase
-          .from("users")
-          .select("*")
-          .eq("id", user.id)
-          .maybeSingle();
-        
+        const {
+          data,
+          error
+        } = await supabase.from("users").select("*").eq("id", user.id).maybeSingle();
         if (error) throw error;
-        
         setProfileData(data);
       } catch (error) {
         console.error("Error fetching user profile:", error);
@@ -36,55 +31,36 @@ const UserProfile = () => {
         setLoading(false);
       }
     };
-
     fetchUserProfile();
   }, [user]);
-
   if (loading) {
-    return (
-      <div className="flex justify-center py-8">
+    return <div className="flex justify-center py-8">
         <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-fleet-purple"></div>
-      </div>
-    );
+      </div>;
   }
-
   if (!profileData) {
-    return (
-      <div className="text-center py-8">
+    return <div className="text-center py-8">
         <p className="text-lg text-gray-600">Profile data not found. Please complete your profile.</p>
-      </div>
-    );
+      </div>;
   }
-
   const getInitials = (name: string) => {
-    return name
-      .split(" ")
-      .map(part => part[0])
-      .join("")
-      .toUpperCase();
+    return name.split(" ").map(part => part[0]).join("").toUpperCase();
   };
-
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-IN', {
       style: 'currency',
       currency: 'INR',
-      maximumFractionDigits: 0,
+      maximumFractionDigits: 0
     }).format(amount);
   };
-
-  return (
-    <div className="space-y-6">
+  return <div className="space-y-6">
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-4">
             <Avatar className="h-16 w-16">
-              {profileData.profile_photo ? (
-                <AvatarImage src={profileData.profile_photo} alt={profileData.name} />
-              ) : (
-                <AvatarFallback className="bg-fleet-purple text-white text-xl">
+              {profileData.profile_photo ? <AvatarImage src={profileData.profile_photo} alt={profileData.name} /> : <AvatarFallback className="bg-fleet-purple text-white text-xl">
                   {getInitials(profileData.name || "")}
-                </AvatarFallback>
-              )}
+                </AvatarFallback>}
             </Avatar>
             <div>
               <h2 className="text-2xl font-bold">{profileData.name}</h2>
@@ -124,15 +100,7 @@ const UserProfile = () => {
               </p>
             </div>
 
-            <div className="p-4 bg-gray-50 rounded-lg">
-              <div className="flex items-center gap-2 text-sm font-medium text-gray-500 mb-1">
-                <Shield className="h-4 w-4" />
-                Deposit Amount
-              </div>
-              <p className="text-lg font-semibold">
-                {formatCurrency(profileData.deposit_amount || 0)}
-              </p>
-            </div>
+            
 
             <div className="p-4 bg-gray-50 rounded-lg">
               <div className="flex items-center gap-2 text-sm font-medium text-gray-500 mb-1">
@@ -175,8 +143,6 @@ const UserProfile = () => {
           </div>
         </CardContent>
       </Card>
-    </div>
-  );
+    </div>;
 };
-
 export default UserProfile;
