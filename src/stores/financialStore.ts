@@ -8,6 +8,9 @@ interface ChartOfAccount {
   code: string;
   name: string;
   type: 'Asset' | 'Liability' | 'Equity' | 'Revenue' | 'Expense';
+  description?: string;
+  parent_id?: number;
+  created_at?: string;
 }
 
 interface JournalEntry {
@@ -15,6 +18,9 @@ interface JournalEntry {
   entry_date: string;
   description: string;
   transaction_id: number;
+  reference_number?: string;
+  posted?: boolean;
+  created_at?: string;
   journal_lines: JournalEntryLine[];
 }
 
@@ -23,6 +29,7 @@ interface JournalEntryLine {
   account: ChartOfAccount;
   debit_amount: number;
   credit_amount: number;
+  description?: string;
 }
 
 // Define the store interface
@@ -44,7 +51,14 @@ export const useFinancialStore = create<FinancialStore>((set) => ({
       .select('*');
     
     if (data) {
-      set({ chartOfAccounts: data });
+      // Transform the data to match the ChartOfAccount type
+      const formattedAccounts = data.map(account => ({
+        ...account,
+        // Ensure the type is properly capitalized to match the union type
+        type: account.type.charAt(0).toUpperCase() + account.type.slice(1).toLowerCase() as 'Asset' | 'Liability' | 'Equity' | 'Revenue' | 'Expense'
+      }));
+      
+      set({ chartOfAccounts: formattedAccounts });
     }
     
     if (error) {
@@ -64,7 +78,23 @@ export const useFinancialStore = create<FinancialStore>((set) => ({
       `);
     
     if (data) {
-      set({ journalEntries: data });
+      // Transform the data to match the JournalEntry type
+      const formattedEntries = data.map(entry => ({
+        ...entry,
+        // Map journal_entry_lines to journal_lines to match our interface
+        journal_lines: entry.journal_entry_lines.map(line => ({
+          id: line.id,
+          account: {
+            ...line.account,
+            type: line.account.type.charAt(0).toUpperCase() + line.account.type.slice(1).toLowerCase() as 'Asset' | 'Liability' | 'Equity' | 'Revenue' | 'Expense'
+          },
+          debit_amount: line.debit_amount,
+          credit_amount: line.credit_amount,
+          description: line.description
+        }))
+      }));
+      
+      set({ journalEntries: formattedEntries });
     }
     
     if (error) {
