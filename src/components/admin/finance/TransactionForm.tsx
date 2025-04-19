@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { useForm } from 'react-hook-form';
+import { useForm, Controller } from 'react-hook-form';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -18,14 +18,30 @@ interface TransactionFormData {
 }
 
 export const TransactionForm: React.FC = () => {
-  const { register, handleSubmit, reset } = useForm<TransactionFormData>();
+  const { register, handleSubmit, reset, control } = useForm<TransactionFormData>({
+    defaultValues: {
+      date: new Date().toISOString().split('T')[0],
+      description: '',
+      amount: 0,
+      type: 'income'
+    }
+  });
   const { chartOfAccounts } = useFinancialStore();
 
   const onSubmit = async (data: TransactionFormData) => {
     try {
+      console.log("Submitting transaction with data:", data);
+      
       const { data: transactionData, error } = await supabase
         .from('transactions')
-        .insert(data)
+        .insert({
+          date: data.date,
+          description: data.description,
+          amount: data.amount,
+          type: data.type, // Ensure this is correctly set
+          account_id: data.account_id,
+          category_id: data.category_id
+        })
         .select();
 
       if (error) throw error;
@@ -54,15 +70,26 @@ export const TransactionForm: React.FC = () => {
         {...register('amount', { required: true, valueAsNumber: true })} 
         placeholder="Amount" 
       />
-      <Select {...register('type')}>
-        <SelectTrigger>
-          <SelectValue placeholder="Transaction Type" />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="income">Income</SelectItem>
-          <SelectItem value="expense">Expense</SelectItem>
-        </SelectContent>
-      </Select>
+      
+      <Controller
+        name="type"
+        control={control}
+        render={({ field }) => (
+          <Select 
+            onValueChange={field.onChange} 
+            defaultValue={field.value}
+          >
+            <SelectTrigger>
+              <SelectValue placeholder="Transaction Type" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="income">Income</SelectItem>
+              <SelectItem value="expense">Expense</SelectItem>
+            </SelectContent>
+          </Select>
+        )}
+      />
+      
       <Button type="submit">Add Transaction</Button>
     </form>
   );
