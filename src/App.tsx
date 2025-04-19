@@ -17,7 +17,8 @@ import AdminVehicles from "./pages/admin/AdminVehicles";
 import AdminReports from "./pages/admin/AdminReports";
 import AdminSettings from "./pages/admin/AdminSettings";
 import AdminCalendar from "./pages/admin/AdminCalendar";
-import AdminFinance from "./pages/admin/AdminFinance"; // Import the AdminFinance component
+import AdminFinance from "./pages/admin/AdminFinance";
+import AdminAccounting from "./pages/admin/AdminAccounting"; // Import the new AdminAccounting component
 
 // Create a new query client instance
 const queryClient = new QueryClient({
@@ -51,7 +52,8 @@ const App = () => (
                 <Route path="/admin/reports" element={<AdminReports />} />
                 <Route path="/admin/calendar" element={<AdminCalendar />} />
                 <Route path="/admin/settings" element={<AdminSettings />} />
-                <Route path="/admin/finance" element={<AdminFinance />} /> {/* Add the AdminFinance route */}
+                <Route path="/admin/finance" element={<AdminFinance />} />
+                <Route path="/admin/accounting" element={<AdminAccounting />} /> {/* Add the new route */}
                 
                 {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
                 <Route path="*" element={<NotFound />} />
