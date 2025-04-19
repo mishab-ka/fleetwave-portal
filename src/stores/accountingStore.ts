@@ -83,14 +83,25 @@ export const useAccountingStore = create<AccountingState>((set, get) => ({
           code: account.id.toString().padStart(4, '0'),
           name: account.name,
           description: account.name,
-          account_type: account.type,
+          account_type: account.type.toLowerCase() as 'asset' | 'liability' | 'equity' | 'revenue' | 'expense',
+          is_active: true,
+          created_at: account.created_at
+        }));
+      } else {
+        // Transform chart_of_accounts data to match AccountingAccount type
+        data = data.map(account => ({
+          id: account.id,
+          code: account.code,
+          name: account.name,
+          description: account.description || account.name,
+          account_type: account.type.toLowerCase() as 'asset' | 'liability' | 'equity' | 'revenue' | 'expense',
           is_active: true,
           created_at: account.created_at
         }));
       }
       
       set({ 
-        accounts: data as unknown as AccountingAccount[], 
+        accounts: data as AccountingAccount[], 
         loading: false 
       });
     } catch (error) {

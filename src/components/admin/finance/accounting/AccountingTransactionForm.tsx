@@ -66,13 +66,21 @@ export const AccountingTransactionForm: React.FC = () => {
   // Update account options based on transaction type
   useEffect(() => {
     if (accounts.length === 0) return;
+    
+    console.log('Accounts available:', accounts);
+    console.log('Current transaction type:', transactionType);
 
     switch(transactionType) {
       case 'income':
         // From: Revenue accounts
-        setFromAccountOptions(accounts.filter(acc => acc.account_type === 'revenue'));
+        const revenueAccounts = accounts.filter(acc => acc.account_type === 'revenue');
+        console.log('Revenue accounts:', revenueAccounts);
+        setFromAccountOptions(revenueAccounts);
+        
         // To: Asset (cash) accounts
-        setToAccountOptions(accounts.filter(acc => acc.account_type === 'asset' && acc.code.startsWith('11')));
+        const cashAccounts = accounts.filter(acc => acc.account_type === 'asset' && acc.code.startsWith('11'));
+        console.log('Cash accounts:', cashAccounts);
+        setToAccountOptions(cashAccounts);
         break;
       case 'expense':
         // From: Asset (cash) accounts
@@ -290,11 +298,17 @@ export const AccountingTransactionForm: React.FC = () => {
                   </SelectTrigger>
                 </FormControl>
                 <SelectContent>
-                  {fromAccountOptions.map(account => (
-                    <SelectItem key={account.id} value={account.id.toString()}>
-                      {account.code} - {account.name}
+                  {fromAccountOptions.length > 0 ? (
+                    fromAccountOptions.map(account => (
+                      <SelectItem key={account.id} value={account.id.toString()}>
+                        {account.code} - {account.name}
+                      </SelectItem>
+                    ))
+                  ) : (
+                    <SelectItem value="no-accounts" disabled>
+                      No applicable accounts found
                     </SelectItem>
-                  ))}
+                  )}
                 </SelectContent>
               </Select>
               <FormMessage />
@@ -319,11 +333,17 @@ export const AccountingTransactionForm: React.FC = () => {
                   </SelectTrigger>
                 </FormControl>
                 <SelectContent>
-                  {toAccountOptions.map(account => (
-                    <SelectItem key={account.id} value={account.id.toString()}>
-                      {account.code} - {account.name}
+                  {toAccountOptions.length > 0 ? (
+                    toAccountOptions.map(account => (
+                      <SelectItem key={account.id} value={account.id.toString()}>
+                        {account.code} - {account.name}
+                      </SelectItem>
+                    ))
+                  ) : (
+                    <SelectItem value="no-accounts" disabled>
+                      No applicable accounts found
                     </SelectItem>
-                  ))}
+                  )}
                 </SelectContent>
               </Select>
               <FormMessage />
