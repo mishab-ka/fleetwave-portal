@@ -9,11 +9,6 @@ import {
   BalanceSheetItem,
   CashFlowItem
 } from '@/types/accounting';
-import {
-  generateIncomeStatement,
-  generateBalanceSheet,
-  generateCashFlowStatement
-} from '@/lib/finance/financialReports';
 
 interface AccountingState {
   accounts: AccountingAccount[];
@@ -26,23 +21,18 @@ interface AccountingState {
   loading: boolean;
   error: string | null;
   
-  // Accounts
   fetchAccounts: () => Promise<void>;
   getAccountById: (id: number) => AccountingAccount | undefined;
   
-  // Periods
   fetchPeriods: () => Promise<void>;
   getCurrentPeriod: () => AccountingPeriod | undefined;
   
-  // Journal Entries
   fetchJournalEntries: () => Promise<void>;
   getJournalEntryById: (id: number) => Promise<JournalEntry | null>;
   
-  // Transactions
   fetchTransactions: () => Promise<void>;
   addTransaction: (transaction: Omit<FinancialTransaction, 'id' | 'created_at' | 'journal_entry_id'>) => Promise<number | null>;
   
-  // Financial Reports
   generateIncomeStatement: (startDate: string, endDate: string) => Promise<void>;
   generateBalanceSheet: (asOfDate: string) => Promise<void>;
   generateCashFlowStatement: (startDate: string, endDate: string) => Promise<void>;
@@ -86,7 +76,7 @@ export const useAccountingStore = create<AccountingState>((set, get) => ({
         
         if (accountsResult.error) throw accountsResult.error;
         
-        data = accountsResult.data.map(account => ({
+        const formattedAccounts = accountsResult.data.map(account => ({
           id: account.id,
           code: account.id.toString().padStart(4, '0'),
           name: account.name,
@@ -95,8 +85,10 @@ export const useAccountingStore = create<AccountingState>((set, get) => ({
           is_active: true,
           created_at: account.created_at
         }));
+        
+        set({ accounts: formattedAccounts, loading: false });
       } else {
-        data = data.map(account => ({
+        const formattedAccounts = data.map(account => ({
           id: account.id,
           code: account.code,
           name: account.name,
@@ -105,12 +97,9 @@ export const useAccountingStore = create<AccountingState>((set, get) => ({
           is_active: true,
           created_at: account.created_at
         }));
+        
+        set({ accounts: formattedAccounts, loading: false });
       }
-      
-      set({ 
-        accounts: data as AccountingAccount[], 
-        loading: false 
-      });
     } catch (error) {
       console.error('Error fetching accounts:', error);
       set({ error: (error as Error).message, loading: false });
@@ -294,14 +283,14 @@ export const useAccountingStore = create<AccountingState>((set, get) => ({
             for (const chartAccount of chartAccounts) {
               console.log('Creating account from chart account:', chartAccount);
               
-              const accountType = mapAccountTypeForDatabase(chartAccount.type);
-              console.log(`Mapped account type from "${chartAccount.type}" to "${accountType}"`);
+              const dbAccountType = mapAccountTypeForDatabase(chartAccount.type);
+              console.log(`Mapped account type from "${chartAccount.type}" to DB type "${dbAccountType}"`);
               
               const { data: newAccount, error: insertError } = await supabase
                 .from('accounts')
                 .insert({
                   name: chartAccount.name,
-                  type: accountType,
+                  type: dbAccountType,
                   balance: 0
                 })
                 .select()
