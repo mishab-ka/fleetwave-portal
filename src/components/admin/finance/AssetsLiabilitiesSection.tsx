@@ -83,20 +83,20 @@ const AssetsLiabilitiesSection = () => {
       
       const transformedAssets = (assetsData || []).map(item => ({
         id: item.id.toString(),
-        type: item.description || 'Unknown Asset',
+        type: item.description ? item.description.split(' - ')[0] : 'Unknown Asset',
         value: item.amount || 0,
-        description: item.description,
+        description: item.description ? item.description.split(' - ').slice(1).join(' - ') : '',
         purchase_date: item.date,
         created_at: item.created_at
       }));
       
       const transformedLiabilities = (liabilitiesData || []).map(item => ({
         id: item.id.toString(),
-        type: item.description || 'Loan',
+        type: item.description ? item.description.split(' - ')[0] : 'Loan',
         due_date: item.date,
         amount_due: Math.abs(item.amount) || 0,
-        status: item.description?.includes('Paid') ? 'Paid' : (item.description?.includes('Overdue') ? 'Overdue' : 'Pending'), // Extract status from description if available
-        description: item.description,
+        status: item.description?.includes('Paid') ? 'Paid' : (item.description?.includes('Overdue') ? 'Overdue' : 'Pending'),
+        description: item.description ? item.description.split(' - ').slice(2).join(' - ') : '',
         created_at: item.created_at
       }));
       
@@ -171,12 +171,15 @@ const AssetsLiabilitiesSection = () => {
         .from('transactions')
         .insert([{
           amount: parseFloat(assetFormData.value as string),
-          type: 'Asset',
+          type: 'Asset', // This is now allowed by the database constraint
           description: assetFormData.type + (assetFormData.description ? ` - ${assetFormData.description}` : ''),
           date: assetFormData.purchase_date
         }]);
         
-      if (error) throw error;
+      if (error) {
+        console.error('Error details:', error);
+        throw error;
+      }
       
       toast.success('Asset added successfully');
       fetchData();
@@ -198,13 +201,16 @@ const AssetsLiabilitiesSection = () => {
       const { error } = await supabase
         .from('transactions')
         .insert([{
-          amount: -Math.abs(parseFloat(liabilityFormData.amount_due as string)),
-          type: 'Liability',
-          description: `${liabilityFormData.type} - ${liabilityFormData.status} - ${liabilityFormData.description || ''}`,
+          amount: -Math.abs(parseFloat(liabilityFormData.amount_due as string)), // Store as negative
+          type: 'Liability', // This is now allowed by the database constraint
+          description: `${liabilityFormData.type} - ${liabilityFormData.status}${liabilityFormData.description ? ` - ${liabilityFormData.description}` : ''}`,
           date: liabilityFormData.due_date
         }]);
         
-      if (error) throw error;
+      if (error) {
+        console.error('Error details:', error);
+        throw error;
+      }
       
       toast.success('Liability added successfully');
       fetchData();

@@ -37,6 +37,28 @@ const BalanceSheet = () => {
           type: 'asset'
         }));
       }
+      
+      // Add asset transactions
+      if (assetTransactions) {
+        // Group assets by category (description)
+        const assetGroups = assetTransactions.reduce((acc, asset) => {
+          const category = asset.description?.split(' - ')[0] || 'Other Assets';
+          if (!acc[category]) {
+            acc[category] = 0;
+          }
+          acc[category] += asset.amount;
+          return acc;
+        }, {});
+        
+        // Add grouped assets to balance items
+        Object.entries(assetGroups).forEach(([category, amount]) => {
+          balanceItems.push({
+            category,
+            amount: amount as number,
+            type: 'asset'
+          });
+        });
+      }
 
       return balanceItems;
     }
@@ -52,9 +74,11 @@ const BalanceSheet = () => {
 
       if (error) throw error;
 
-      // Group liabilities by category
+      // Group liabilities by category (first part of description)
       const groupedLiabilities = (data || []).reduce((acc, transaction) => {
-        const key = transaction.description || 'Other Liabilities';
+        const descParts = transaction.description?.split(' - ') || [];
+        const key = descParts[0] || 'Other Liabilities';
+        
         if (!acc[key]) {
           acc[key] = 0;
         }
