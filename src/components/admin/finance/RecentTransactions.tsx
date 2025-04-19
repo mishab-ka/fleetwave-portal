@@ -11,8 +11,8 @@ interface Transaction {
   amount: number;
   type: string;
   date: string;
-  accounts: { name: string };
-  categories: { name: string };
+  accounts: { name: string } | null;
+  categories: { name: string } | null;
 }
 
 interface RecentTransactionsProps {
@@ -33,9 +33,9 @@ const RecentTransactions = ({ transactions }: RecentTransactionsProps) => {
                 <div className="space-y-1">
                   <p className="text-sm font-medium">{transaction.description}</p>
                   <div className="flex items-center text-sm text-muted-foreground">
-                    <span>{transaction.accounts.name}</span>
+                    <span>{transaction.accounts?.name || 'Unknown Account'}</span>
                     <span className="mx-2">•</span>
-                    <span>{transaction.categories.name}</span>
+                    <span>{transaction.categories?.name || 'Uncategorized'}</span>
                   </div>
                 </div>
                 <div className={`flex items-center font-medium ${
