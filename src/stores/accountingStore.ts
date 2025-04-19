@@ -48,6 +48,19 @@ interface AccountingState {
   generateCashFlowStatement: (startDate: string, endDate: string) => Promise<void>;
 }
 
+const mapAccountTypeForDatabase = (accountType: string): string => {
+  const typeMap: Record<string, string> = {
+    'asset': 'bank',
+    'liability': 'card',
+    'equity': 'bank',
+    'revenue': 'bank',
+    'expense': 'cash'
+  };
+  
+  const lowerType = accountType.toLowerCase();
+  return typeMap[lowerType] || 'bank';
+};
+
 export const useAccountingStore = create<AccountingState>((set, get) => ({
   accounts: [],
   periods: [],
@@ -59,16 +72,13 @@ export const useAccountingStore = create<AccountingState>((set, get) => ({
   loading: false,
   error: null,
   
-  // Accounts
   fetchAccounts: async () => {
     try {
       set({ loading: true, error: null });
-      // Try to use chart_of_accounts if it exists, otherwise use existing accounts table
       let query = supabase.from('chart_of_accounts');
       let { data, error } = await query.select('*').order('code');
       
       if (error || !data || data.length === 0) {
-        // Fallback to using the accounts table
         const accountsResult = await supabase
           .from('accounts')
           .select('*')
@@ -76,7 +86,6 @@ export const useAccountingStore = create<AccountingState>((set, get) => ({
         
         if (accountsResult.error) throw accountsResult.error;
         
-        // Transform the accounts to AccountingAccount format
         data = accountsResult.data.map(account => ({
           id: account.id,
           code: account.id.toString().padStart(4, '0'),
@@ -87,7 +96,6 @@ export const useAccountingStore = create<AccountingState>((set, get) => ({
           created_at: account.created_at
         }));
       } else {
-        // Transform chart_of_accounts data to match AccountingAccount type
         data = data.map(account => ({
           id: account.id,
           code: account.code,
@@ -113,12 +121,10 @@ export const useAccountingStore = create<AccountingState>((set, get) => ({
     return get().accounts.find(account => account.id === id);
   },
   
-  // Periods
   fetchPeriods: async () => {
     try {
       set({ loading: true, error: null });
       
-      // Create a default period if none exist
       const currentYear = new Date().getFullYear();
       const defaultPeriods = [
         {
@@ -145,19 +151,16 @@ export const useAccountingStore = create<AccountingState>((set, get) => ({
     );
   },
   
-  // Journal Entries
   fetchJournalEntries: async () => {
     try {
       set({ loading: true, error: null });
       
-      // Try to get data from journal_entries table first
       const { data: journalData, error: journalError } = await supabase
         .from('journal_entries')
         .select('*')
         .order('entry_date', { ascending: false });
       
       if (journalData && !journalError) {
-        // Convert journal entries to the expected format
         const formattedEntries = journalData.map(entry => ({
           id: entry.id,
           entry_date: entry.entry_date,
@@ -170,7 +173,6 @@ export const useAccountingStore = create<AccountingState>((set, get) => ({
         
         set({ journalEntries: formattedEntries as JournalEntry[], loading: false });
       } else {
-        // Fall back to empty array
         console.warn('Journal entries table not found, using empty array');
         set({ journalEntries: [], loading: false });
       }
@@ -184,7 +186,6 @@ export const useAccountingStore = create<AccountingState>((set, get) => ({
     try {
       set({ loading: true, error: null });
       
-      // Try to get data from journal_entries table first
       const { data: entryData, error: entryError } = await supabase
         .from('journal_entries')
         .select('*')
@@ -192,7 +193,6 @@ export const useAccountingStore = create<AccountingState>((set, get) => ({
         .single();
       
       if (entryData && !entryError) {
-        // Try to get journal lines
         const { data: linesData, error: linesError } = await supabase
           .from('journal_entry_lines')
           .select('*')
@@ -230,19 +230,16 @@ export const useAccountingStore = create<AccountingState>((set, get) => ({
     }
   },
   
-  // Transactions
   fetchTransactions: async () => {
     try {
       set({ loading: true, error: null });
       
-      // Try to get transactions from accounting_transactions first
       const { data: transData, error: transError } = await supabase
         .from('transactions')
         .select('*')
         .order('date', { ascending: false });
       
       if (transData && !transError) {
-        // Convert transactions to the expected format
         const formattedTransactions = transData.map(trans => ({
           id: trans.id,
           transaction_date: trans.date,
@@ -258,7 +255,6 @@ export const useAccountingStore = create<AccountingState>((set, get) => ({
         
         set({ transactions: formattedTransactions as FinancialTransaction[], loading: false });
       } else {
-        // Fall back to empty array
         console.warn('Transactions table not found or empty, using empty array');
         set({ transactions: [], loading: false });
       }
@@ -272,7 +268,6 @@ export const useAccountingStore = create<AccountingState>((set, get) => ({
     try {
       set({ loading: true, error: null });
       
-      // First, fetch accounts to check if they exist in the accounts table
       const { data: existingAccounts, error: accountsError } = await supabase
         .from('accounts')
         .select('id, name, type')
@@ -280,19 +275,14 @@ export const useAccountingStore = create<AccountingState>((set, get) => ({
       
       if (accountsError) throw accountsError;
       
-      // Map of chart_of_accounts IDs to existing accounts IDs (if needed)
       const accountsMap = new Map();
       
-      // If the accounts don't exist in the accounts table, we need to create them
       if (!existingAccounts || existingAccounts.length < 2) {
-        // Get the account information from the chart_of_accounts
         const neededAccountIds = [transaction.account_from_id, transaction.account_to_id].filter(Boolean);
         const existingAccountIds = existingAccounts ? existingAccounts.map(a => a.id) : [];
         const missingAccountIds = neededAccountIds.filter(id => !existingAccountIds.includes(id as number));
         
-        // For each missing account, create it in the accounts table
         if (missingAccountIds.length > 0) {
-          // Get the account details from the chart_of_accounts
           const { data: chartAccounts, error: chartError } = await supabase
             .from('chart_of_accounts')
             .select('*')
@@ -301,22 +291,29 @@ export const useAccountingStore = create<AccountingState>((set, get) => ({
           if (chartError) throw chartError;
           
           if (chartAccounts && chartAccounts.length > 0) {
-            // Create the accounts in the accounts table
             for (const chartAccount of chartAccounts) {
+              console.log('Creating account from chart account:', chartAccount);
+              
+              const accountType = mapAccountTypeForDatabase(chartAccount.type);
+              console.log(`Mapped account type from "${chartAccount.type}" to "${accountType}"`);
+              
               const { data: newAccount, error: insertError } = await supabase
                 .from('accounts')
                 .insert({
                   name: chartAccount.name,
-                  type: chartAccount.type,
+                  type: accountType,
                   balance: 0
                 })
                 .select()
                 .single();
               
-              if (insertError) throw insertError;
+              if (insertError) {
+                console.error('Error creating account:', insertError);
+                throw insertError;
+              }
               
               if (newAccount) {
-                // Map the chart_of_accounts ID to the new account ID
+                console.log('Created new account:', newAccount);
                 accountsMap.set(chartAccount.id, newAccount.id);
               }
             }
@@ -324,11 +321,9 @@ export const useAccountingStore = create<AccountingState>((set, get) => ({
         }
       }
       
-      // Determine which account_id to use for the transaction
-      // For simplicity, we'll use account_from_id for now
       const accountId = accountsMap.get(transaction.account_from_id) || transaction.account_from_id;
+      console.log('Using account ID for transaction:', accountId);
       
-      // Insert into the transactions table
       const { data, error } = await supabase
         .from('transactions')
         .insert({
@@ -343,7 +338,6 @@ export const useAccountingStore = create<AccountingState>((set, get) => ({
       
       if (error) throw error;
       
-      // Refresh the transactions list
       await get().fetchTransactions();
       
       set({ loading: false });
@@ -355,14 +349,12 @@ export const useAccountingStore = create<AccountingState>((set, get) => ({
     }
   },
   
-  // Financial Reports
   generateIncomeStatement: async (startDate: string, endDate: string) => {
     try {
       set({ loading: true, error: null });
       
       const result = await generateIncomeStatement(startDate, endDate);
       
-      // Transform the data to match the IncomeStatementItem format
       const incomeStatementItems: IncomeStatementItem[] = [
         {
           account_id: 1,
@@ -396,7 +388,6 @@ export const useAccountingStore = create<AccountingState>((set, get) => ({
       
       const result = await generateBalanceSheet(asOfDate);
       
-      // Transform the data to match the BalanceSheetItem format
       const balanceSheetItems: BalanceSheetItem[] = [
         {
           account_id: 1,
@@ -437,7 +428,6 @@ export const useAccountingStore = create<AccountingState>((set, get) => ({
       
       const result = await generateCashFlowStatement(startDate, endDate);
       
-      // Transform the data to match the CashFlowItem format
       const cashFlowItems: CashFlowItem[] = [
         {
           account_id: 1,
