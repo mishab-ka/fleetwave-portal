@@ -1,4 +1,3 @@
-
 import { create } from 'zustand';
 import { supabase } from '@/integrations/supabase/client';
 import { 
@@ -273,7 +272,63 @@ export const useAccountingStore = create<AccountingState>((set, get) => ({
     try {
       set({ loading: true, error: null });
       
-      // Insert into the transactions table directly
+      // First, fetch accounts to check if they exist in the accounts table
+      const { data: existingAccounts, error: accountsError } = await supabase
+        .from('accounts')
+        .select('id, name, type')
+        .in('id', [transaction.account_from_id, transaction.account_to_id].filter(Boolean));
+      
+      if (accountsError) throw accountsError;
+      
+      // Map of chart_of_accounts IDs to existing accounts IDs (if needed)
+      const accountsMap = new Map();
+      
+      // If the accounts don't exist in the accounts table, we need to create them
+      if (!existingAccounts || existingAccounts.length < 2) {
+        // Get the account information from the chart_of_accounts
+        const neededAccountIds = [transaction.account_from_id, transaction.account_to_id].filter(Boolean);
+        const existingAccountIds = existingAccounts ? existingAccounts.map(a => a.id) : [];
+        const missingAccountIds = neededAccountIds.filter(id => !existingAccountIds.includes(id as number));
+        
+        // For each missing account, create it in the accounts table
+        if (missingAccountIds.length > 0) {
+          // Get the account details from the chart_of_accounts
+          const { data: chartAccounts, error: chartError } = await supabase
+            .from('chart_of_accounts')
+            .select('*')
+            .in('id', missingAccountIds);
+          
+          if (chartError) throw chartError;
+          
+          if (chartAccounts && chartAccounts.length > 0) {
+            // Create the accounts in the accounts table
+            for (const chartAccount of chartAccounts) {
+              const { data: newAccount, error: insertError } = await supabase
+                .from('accounts')
+                .insert({
+                  name: chartAccount.name,
+                  type: chartAccount.type,
+                  balance: 0
+                })
+                .select()
+                .single();
+              
+              if (insertError) throw insertError;
+              
+              if (newAccount) {
+                // Map the chart_of_accounts ID to the new account ID
+                accountsMap.set(chartAccount.id, newAccount.id);
+              }
+            }
+          }
+        }
+      }
+      
+      // Determine which account_id to use for the transaction
+      // For simplicity, we'll use account_from_id for now
+      const accountId = accountsMap.get(transaction.account_from_id) || transaction.account_from_id;
+      
+      // Insert into the transactions table
       const { data, error } = await supabase
         .from('transactions')
         .insert({
@@ -281,7 +336,7 @@ export const useAccountingStore = create<AccountingState>((set, get) => ({
           description: transaction.description,
           amount: transaction.amount,
           type: transaction.transaction_type,
-          account_id: transaction.account_from_id
+          account_id: accountId
         })
         .select()
         .single();

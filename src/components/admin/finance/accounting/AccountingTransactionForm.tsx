@@ -141,7 +141,7 @@ export const AccountingTransactionForm: React.FC = () => {
       }
     } catch (error) {
       console.error('Error submitting transaction:', error);
-      toast.error('Failed to create transaction');
+      toast.error('Failed to create transaction. Please try again.');
     } finally {
       setIsSubmitting(false);
     }
