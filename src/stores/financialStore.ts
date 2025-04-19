@@ -2,6 +2,7 @@
 import { create } from 'zustand';
 import { supabase } from '@/integrations/supabase/client';
 
+// TypeScript interfaces for the store
 interface ChartOfAccount {
   id: number;
   code: string;
@@ -24,6 +25,7 @@ interface JournalEntryLine {
   credit_amount: number;
 }
 
+// Define the store interface
 interface FinancialStore {
   chartOfAccounts: ChartOfAccount[];
   journalEntries: JournalEntry[];
@@ -31,6 +33,7 @@ interface FinancialStore {
   fetchJournalEntries: () => Promise<void>;
 }
 
+// Create the Zustand store
 export const useFinancialStore = create<FinancialStore>((set) => ({
   chartOfAccounts: [],
   journalEntries: [],
@@ -42,6 +45,10 @@ export const useFinancialStore = create<FinancialStore>((set) => ({
     
     if (data) {
       set({ chartOfAccounts: data });
+    }
+    
+    if (error) {
+      console.error('Error fetching chart of accounts:', error);
     }
   },
   
@@ -58,6 +65,10 @@ export const useFinancialStore = create<FinancialStore>((set) => ({
     
     if (data) {
       set({ journalEntries: data });
+    }
+    
+    if (error) {
+      console.error('Error fetching journal entries:', error);
     }
   },
 }));
