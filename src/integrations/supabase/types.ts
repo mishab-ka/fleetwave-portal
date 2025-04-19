@@ -54,6 +54,58 @@ export type Database = {
         }
         Relationships: []
       }
+      chart_of_accounts: {
+        Row: {
+          code: string
+          created_at: string
+          description: string | null
+          id: number
+          name: string
+          parent_id: number | null
+          type: string
+        }
+        Insert: {
+          code: string
+          created_at?: string
+          description?: string | null
+          id?: number
+          name: string
+          parent_id?: number | null
+          type: string
+        }
+        Update: {
+          code?: string
+          created_at?: string
+          description?: string | null
+          id?: number
+          name?: string
+          parent_id?: number | null
+          type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "chart_of_accounts_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "chart_of_accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "chart_of_accounts_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "general_ledger"
+            referencedColumns: ["account_id"]
+          },
+          {
+            foreignKeyName: "chart_of_accounts_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "trial_balance"
+            referencedColumns: ["account_id"]
+          },
+        ]
+      }
       driver_balance_transactions: {
         Row: {
           amount: number
@@ -169,6 +221,110 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "vehicles"
             referencedColumns: ["vehicle_number"]
+          },
+        ]
+      }
+      journal_entries: {
+        Row: {
+          created_at: string
+          description: string
+          entry_date: string
+          id: number
+          posted: boolean
+          reference_number: string | null
+          transaction_id: number | null
+        }
+        Insert: {
+          created_at?: string
+          description: string
+          entry_date: string
+          id?: number
+          posted?: boolean
+          reference_number?: string | null
+          transaction_id?: number | null
+        }
+        Update: {
+          created_at?: string
+          description?: string
+          entry_date?: string
+          id?: number
+          posted?: boolean
+          reference_number?: string | null
+          transaction_id?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "journal_entries_transaction_id_fkey"
+            columns: ["transaction_id"]
+            isOneToOne: false
+            referencedRelation: "transactions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      journal_entry_lines: {
+        Row: {
+          account_id: number
+          created_at: string
+          credit_amount: number
+          debit_amount: number
+          description: string | null
+          id: number
+          journal_entry_id: number
+        }
+        Insert: {
+          account_id: number
+          created_at?: string
+          credit_amount?: number
+          debit_amount?: number
+          description?: string | null
+          id?: number
+          journal_entry_id: number
+        }
+        Update: {
+          account_id?: number
+          created_at?: string
+          credit_amount?: number
+          debit_amount?: number
+          description?: string | null
+          id?: number
+          journal_entry_id?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "journal_entry_lines_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "chart_of_accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "journal_entry_lines_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "general_ledger"
+            referencedColumns: ["account_id"]
+          },
+          {
+            foreignKeyName: "journal_entry_lines_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "trial_balance"
+            referencedColumns: ["account_id"]
+          },
+          {
+            foreignKeyName: "journal_entry_lines_journal_entry_id_fkey"
+            columns: ["journal_entry_id"]
+            isOneToOne: false
+            referencedRelation: "general_ledger"
+            referencedColumns: ["journal_entry_id"]
+          },
+          {
+            foreignKeyName: "journal_entry_lines_journal_entry_id_fkey"
+            columns: ["journal_entry_id"]
+            isOneToOne: false
+            referencedRelation: "journal_entries"
+            referencedColumns: ["id"]
           },
         ]
       }
@@ -561,6 +717,23 @@ export type Database = {
       }
     }
     Views: {
+      general_ledger: {
+        Row: {
+          account_code: string | null
+          account_id: number | null
+          account_name: string | null
+          account_type: string | null
+          credit_amount: number | null
+          debit_amount: number | null
+          entry_date: string | null
+          journal_description: string | null
+          journal_entry_id: number | null
+          line_description: string | null
+          line_id: number | null
+          reference_number: string | null
+        }
+        Relationships: []
+      }
       rent_due_view: {
         Row: {
           driver_id: string | null
@@ -586,6 +759,18 @@ export type Database = {
             referencedColumns: ["vehicle_number"]
           },
         ]
+      }
+      trial_balance: {
+        Row: {
+          account_code: string | null
+          account_id: number | null
+          account_name: string | null
+          account_type: string | null
+          balance: number | null
+          total_credits: number | null
+          total_debits: number | null
+        }
+        Relationships: []
       }
     }
     Functions: {
