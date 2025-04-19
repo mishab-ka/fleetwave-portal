@@ -8,8 +8,7 @@ import {
   TrendingUp, 
   TrendingDown, 
   DollarSign, 
-  CreditCard, 
-  Calendar 
+  CreditCard
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { 
@@ -100,6 +99,23 @@ export const AccountingDashboard: React.FC = () => {
 
   // Colors for pie chart
   const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8', '#82CA9D'];
+
+  // Custom formatter for BarChart values
+  const formatYAxisTick = (value: number) => {
+    return formatter.format(value).replace(/\.\d\d$/, '');
+  };
+
+  // Custom formatter for tooltip values
+  const formatTooltipValue = (value: number) => {
+    return formatter.format(value);
+  };
+
+  // Get bar color based on item name
+  const getBarColor = (entry: { name: string }) => {
+    if (entry.name === 'Revenue') return '#4CAF50';
+    if (entry.name === 'Expenses') return '#F44336';
+    return '#2196F3';
+  };
 
   return (
     <div className="space-y-6">
@@ -223,19 +239,13 @@ export const AccountingDashboard: React.FC = () => {
                   >
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis dataKey="name" />
-                    <YAxis 
-                      tickFormatter={(value) => formatter.format(value).replace(/\.\d\d$/, '')}
-                    />
-                    <Tooltip formatter={(value) => formatter.format(value)} />
+                    <YAxis tickFormatter={formatYAxisTick} />
+                    <Tooltip formatter={(value) => formatTooltipValue(value as number)} />
                     <Legend />
                     <Bar 
                       dataKey="amount" 
                       name="Amount" 
-                      fill={(data: any) => 
-                        data.name === 'Revenue' ? '#4CAF50' :
-                        data.name === 'Expenses' ? '#F44336' :
-                        '#2196F3'
-                      }
+                      fill="#4CAF50" 
                       maxBarSize={60}
                     />
                   </BarChart>
@@ -282,7 +292,7 @@ export const AccountingDashboard: React.FC = () => {
                         <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                       ))}
                     </Pie>
-                    <Tooltip formatter={(value) => formatter.format(value)} />
+                    <Tooltip formatter={(value) => formatTooltipValue(value as number)} />
                     <Legend />
                   </PieChart>
                 </ResponsiveContainer>

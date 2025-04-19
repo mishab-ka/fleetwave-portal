@@ -1,6 +1,6 @@
 
 import React, { useEffect, useState } from 'react';
-import { useForm, Controller } from 'react-hook-form';
+import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { useAccountingStore } from '@/stores/accountingStore';
@@ -108,8 +108,13 @@ export const AccountingTransactionForm: React.FC = () => {
       
       // Format date for API
       const formattedValues = {
-        ...values,
         transaction_date: format(values.transaction_date, 'yyyy-MM-dd'),
+        description: values.description,
+        amount: values.amount,
+        transaction_type: values.transaction_type,
+        category: values.category,
+        account_from_id: values.account_from_id,
+        account_to_id: values.account_to_id,
       };
       
       const transactionId = await addTransaction(formattedValues);
