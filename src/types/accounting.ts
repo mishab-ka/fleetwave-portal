@@ -1,11 +1,11 @@
 
 export interface AccountingAccount {
-  id: number;
+  id: string;
   code: string;
   name: string;
   description?: string;
   account_type: 'asset' | 'liability' | 'equity' | 'revenue' | 'expense';
-  parent_id?: number;
+  parent_id?: string;
   is_active: boolean;
   created_at: string;
 }
@@ -33,7 +33,7 @@ export interface JournalEntry {
 export interface JournalEntryLine {
   id: number;
   journal_entry_id: number;
-  account_id: number;
+  account_id: string;
   account?: AccountingAccount;
   debit_amount: number;
   credit_amount: number;
@@ -42,20 +42,20 @@ export interface JournalEntryLine {
 }
 
 export interface FinancialTransaction {
-  id: number;
+  id: string;
   transaction_date: string;
   description: string;
   amount: number;
   transaction_type: 'income' | 'expense' | 'transfer';
   category?: string;
-  account_from_id?: number;
-  account_to_id?: number;
-  journal_entry_id?: number;
+  account_from_id?: string;
+  account_to_id?: string;
+  journal_entry_id?: string;
   created_at: string;
 }
 
 export interface IncomeStatementItem {
-  account_id: number;
+  account_id: string;
   account_code: string;
   account_name: string;
   account_type: 'revenue' | 'expense';
@@ -63,7 +63,7 @@ export interface IncomeStatementItem {
 }
 
 export interface BalanceSheetItem {
-  account_id: number;
+  account_id: string;
   account_code: string;
   account_name: string;
   account_type: 'asset' | 'liability' | 'equity';
@@ -71,7 +71,7 @@ export interface BalanceSheetItem {
 }
 
 export interface CashFlowItem {
-  account_id: number;
+  account_id: string;
   account_code: string;
   account_name: string;
   cash_flow_type: 'Operating' | 'Investing' | 'Financing';

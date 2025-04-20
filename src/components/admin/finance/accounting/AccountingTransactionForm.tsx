@@ -30,8 +30,8 @@ const formSchema = z.object({
     required_error: "Transaction type is required",
   }),
   category: z.string().optional(),
-  account_from_id: z.coerce.number().optional(),
-  account_to_id: z.coerce.number().optional(),
+  account_from_id: z.string().uuid().optional(),
+  account_to_id: z.string().uuid().optional(),
 });
 
 type FormValues = z.infer<typeof formSchema>;
@@ -113,8 +113,8 @@ export const AccountingTransactionForm: React.FC = () => {
         amount: values.amount,
         transaction_type: values.transaction_type,
         category: values.category,
-        account_from_id: values.account_from_id,
-        account_to_id: values.account_to_id,
+        account_from_id: values.account_from_id, // Pass as string (UUID)
+        account_to_id: values.account_to_id, // Pass as string (UUID)
       };
       
       const transactionId = await addTransaction(formattedValues);
@@ -281,8 +281,8 @@ export const AccountingTransactionForm: React.FC = () => {
             <FormItem>
               <FormLabel>{getFromAccountLabel()}</FormLabel>
               <Select 
-                onValueChange={(value) => field.onChange(parseInt(value))} 
-                value={field.value?.toString()}
+                onValueChange={field.onChange} 
+                value={field.value}
               >
                 <FormControl>
                   <SelectTrigger>
@@ -310,8 +310,8 @@ export const AccountingTransactionForm: React.FC = () => {
             <FormItem>
               <FormLabel>{getToAccountLabel()}</FormLabel>
               <Select 
-                onValueChange={(value) => field.onChange(parseInt(value))} 
-                value={field.value?.toString()}
+                onValueChange={field.onChange} 
+                value={field.value}
               >
                 <FormControl>
                   <SelectTrigger>
