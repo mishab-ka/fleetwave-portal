@@ -43,17 +43,16 @@ interface AccountingState {
   generateCashFlowStatement: (startDate: string, endDate: string) => Promise<void>;
 }
 
-const mapAccountTypeForDatabase = (accountType: string): string => {
-  const typeMap: Record<string, string> = {
-    'asset': 'bank',
-    'liability': 'card',
-    'equity': 'bank',
-    'revenue': 'bank',
-    'expense': 'cash'
-  };
+const updateAccountBalance = async (accountId: number, amount: number) => {
+  const { error } = await supabase
+    .from('chart_of_accounts')
+    .update({ balance: amount })
+    .eq('id', accountId);
   
-  const lowerType = accountType.toLowerCase();
-  return typeMap[lowerType] || 'bank';
+  if (error) {
+    console.error('Error updating account balance:', error);
+    throw error;
+  }
 };
 
 export const useAccountingStore = create<AccountingState>((set, get) => ({
@@ -70,41 +69,24 @@ export const useAccountingStore = create<AccountingState>((set, get) => ({
   fetchAccounts: async () => {
     try {
       set({ loading: true, error: null });
-      let query = supabase.from('chart_of_accounts');
-      let { data, error } = await query.select('*').order('code');
+      let { data, error } = await supabase
+        .from('chart_of_accounts')
+        .select('*')
+        .order('code');
       
-      if (error || !data || data.length === 0) {
-        const accountsResult = await supabase
-          .from('accounts')
-          .select('*')
-          .order('name');
-        
-        if (accountsResult.error) throw accountsResult.error;
-        
-        const formattedAccounts = accountsResult.data.map(account => ({
-          id: account.id,
-          code: account.id.toString().padStart(4, '0'),
-          name: account.name,
-          description: account.name,
-          account_type: account.type.toLowerCase() as 'asset' | 'liability' | 'equity' | 'revenue' | 'expense',
-          is_active: true,
-          created_at: account.created_at
-        }));
-        
-        set({ accounts: formattedAccounts, loading: false });
-      } else {
-        const formattedAccounts = data.map(account => ({
-          id: account.id,
-          code: account.code,
-          name: account.name,
-          description: account.description || account.name,
-          account_type: account.type.toLowerCase() as 'asset' | 'liability' | 'equity' | 'revenue' | 'expense',
-          is_active: true,
-          created_at: account.created_at
-        }));
-        
-        set({ accounts: formattedAccounts, loading: false });
-      }
+      if (error) throw error;
+      
+      const formattedAccounts = data?.map(account => ({
+        id: account.id,
+        code: account.code,
+        name: account.name,
+        description: account.description || account.name,
+        account_type: account.type.toLowerCase() as 'asset' | 'liability' | 'equity' | 'revenue' | 'expense',
+        is_active: account.is_active ?? true,
+        created_at: account.created_at
+      }));
+      
+      set({ accounts: formattedAccounts || [], loading: false });
     } catch (error) {
       console.error('Error fetching accounts:', error);
       set({ error: (error as Error).message, loading: false });
@@ -262,98 +244,81 @@ export const useAccountingStore = create<AccountingState>((set, get) => ({
     try {
       set({ loading: true, error: null });
       
-      // Start a Supabase transaction
+      // Start a transaction
       const { data: journalEntry, error: journalError } = await supabase
         .from('journal_entries')
         .insert({
           entry_date: transaction.transaction_date,
           description: transaction.description,
-          is_posted: true,
+          is_posted: true
         })
         .select()
         .single();
 
       if (journalError) throw journalError;
 
-      // For income transactions:
-      // 1. Debit the bank/cash account (asset increase)
-      // 2. Credit the revenue account
-      if (transaction.transaction_type === 'income') {
-        // Create journal entry lines
-        const { error: linesError } = await supabase
-          .from('journal_entry_lines')
-          .insert([
-            {
-              journal_entry_id: journalEntry.id,
-              account_id: transaction.account_to_id, // Bank/Cash account
-              debit_amount: transaction.amount,
-              credit_amount: 0,
-              description: 'Income received'
-            },
-            {
-              journal_entry_id: journalEntry.id,
-              account_id: transaction.account_from_id, // Revenue account
-              debit_amount: 0,
-              credit_amount: transaction.amount,
-              description: 'Income recorded'
-            }
-          ]);
+      const assetAccount = get().accounts.find(a => 
+        a.account_type === 'asset' && a.code.startsWith('11'));
 
-        if (linesError) throw linesError;
-
-        // Update the account balance
-        const { error: updateError } = await supabase
-          .from('accounts')
-          .update({ 
-            balance: supabase.rpc('nullif', { 
-              val: `balance + ${transaction.amount}` 
-            }) 
-          })
-          .eq('id', transaction.account_to_id);
-
-        if (updateError) throw updateError;
+      if (!assetAccount) {
+        throw new Error('No asset account found for transaction');
       }
+
+      let journalLines = [];
       
-      // For expense transactions:
-      // 1. Debit the expense account
-      // 2. Credit the bank/cash account (asset decrease)
-      else if (transaction.transaction_type === 'expense') {
-        // Create journal entry lines
-        const { error: linesError } = await supabase
-          .from('journal_entry_lines')
-          .insert([
-            {
-              journal_entry_id: journalEntry.id,
-              account_id: transaction.account_to_id, // Expense account
-              debit_amount: transaction.amount,
-              credit_amount: 0,
-              description: 'Expense recorded'
-            },
-            {
-              journal_entry_id: journalEntry.id,
-              account_id: transaction.account_from_id, // Bank/Cash account
-              debit_amount: 0,
-              credit_amount: transaction.amount,
-              description: 'Payment made'
-            }
-          ]);
-
-        if (linesError) throw linesError;
-
-        // Update the account balance
-        const { error: updateError } = await supabase
-          .from('accounts')
-          .update({ 
-            balance: supabase.rpc('nullif', { 
-              val: `balance - ${transaction.amount}` 
-            }) 
-          })
-          .eq('id', transaction.account_from_id);
-
-        if (updateError) throw updateError;
+      if (transaction.transaction_type === 'income') {
+        // For income: Debit Asset, Credit Revenue
+        journalLines = [
+          {
+            journal_entry_id: journalEntry.id,
+            account_id: assetAccount.id,
+            debit_amount: transaction.amount,
+            credit_amount: 0,
+            description: 'Asset increase from income'
+          },
+          {
+            journal_entry_id: journalEntry.id,
+            account_id: transaction.account_from_id,
+            debit_amount: 0,
+            credit_amount: transaction.amount,
+            description: 'Revenue recorded'
+          }
+        ];
+        
+        // Update asset account balance
+        await updateAccountBalance(assetAccount.id, transaction.amount);
+        
+      } else if (transaction.transaction_type === 'expense') {
+        // For expense: Debit Expense, Credit Asset
+        journalLines = [
+          {
+            journal_entry_id: journalEntry.id,
+            account_id: transaction.account_to_id,
+            debit_amount: transaction.amount,
+            credit_amount: 0,
+            description: 'Expense recorded'
+          },
+          {
+            journal_entry_id: journalEntry.id,
+            account_id: assetAccount.id,
+            debit_amount: 0,
+            credit_amount: transaction.amount,
+            description: 'Asset decrease from expense'
+          }
+        ];
+        
+        // Update asset account balance
+        await updateAccountBalance(assetAccount.id, -transaction.amount);
       }
 
-      // Create the transaction record
+      // Create journal entry lines
+      const { error: linesError } = await supabase
+        .from('journal_entry_lines')
+        .insert(journalLines);
+
+      if (linesError) throw linesError;
+
+      // Create the financial transaction record
       const { data: transactionData, error: transError } = await supabase
         .from('transactions')
         .insert({
@@ -361,19 +326,19 @@ export const useAccountingStore = create<AccountingState>((set, get) => ({
           description: transaction.description,
           amount: transaction.amount,
           type: transaction.transaction_type,
-          account_id: transaction.transaction_type === 'income' 
-            ? transaction.account_to_id 
-            : transaction.account_from_id,
-          category: transaction.category
+          account_id: assetAccount.id,
+          category_id: transaction.transaction_type === 'income' ? 
+            transaction.account_from_id : transaction.account_to_id
         })
         .select()
         .single();
 
       if (transError) throw transError;
 
-      // Refresh transactions and accounts
-      await get().fetchTransactions();
+      // Refresh data
       await get().fetchAccounts();
+      await get().fetchJournalEntries();
+      await get().fetchTransactions();
       
       set({ loading: false });
       return transactionData?.id || null;

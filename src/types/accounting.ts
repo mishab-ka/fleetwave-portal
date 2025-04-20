@@ -32,6 +32,7 @@ export interface AccountingAccount {
   account_type: 'asset' | 'liability' | 'equity' | 'revenue' | 'expense';
   is_active: boolean;
   created_at: string;
+  balance?: number;
 }
 
 export interface AccountingPeriod {

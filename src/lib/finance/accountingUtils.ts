@@ -2,7 +2,8 @@ import {
   IncomeStatementItem, 
   BalanceSheetItem, 
   CashFlowItem, 
-  AccountingAccount 
+  AccountingAccount,
+  JournalEntry 
 } from '@/types/accounting';
 
 export const formatter = new Intl.NumberFormat('en-US', {
@@ -92,14 +93,6 @@ export const groupAccountsByType = (accounts: AccountingAccount[]) => {
     grouped[account.account_type].push(account);
     return grouped;
   }, {} as Record<string, AccountingAccount[]>);
-};
-
-export const findParentAccounts = (accounts: AccountingAccount[]) => {
-  return accounts.filter(account => !account.parent_id);
-};
-
-export const findChildAccounts = (accounts: AccountingAccount[], parentId: number) => {
-  return accounts.filter(account => account.parent_id === parentId);
 };
 
 export const getAccountName = (accounts: AccountingAccount[], id?: number) => {
