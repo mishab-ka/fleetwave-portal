@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useForm } from "react-hook-form";
@@ -26,12 +27,13 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tables } from "@/integrations/supabase/types";
+import { format, isAfter, addMinutes } from 'date-fns';
 
 const formSchema = z.object({
   vehicle_number: z.string().min(2, {
     message: "Vehicle number must be at least 2 characters.",
   }),
-  shift: z.enum(["morning", "evening"]).default("morning"),
+  shift: z.enum(["morning", "night", "24hr"]).default("morning"),
   total_trips: z.number().min(0, {
     message: "Total trips must be a non-negative number.",
   }).default(0),
@@ -57,6 +59,7 @@ const SubmitReport = () => {
   const [profileData, setProfileData] = useState<Tables<"users"> | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setSubmitting] = useState(false);
+  const [isOverdue, setIsOverdue] = useState(false);
   const navigate = useNavigate();
 
   const form = useForm<FormData>({
@@ -75,7 +78,7 @@ const SubmitReport = () => {
     },
   });
 
-  const { reset } = form;
+  const { reset, setValue } = form;
 
   useEffect(() => {
     const fetchUserProfile = async () => {
@@ -91,6 +94,19 @@ const SubmitReport = () => {
         if (error) throw error;
 
         setProfileData(data);
+
+        // Set default shift from user profile
+        if (data?.shift) {
+          setValue("shift", data.shift as "morning" | "night" | "24hr");
+        }
+        
+        // Set default vehicle number if available
+        if (data?.vehicle_number) {
+          setValue("vehicle_number", data.vehicle_number);
+        }
+
+        // Check if report is overdue
+        checkIfOverdue(data?.shift || "morning");
       } catch (error) {
         console.error("Error fetching user profile:", error);
         toast.error("Failed to load profile data");
@@ -100,7 +116,31 @@ const SubmitReport = () => {
     };
 
     fetchUserProfile();
-  }, [user]);
+  }, [user, setValue]);
+
+  const checkIfOverdue = (shift: string) => {
+    const now = new Date();
+    let deadlineTime: Date;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    if (shift === "morning") {
+      deadlineTime = new Date(today);
+      deadlineTime.setHours(16, 30, 0, 0); // 4:30 PM
+    } else if (shift === "night") {
+      const nextDay = new Date(today);
+      nextDay.setDate(nextDay.getDate() + 1);
+      nextDay.setHours(4, 30, 0, 0); // 4:30 AM next day
+      deadlineTime = nextDay;
+    } else { // 24hr
+      const nextDay = new Date(today);
+      nextDay.setDate(nextDay.getDate() + 1);
+      nextDay.setHours(4, 30, 0, 0); // 4:30 AM next day
+      deadlineTime = nextDay;
+    }
+    
+    setIsOverdue(isAfter(now, deadlineTime));
+  };
 
   if (isLoading) {
     return (
@@ -119,12 +159,20 @@ const SubmitReport = () => {
         return;
       }
       
+      const today = new Date();
+      let status = "pending_verification";
+      
+      // Check if submission is overdue
+      if (isOverdue) {
+        status = "overdue";
+      }
+      
       const reportData = {
         user_id: user.id,
         driver_name: profileData?.name || user.email,
         vehicle_number: data.vehicle_number,
-        submission_date: new Date().toISOString().split('T')[0],
-        rent_date: new Date().toISOString().split('T')[0],
+        submission_date: today.toISOString(),
+        rent_date: format(today, 'yyyy-MM-dd'),
         shift: data.shift,
         total_trips: data.total_trips,
         total_earnings: data.total_earnings,
@@ -134,6 +182,7 @@ const SubmitReport = () => {
         remarks: data.remarks,
         uber_screenshot: data.uber_screenshot,
         payment_screenshot: data.payment_screenshot,
+        status: status
       };
       
       const { error } = await supabase
@@ -158,6 +207,11 @@ const SubmitReport = () => {
       <Card className="shadow-md">
         <CardHeader>
           <CardTitle className="text-2xl font-bold">Submit Report</CardTitle>
+          {isOverdue && (
+            <div className="bg-red-100 text-red-700 p-2 mt-2 rounded-md text-sm">
+              Your submission is past the deadline. This will be marked as overdue.
+            </div>
+          )}
         </CardHeader>
         <CardContent>
           <Form {...form}>
@@ -189,8 +243,9 @@ const SubmitReport = () => {
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        <SelectItem value="morning">Morning</SelectItem>
-                        <SelectItem value="evening">Evening</SelectItem>
+                        <SelectItem value="morning">Morning (4AM-4PM)</SelectItem>
+                        <SelectItem value="night">Night (4PM-4AM)</SelectItem>
+                        <SelectItem value="24hr">24 Hours (4AM-4AM)</SelectItem>
                       </SelectContent>
                     </Select>
                     <FormMessage />
@@ -205,7 +260,12 @@ const SubmitReport = () => {
                   <FormItem>
                     <FormLabel>Total Trips</FormLabel>
                     <FormControl>
-                      <Input type="number" placeholder="Enter total trips" {...field} />
+                      <Input 
+                        type="number" 
+                        placeholder="Enter total trips" 
+                        {...field}
+                        onChange={(e) => field.onChange(Number(e.target.value))}
+                      />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -219,7 +279,12 @@ const SubmitReport = () => {
                   <FormItem>
                     <FormLabel>Total Earnings</FormLabel>
                     <FormControl>
-                      <Input type="number" placeholder="Enter total earnings" {...field} />
+                      <Input 
+                        type="number" 
+                        placeholder="Enter total earnings" 
+                        {...field}
+                        onChange={(e) => field.onChange(Number(e.target.value))}
+                      />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -233,7 +298,12 @@ const SubmitReport = () => {
                   <FormItem>
                     <FormLabel>Total Cash Collect</FormLabel>
                     <FormControl>
-                      <Input type="number" placeholder="Enter total cash collected" {...field} />
+                      <Input 
+                        type="number" 
+                        placeholder="Enter total cash collected" 
+                        {...field}
+                        onChange={(e) => field.onChange(Number(e.target.value))}
+                      />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -247,7 +317,12 @@ const SubmitReport = () => {
                   <FormItem>
                     <FormLabel>Rent Paid Amount</FormLabel>
                     <FormControl>
-                      <Input type="number" placeholder="Enter rent paid amount" {...field} />
+                      <Input 
+                        type="number" 
+                        placeholder="Enter rent paid amount" 
+                        {...field}
+                        onChange={(e) => field.onChange(Number(e.target.value))}
+                      />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -284,7 +359,7 @@ const SubmitReport = () => {
                     <FormLabel>Remarks</FormLabel>
                     <FormControl>
                       <Textarea
-                        placeholder="Enter any remarks"
+                        placeholder="Enter any remarks (type 'leave' for leave day)"
                         className="resize-none"
                         {...field}
                       />

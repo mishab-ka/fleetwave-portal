@@ -12,22 +12,19 @@ export type Database = {
       accounts: {
         Row: {
           balance: number | null
-          created_at: string | null
-          id: number
+          id: string
           name: string
           type: string
         }
         Insert: {
           balance?: number | null
-          created_at?: string | null
-          id?: number
+          id?: string
           name: string
           type: string
         }
         Update: {
           balance?: number | null
-          created_at?: string | null
-          id?: number
+          id?: string
           name?: string
           type?: string
         }
@@ -35,76 +32,21 @@ export type Database = {
       }
       categories: {
         Row: {
-          created_at: string | null
-          id: number
+          id: string
           name: string
           type: string
         }
         Insert: {
-          created_at?: string | null
-          id?: number
+          id?: string
           name: string
           type: string
         }
         Update: {
-          created_at?: string | null
-          id?: number
+          id?: string
           name?: string
           type?: string
         }
         Relationships: []
-      }
-      chart_of_accounts: {
-        Row: {
-          code: string
-          created_at: string
-          description: string | null
-          id: number
-          name: string
-          parent_id: number | null
-          type: string
-        }
-        Insert: {
-          code: string
-          created_at?: string
-          description?: string | null
-          id?: number
-          name: string
-          parent_id?: number | null
-          type: string
-        }
-        Update: {
-          code?: string
-          created_at?: string
-          description?: string | null
-          id?: number
-          name?: string
-          parent_id?: number | null
-          type?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "chart_of_accounts_parent_id_fkey"
-            columns: ["parent_id"]
-            isOneToOne: false
-            referencedRelation: "chart_of_accounts"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "chart_of_accounts_parent_id_fkey"
-            columns: ["parent_id"]
-            isOneToOne: false
-            referencedRelation: "general_ledger"
-            referencedColumns: ["account_id"]
-          },
-          {
-            foreignKeyName: "chart_of_accounts_parent_id_fkey"
-            columns: ["parent_id"]
-            isOneToOne: false
-            referencedRelation: "trial_balance"
-            referencedColumns: ["account_id"]
-          },
-        ]
       }
       driver_balance_transactions: {
         Row: {
@@ -149,7 +91,7 @@ export type Database = {
           rent_verified: boolean | null
           shift: string
           status: string | null
-          submission_date: string
+          submission_date: string | null
           toll: number | null
           total_cashcollect: number | null
           total_earnings: number | null
@@ -170,7 +112,7 @@ export type Database = {
           rent_verified?: boolean | null
           shift: string
           status?: string | null
-          submission_date: string
+          submission_date?: string | null
           toll?: number | null
           total_cashcollect?: number | null
           total_earnings?: number | null
@@ -191,7 +133,7 @@ export type Database = {
           rent_verified?: boolean | null
           shift?: string
           status?: string | null
-          submission_date?: string
+          submission_date?: string | null
           toll?: number | null
           total_cashcollect?: number | null
           total_earnings?: number | null
@@ -205,13 +147,6 @@ export type Database = {
             foreignKeyName: "fleet_reports_user_id_fkey"
             columns: ["user_id"]
             isOneToOne: false
-            referencedRelation: "rent_due_view"
-            referencedColumns: ["user_id"]
-          },
-          {
-            foreignKeyName: "fleet_reports_user_id_fkey"
-            columns: ["user_id"]
-            isOneToOne: false
             referencedRelation: "users"
             referencedColumns: ["id"]
           },
@@ -221,110 +156,6 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "vehicles"
             referencedColumns: ["vehicle_number"]
-          },
-        ]
-      }
-      journal_entries: {
-        Row: {
-          created_at: string
-          description: string
-          entry_date: string
-          id: number
-          posted: boolean
-          reference_number: string | null
-          transaction_id: number | null
-        }
-        Insert: {
-          created_at?: string
-          description: string
-          entry_date: string
-          id?: number
-          posted?: boolean
-          reference_number?: string | null
-          transaction_id?: number | null
-        }
-        Update: {
-          created_at?: string
-          description?: string
-          entry_date?: string
-          id?: number
-          posted?: boolean
-          reference_number?: string | null
-          transaction_id?: number | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "journal_entries_transaction_id_fkey"
-            columns: ["transaction_id"]
-            isOneToOne: false
-            referencedRelation: "transactions"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      journal_entry_lines: {
-        Row: {
-          account_id: number
-          created_at: string
-          credit_amount: number
-          debit_amount: number
-          description: string | null
-          id: number
-          journal_entry_id: number
-        }
-        Insert: {
-          account_id: number
-          created_at?: string
-          credit_amount?: number
-          debit_amount?: number
-          description?: string | null
-          id?: number
-          journal_entry_id: number
-        }
-        Update: {
-          account_id?: number
-          created_at?: string
-          credit_amount?: number
-          debit_amount?: number
-          description?: string | null
-          id?: number
-          journal_entry_id?: number
-        }
-        Relationships: [
-          {
-            foreignKeyName: "journal_entry_lines_account_id_fkey"
-            columns: ["account_id"]
-            isOneToOne: false
-            referencedRelation: "chart_of_accounts"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "journal_entry_lines_account_id_fkey"
-            columns: ["account_id"]
-            isOneToOne: false
-            referencedRelation: "general_ledger"
-            referencedColumns: ["account_id"]
-          },
-          {
-            foreignKeyName: "journal_entry_lines_account_id_fkey"
-            columns: ["account_id"]
-            isOneToOne: false
-            referencedRelation: "trial_balance"
-            referencedColumns: ["account_id"]
-          },
-          {
-            foreignKeyName: "journal_entry_lines_journal_entry_id_fkey"
-            columns: ["journal_entry_id"]
-            isOneToOne: false
-            referencedRelation: "general_ledger"
-            referencedColumns: ["journal_entry_id"]
-          },
-          {
-            foreignKeyName: "journal_entry_lines_journal_entry_id_fkey"
-            columns: ["journal_entry_id"]
-            isOneToOne: false
-            referencedRelation: "journal_entries"
-            referencedColumns: ["id"]
           },
         ]
       }
@@ -354,13 +185,6 @@ export type Database = {
           user_id?: string | null
         }
         Relationships: [
-          {
-            foreignKeyName: "notifications_user_id_fkey"
-            columns: ["user_id"]
-            isOneToOne: false
-            referencedRelation: "rent_due_view"
-            referencedColumns: ["user_id"]
-          },
           {
             foreignKeyName: "notifications_user_id_fkey"
             columns: ["user_id"]
@@ -403,13 +227,6 @@ export type Database = {
             foreignKeyName: "fk_user"
             columns: ["user_id"]
             isOneToOne: false
-            referencedRelation: "rent_due_view"
-            referencedColumns: ["user_id"]
-          },
-          {
-            foreignKeyName: "fk_user"
-            columns: ["user_id"]
-            isOneToOne: false
             referencedRelation: "users"
             referencedColumns: ["id"]
           },
@@ -442,13 +259,6 @@ export type Database = {
             foreignKeyName: "shift_history_user_id_fkey"
             columns: ["user_id"]
             isOneToOne: false
-            referencedRelation: "rent_due_view"
-            referencedColumns: ["user_id"]
-          },
-          {
-            foreignKeyName: "shift_history_user_id_fkey"
-            columns: ["user_id"]
-            isOneToOne: false
             referencedRelation: "users"
             referencedColumns: ["id"]
           },
@@ -456,50 +266,39 @@ export type Database = {
       }
       transactions: {
         Row: {
-          account_id: number | null
+          account_id: string | null
           amount: number
-          category_id: number | null
+          category_id: string | null
           created_at: string | null
           date: string
           description: string | null
-          id: number
+          id: string
           type: string
+          updated_at: string | null
         }
         Insert: {
-          account_id?: number | null
+          account_id?: string | null
           amount: number
-          category_id?: number | null
-          created_at?: string | null
-          date: string
-          description?: string | null
-          id?: number
-          type: string
-        }
-        Update: {
-          account_id?: number | null
-          amount?: number
-          category_id?: number | null
+          category_id?: string | null
           created_at?: string | null
           date?: string
           description?: string | null
-          id?: number
+          id?: string
+          type: string
+          updated_at?: string | null
+        }
+        Update: {
+          account_id?: string | null
+          amount?: number
+          category_id?: string | null
+          created_at?: string | null
+          date?: string
+          description?: string | null
+          id?: string
           type?: string
+          updated_at?: string | null
         }
         Relationships: [
-          {
-            foreignKeyName: "fk_account"
-            columns: ["account_id"]
-            isOneToOne: false
-            referencedRelation: "accounts"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "fk_category"
-            columns: ["category_id"]
-            isOneToOne: false
-            referencedRelation: "categories"
-            referencedColumns: ["id"]
-          },
           {
             foreignKeyName: "transactions_account_id_fkey"
             columns: ["account_id"]
@@ -608,6 +407,41 @@ export type Database = {
           },
         ]
       }
+      vehicle_trip_history: {
+        Row: {
+          id: string
+          recorded_at: string
+          recorded_by: string | null
+          total_trips: number
+          type: string | null
+          vehicle_number: string
+        }
+        Insert: {
+          id?: string
+          recorded_at?: string
+          recorded_by?: string | null
+          total_trips?: number
+          type?: string | null
+          vehicle_number: string
+        }
+        Update: {
+          id?: string
+          recorded_at?: string
+          recorded_by?: string | null
+          total_trips?: number
+          type?: string | null
+          vehicle_number?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "vehicle_trip_history_recorded_by_fkey"
+            columns: ["recorded_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       vehicles: {
         Row: {
           assigned_driver_1: string | null
@@ -650,22 +484,8 @@ export type Database = {
             foreignKeyName: "vehicles_assigned_driver_1_fkey"
             columns: ["assigned_driver_1"]
             isOneToOne: false
-            referencedRelation: "rent_due_view"
-            referencedColumns: ["user_id"]
-          },
-          {
-            foreignKeyName: "vehicles_assigned_driver_1_fkey"
-            columns: ["assigned_driver_1"]
-            isOneToOne: false
             referencedRelation: "users"
             referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "vehicles_assigned_driver_2_fkey"
-            columns: ["assigned_driver_2"]
-            isOneToOne: false
-            referencedRelation: "rent_due_view"
-            referencedColumns: ["user_id"]
           },
           {
             foreignKeyName: "vehicles_assigned_driver_2_fkey"
@@ -717,60 +537,50 @@ export type Database = {
       }
     }
     Views: {
-      general_ledger: {
-        Row: {
-          account_code: string | null
-          account_id: number | null
-          account_name: string | null
-          account_type: string | null
-          credit_amount: number | null
-          debit_amount: number | null
-          entry_date: string | null
-          journal_description: string | null
-          journal_entry_id: number | null
-          line_description: string | null
-          line_id: number | null
-          reference_number: string | null
-        }
-        Relationships: []
-      }
       rent_due_view: {
         Row: {
-          driver_id: string | null
-          is_online: boolean | null
+          assigned_vehicle: string | null
+          current_shift: string | null
+          driver_name: string | null
+          id: string | null
           joining_date: string | null
-          name: string | null
-          overdue_status: string | null
+          offline_from_date: string | null
+          online: boolean | null
           rent_date: string | null
-          rent_paid: boolean | null
+          rent_paid_amount: number | null
           rent_status: string | null
           rent_verified: boolean | null
           shift: string | null
           submission_date: string | null
+          total_cashcollect: number | null
+          total_earnings: number | null
+          total_trips: number | null
           user_id: string | null
           vehicle_number: string | null
         }
         Relationships: [
           {
             foreignKeyName: "fk_vehicle_number"
+            columns: ["assigned_vehicle"]
+            isOneToOne: false
+            referencedRelation: "vehicles"
+            referencedColumns: ["vehicle_number"]
+          },
+          {
+            foreignKeyName: "fleet_reports_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fleet_reports_vehicle_number_fkey"
             columns: ["vehicle_number"]
             isOneToOne: false
             referencedRelation: "vehicles"
             referencedColumns: ["vehicle_number"]
           },
         ]
-      }
-      trial_balance: {
-        Row: {
-          account_code: string | null
-          account_id: number | null
-          account_name: string | null
-          account_type: string | null
-          balance: number | null
-          total_credits: number | null
-          total_debits: number | null
-        }
-        Relationships: []
       }
     }
     Functions: {
@@ -780,10 +590,6 @@ export type Database = {
       }
       calculate_health_score: {
         Args: Record<PropertyKey, never>
-        Returns: undefined
-      }
-      update_account_balance: {
-        Args: { account_id: number; amount_change: number }
         Returns: undefined
       }
       update_weekly_leaderboard: {
