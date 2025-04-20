@@ -1,7 +1,6 @@
-
 import { format, parseISO, isAfter, addMinutes, isBefore, addDays, startOfDay } from 'date-fns';
 
-export type RentStatus = 'paid' | 'overdue' | 'pending' | 'leave' | 'offline' | 'not_joined';
+export type RentStatus = 'approved' | 'overdue' | 'pending_verification' | 'leave' | 'offline' | 'not_joined';
 
 export interface ReportData {
   date: string;
@@ -53,15 +52,15 @@ export const processReportData = (report: any): ReportData => {
     };
   }
 
-  // Determine status based on report status, submission time, and shift
+  // Determine status based on report status
   let status: RentStatus;
   
   switch (report.status?.toLowerCase()) {
     case 'approved':
-      status = 'paid';
+      status = 'approved';
       break;
     case 'pending_verification':
-      status = 'pending';
+      status = 'pending_verification';
       break;
     case 'overdue':
       status = 'overdue';
@@ -70,11 +69,11 @@ export const processReportData = (report: any): ReportData => {
       status = 'leave';
       break;
     default:
-      status = 'pending';
+      status = 'pending_verification';
   }
 
   // Enhanced overdue checking based on shift and submission time
-  if (status === 'pending' && report.created_at && report.rent_date && report.shift) {
+  if (status === 'pending_verification' && report.created_at && report.rent_date && report.shift) {
     const submissionTime = parseISO(report.created_at);
     const rentDate = parseISO(report.rent_date);
     
@@ -111,7 +110,7 @@ export const processReportData = (report: any): ReportData => {
   const joiningDate = report.users.joining_date ? parseISO(report.users.joining_date) : null;
   
   // Only check for overdue if joining date is before or equal to rent date
-  if (joiningDate && !isBefore(rentDate, joiningDate) && isBefore(rentDate, currentDate) && status !== 'paid' && status !== 'leave') {
+  if (joiningDate && !isBefore(rentDate, joiningDate) && isBefore(rentDate, currentDate) && status !== 'approved' && status !== 'leave') {
     let deadlineForShift: Date;
     
     if (report.shift === 'morning') {
@@ -187,14 +186,14 @@ export const determineOverdueStatus = (date: string, shift: string, joiningDate?
   }
   
   // Otherwise it's just not submitted yet
-  return 'pending';
+  return 'pending_verification';
 };
 
 // Get status color for UI
 export const getStatusColor = (status: string) => {
   switch (status) {
-    case 'paid': return 'bg-green-100';
-    case 'pending': return 'bg-yellow-100';
+    case 'approved': return 'bg-green-100';
+    case 'pending_verification': return 'bg-yellow-100';
     case 'overdue': return 'bg-red-100';
     case 'leave': return 'bg-blue-100';
     case 'offline': return 'bg-gray-100';
@@ -206,8 +205,8 @@ export const getStatusColor = (status: string) => {
 // Get status label
 export const getStatusLabel = (status: string) => {
   switch (status) {
-    case 'paid': return 'Paid';
-    case 'pending': return 'Pending';
+    case 'approved': return 'Approved';
+    case 'pending_verification': return 'Pending';
     case 'overdue': return 'Overdue';
     case 'leave': return 'Leave';
     case 'offline': return 'Offline';
