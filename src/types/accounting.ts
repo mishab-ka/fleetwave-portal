@@ -108,3 +108,5 @@ export interface BalanceItem {
   amount: number;
   type: 'asset' | 'liability';
 }
+
+export type AccountType = 'asset' | 'liability' | 'equity' | 'revenue' | 'expense';
