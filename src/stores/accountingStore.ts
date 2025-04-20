@@ -1,3 +1,4 @@
+
 import { create } from 'zustand';
 import { supabase } from '@/integrations/supabase/client';
 import { 
@@ -9,6 +10,11 @@ import {
   BalanceSheetItem,
   CashFlowItem
 } from '@/types/accounting';
+import {
+  generateIncomeStatement,
+  generateBalanceSheet,
+  generateCashFlowStatement
+} from '@/lib/finance/financialReports';
 
 interface AccountingState {
   accounts: AccountingAccount[];
@@ -257,6 +263,7 @@ export const useAccountingStore = create<AccountingState>((set, get) => ({
     try {
       set({ loading: true, error: null });
       
+      // Check for missing account IDs and create them if necessary
       const { data: existingAccounts, error: accountsError } = await supabase
         .from('accounts')
         .select('id, name, type')
@@ -272,6 +279,7 @@ export const useAccountingStore = create<AccountingState>((set, get) => ({
         const missingAccountIds = neededAccountIds.filter(id => !existingAccountIds.includes(id as number));
         
         if (missingAccountIds.length > 0) {
+          // Get chart of accounts entries for the missing accounts
           const { data: chartAccounts, error: chartError } = await supabase
             .from('chart_of_accounts')
             .select('*')
@@ -283,9 +291,11 @@ export const useAccountingStore = create<AccountingState>((set, get) => ({
             for (const chartAccount of chartAccounts) {
               console.log('Creating account from chart account:', chartAccount);
               
+              // Map the account type to the format accepted by the database ('bank', 'cash', 'card')
               const dbAccountType = mapAccountTypeForDatabase(chartAccount.type);
               console.log(`Mapped account type from "${chartAccount.type}" to DB type "${dbAccountType}"`);
               
+              // Insert the new account
               const { data: newAccount, error: insertError } = await supabase
                 .from('accounts')
                 .insert({
@@ -310,9 +320,16 @@ export const useAccountingStore = create<AccountingState>((set, get) => ({
         }
       }
       
+      // Use the mapped account ID or the original one
       const accountId = accountsMap.get(transaction.account_from_id) || transaction.account_from_id;
       console.log('Using account ID for transaction:', accountId);
       
+      // Make sure we have a valid account_id before proceeding
+      if (!accountId) {
+        throw new Error('Unable to determine a valid account ID for this transaction');
+      }
+      
+      // Create the transaction
       const { data, error } = await supabase
         .from('transactions')
         .insert({
@@ -327,6 +344,7 @@ export const useAccountingStore = create<AccountingState>((set, get) => ({
       
       if (error) throw error;
       
+      // Refresh transactions
       await get().fetchTransactions();
       
       set({ loading: false });
