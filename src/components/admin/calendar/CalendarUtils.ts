@@ -72,39 +72,31 @@ export const processReportData = (report: any): ReportData => {
       status = 'pending_verification';
   }
 
-  // Enhanced overdue checking based on shift and submission time
-  if (status === 'pending_verification' && report.created_at && report.rent_date && report.shift) {
-    const submissionTime = parseISO(report.created_at);
-    const rentDate = parseISO(report.rent_date);
-    
-    let deadlineTime: Date;
-    
-    if (report.shift === 'morning') {
-      // Morning shift (4AM to 4PM): must submit by 4 PM same day
-      const dateObj = new Date(rentDate);
-      dateObj.setHours(16, 0, 0, 0);
-      deadlineTime = dateObj; // 4 PM
-    } else if (report.shift === 'night') {
-      // Night shift (4PM to 4AM): must submit by 4 AM next day
-      const nextDay = addDays(new Date(rentDate), 1);
-      nextDay.setHours(4, 0, 0, 0);
-      deadlineTime = nextDay; // 4 AM next day
-    } else {
-      // 24hr shift: must submit by 4 AM next day
-      const nextDay = addDays(new Date(rentDate), 1);
-      nextDay.setHours(4, 0, 0, 0);
-      deadlineTime = nextDay; // 4 AM next day
+  // Important: If a report exists, it means the user has submitted it,
+  // so it should be marked as pending_verification regardless of when it was submitted
+  // We don't need to check for overdue here since submission exists
+  if (report.created_at) {
+    // If there's a created_at timestamp, a report was submitted, so mark as pending_verification
+    // unless it's already been approved or is on leave
+    if (status !== 'approved' && status !== 'leave') {
+      status = 'pending_verification';
     }
-    
-    // Add 30 minutes grace period
-    deadlineTime = addMinutes(deadlineTime, 30);
-    
-    if (isAfter(submissionTime, deadlineTime)) {
-      status = 'overdue';
-    }
+    return {
+      date: report.rent_date,
+      userId: report.user_id,
+      driverName: report.driver_name,
+      vehicleNumber: report.vehicle_number,
+      status,
+      shift: report.shift,
+      created_at: report.created_at,
+      earnings: report.total_earnings,
+      notes: report.remarks,
+      joiningDate: report.users.joining_date,
+      shiftForDate: report.shift,
+    };
   }
   
-  // Check if rent is not submitted at all past the deadline (current date)
+  // For days with no submission, check if it should be marked as overdue
   const currentDate = new Date();
   const rentDate = parseISO(report.rent_date);
   const joiningDate = report.users.joining_date ? parseISO(report.users.joining_date) : null;

@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useForm } from "react-hook-form";
@@ -95,17 +94,14 @@ const SubmitReport = () => {
 
         setProfileData(data);
 
-        // Set default shift from user profile
         if (data?.shift) {
           setValue("shift", data.shift as "morning" | "night" | "24hr");
         }
         
-        // Set default vehicle number if available
         if (data?.vehicle_number) {
           setValue("vehicle_number", data.vehicle_number);
         }
 
-        // Check if report is overdue
         checkIfOverdue(data?.shift || "morning");
       } catch (error) {
         console.error("Error fetching user profile:", error);
@@ -160,12 +156,8 @@ const SubmitReport = () => {
       }
       
       const today = new Date();
-      let status = "pending_verification";
       
-      // Check if submission is overdue
-      if (isOverdue) {
-        status = "overdue";
-      }
+      const status = "pending_verification";
       
       const reportData = {
         user_id: user.id,

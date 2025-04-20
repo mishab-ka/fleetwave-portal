@@ -1,18 +1,12 @@
 
 import React from 'react';
-import { 
-  Dialog, 
-  DialogContent, 
-  DialogHeader, 
-  DialogTitle, 
-  DialogDescription,
-  DialogFooter
-} from "@/components/ui/dialog";
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { cn } from '@/lib/utils';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import { Separator } from '@/components/ui/separator';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import { ReportData } from './CalendarUtils';
-import { useIsMobile } from '@/hooks/use-mobile';
+import { RentStatusBadge } from '@/components/RentStatusBadge';
+import { format, parseISO } from 'date-fns';
+import { Badge } from '@/components/ui/badge';
 
 interface DriverDetailModalProps {
   isOpen: boolean;
@@ -20,87 +14,116 @@ interface DriverDetailModalProps {
   driverData: ReportData | null;
 }
 
-export const DriverDetailModal = ({ 
-  isOpen, 
-  onClose, 
-  driverData 
-}: DriverDetailModalProps) => {
-  const isMobile = useIsMobile();
+export const DriverDetailModal = ({ isOpen, onClose, driverData }: DriverDetailModalProps) => {
+  if (!driverData) return null;
+
+  const renderStatusDescription = () => {
+    switch (driverData.status) {
+      case 'approved':
+        return 'Driver has submitted the report, and it has been approved.';
+      case 'pending_verification':
+        return 'Driver has submitted the report, but it has not been verified yet.';
+      case 'overdue':
+        return 'Driver has not submitted the report within the deadline.';
+      case 'leave':
+        return 'Driver is on leave for this day.';
+      case 'offline':
+        return 'Driver is offline and not working on this day.';
+      case 'not_joined':
+        return 'Driver had not joined the company on this date.';
+      default:
+        return 'Status unknown';
+    }
+  };
   
+  const formatDate = (dateString?: string) => {
+    if (!dateString) return 'N/A';
+    try {
+      return format(parseISO(dateString), 'PPpp');
+    } catch (e) {
+      return dateString;
+    }
+  };
+
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className={isMobile ? "w-[95vw] max-w-md" : "max-w-lg"}>
+      <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle>Driver Details</DialogTitle>
+          <DialogTitle className="text-xl font-semibold">
+            {driverData.driverName}
+          </DialogTitle>
           <DialogDescription>
-            Details for {driverData?.driverName || 'Unknown'} on {driverData?.date}
+            <div className="flex items-center gap-2 mt-1">
+              <RentStatusBadge status={driverData.status} />
+              <span>for {driverData.date}</span>
+            </div>
           </DialogDescription>
         </DialogHeader>
-        
-        {driverData ? (
-          <div className="space-y-4 w-full">
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <div className="text-sm text-muted-foreground">Driver Name</div>
-                <div className="font-medium">{driverData.driverName}</div>
-              </div>
-              <div>
-                <div className="text-sm text-muted-foreground">Vehicle Number</div>
-                <div className="font-medium">{driverData.vehicleNumber || 'N/A'}</div>
-              </div>
-              <div>
-                <div className="text-sm text-muted-foreground">Current Shift</div>
-                <div className="font-medium capitalize">{driverData.shift}</div>
-              </div>
-              {driverData.shiftForDate && driverData.shiftForDate !== driverData.shift && (
-                <div>
-                  <div className="text-sm text-muted-foreground">Shift on this date</div>
-                  <div className="font-medium capitalize">{driverData.shiftForDate}</div>
-                </div>
-              )}
-              <div>
-                <div className="text-sm text-muted-foreground">Status</div>
-                <div className="font-medium">
-                  <Badge className={cn(
-                    "mt-1",
-                    driverData.status === 'paid' ? "bg-green-500" : 
-                    driverData.status === 'pending' ? "bg-yellow-500" : 
-                    driverData.status === 'overdue' ? "bg-red-500" : 
-                    driverData.status === 'leave' ? "bg-blue-500" : 
-                    "bg-gray-500"
-                  )}>
-                    {driverData.status === 'paid' ? "Paid" : 
-                     driverData.status === 'pending' ? "Pending" : 
-                     driverData.status === 'overdue' ? "Overdue" : 
-                     driverData.status === 'leave' ? "Leave" : 
-                     "Not Paid"}
-                  </Badge>
-                </div>
-              </div>
-              {driverData.earnings !== undefined && (
-                <div>
-                  <div className="text-sm text-muted-foreground">Earnings</div>
-                  <div className="font-medium">₹{driverData.earnings.toLocaleString()}</div>
-                </div>
-              )}
+        <Separator />
+        <ScrollArea className="max-h-[400px]">
+          <div className="space-y-4 py-2">
+            <div>
+              <h3 className="font-medium">Status</h3>
+              <p className="text-sm text-muted-foreground">
+                {renderStatusDescription()}
+              </p>
             </div>
             
-            {driverData.notes && (
+            <div>
+              <h3 className="font-medium">Driver Details</h3>
+              <div className="grid grid-cols-2 gap-2 mt-1">
+                <div className="text-sm">
+                  <p className="text-muted-foreground">Vehicle</p>
+                  <p>{driverData.vehicleNumber || 'N/A'}</p>
+                </div>
+                <div className="text-sm">
+                  <p className="text-muted-foreground">Assigned Shift</p>
+                  <Badge variant="outline" className="mt-1">
+                    {driverData.shift}
+                  </Badge>
+                </div>
+                {driverData.shiftForDate && driverData.shiftForDate !== driverData.shift && (
+                  <div className="text-sm col-span-2">
+                    <p className="text-muted-foreground">Shift on this date</p>
+                    <Badge variant="outline" className="mt-1">
+                      {driverData.shiftForDate}
+                    </Badge>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      (Different from current assigned shift)
+                    </p>
+                  </div>
+                )}
+                <div className="text-sm">
+                  <p className="text-muted-foreground">Joining Date</p>
+                  <p>{driverData.joiningDate ? format(parseISO(driverData.joiningDate), 'PP') : 'N/A'}</p>
+                </div>
+              </div>
+            </div>
+
+            {(driverData.status === 'approved' || driverData.status === 'pending_verification') && (
               <div>
-                <div className="text-sm text-muted-foreground">Notes</div>
-                <div className="p-3 bg-muted rounded-md text-sm mt-1">{driverData.notes}</div>
+                <h3 className="font-medium">Report Details</h3>
+                <div className="grid grid-cols-2 gap-2 mt-1">
+                  <div className="text-sm">
+                    <p className="text-muted-foreground">Submitted On</p>
+                    <p>{driverData.created_at ? formatDate(driverData.created_at) : 'N/A'}</p>
+                  </div>
+                  <div className="text-sm">
+                    <p className="text-muted-foreground">Earnings</p>
+                    <p>₹{driverData.earnings?.toLocaleString() || '0'}</p>
+                  </div>
+                </div>
               </div>
             )}
-            
-            <DialogFooter className="mt-4">
-              <Button variant="outline" onClick={onClose}>Close</Button>
-            </DialogFooter>
+
+            {driverData.notes && (
+              <div>
+                <h3 className="font-medium">Notes</h3>
+                <p className="text-sm">{driverData.notes}</p>
+              </div>
+            )}
           </div>
-        ) : (
-          <div className="py-6 text-center text-muted-foreground">
-            No data available for this driver.
-          </div>
-        )}
+        </ScrollArea>
       </DialogContent>
     </Dialog>
   );
