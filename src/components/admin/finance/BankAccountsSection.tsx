@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -13,14 +12,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { Banknote, Plus, DollarSign, CreditCard, Edit, Trash2 } from 'lucide-react';
 import { formatter } from '@/lib/utils';
-
-interface Account {
-  id: number;
-  name: string;
-  type: string;
-  balance: number;
-  created_at: string;
-}
+import { Account } from '@/types/accounting';
 
 const BankAccountsSection = () => {
   const [accounts, setAccounts] = useState<Account[]>([]);

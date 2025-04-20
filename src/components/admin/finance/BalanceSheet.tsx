@@ -5,6 +5,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { formatter } from '@/lib/utils';
+import { Account, Transaction } from '@/types/accounting';
 
 interface BalanceItem {
   category: string;
@@ -41,7 +42,7 @@ const BalanceSheet = () => {
       // Add asset transactions
       if (assetTransactions) {
         // Group assets by category (description)
-        const assetGroups = assetTransactions.reduce((acc, asset) => {
+        const assetGroups = assetTransactions.reduce((acc, asset: Transaction) => {
           const category = asset.description?.split(' - ')[0] || 'Other Assets';
           if (!acc[category]) {
             acc[category] = 0;
@@ -75,7 +76,7 @@ const BalanceSheet = () => {
       if (error) throw error;
 
       // Group liabilities by category (first part of description)
-      const groupedLiabilities = (data || []).reduce((acc, transaction) => {
+      const groupedLiabilities = (data || []).reduce((acc, transaction: Transaction) => {
         const descParts = transaction.description?.split(' - ') || [];
         const key = descParts[0] || 'Other Liabilities';
         
