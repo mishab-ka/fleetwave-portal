@@ -9,6 +9,45 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
+      accounts: {
+        Row: {
+          balance: number | null
+          id: string
+          name: string
+          type: string
+        }
+        Insert: {
+          balance?: number | null
+          id?: string
+          name: string
+          type: string
+        }
+        Update: {
+          balance?: number | null
+          id?: string
+          name?: string
+          type?: string
+        }
+        Relationships: []
+      }
+      categories: {
+        Row: {
+          id: string
+          name: string
+          type: string
+        }
+        Insert: {
+          id?: string
+          name: string
+          type: string
+        }
+        Update: {
+          id?: string
+          name?: string
+          type?: string
+        }
+        Relationships: []
+      }
       driver_balance_transactions: {
         Row: {
           amount: number
@@ -249,6 +288,57 @@ export type Database = {
             columns: ["user_id"]
             isOneToOne: false
             referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      transactions: {
+        Row: {
+          account_id: string | null
+          amount: number
+          category_id: string | null
+          created_at: string | null
+          date: string
+          description: string | null
+          id: string
+          type: string
+          updated_at: string | null
+        }
+        Insert: {
+          account_id?: string | null
+          amount: number
+          category_id?: string | null
+          created_at?: string | null
+          date?: string
+          description?: string | null
+          id?: string
+          type: string
+          updated_at?: string | null
+        }
+        Update: {
+          account_id?: string | null
+          amount?: number
+          category_id?: string | null
+          created_at?: string | null
+          date?: string
+          description?: string | null
+          id?: string
+          type?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "transactions_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "transactions_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "categories"
             referencedColumns: ["id"]
           },
         ]
