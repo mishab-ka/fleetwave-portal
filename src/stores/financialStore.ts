@@ -1,4 +1,3 @@
-
 import { create } from 'zustand';
 import { supabase } from '@/integrations/supabase/client';
 
@@ -17,7 +16,7 @@ interface JournalEntry {
   id: number;
   entry_date: string;
   description: string;
-  transaction_id: number;
+  transaction_id?: number;
   reference_number?: string;
   posted?: boolean;
   created_at?: string;

@@ -8,10 +8,10 @@ import FinanceDashboard from '@/components/admin/finance/FinanceDashboard';
 import AssetsLiabilitiesSection from '@/components/admin/finance/AssetsLiabilitiesSection';
 import ReportsSection from '@/components/admin/finance/ReportsSection';
 import CategoriesSection from '@/components/admin/finance/CategoriesSection';
-import BalanceSheet from '@/components/admin/finance/BalanceSheet';
 import { Button } from '@/components/ui/button';
 import { useNavigate } from 'react-router-dom';
 import { BookOpen } from 'lucide-react';
+import { JournalEntriesView } from '@/components/admin/finance/JournalEntriesView';
 
 const AdminFinance = () => {
   const navigate = useNavigate();
@@ -35,7 +35,7 @@ const AdminFinance = () => {
             <TabsTrigger value="dashboard">Dashboard</TabsTrigger>
             <TabsTrigger value="transactions">Transactions</TabsTrigger>
             <TabsTrigger value="accounts">Bank Accounts</TabsTrigger>
-            <TabsTrigger value="balance-sheet">Balance Sheet</TabsTrigger>
+            <TabsTrigger value="journal">Journal Entries</TabsTrigger>
             <TabsTrigger value="categories">Categories</TabsTrigger>
             <TabsTrigger value="assets-liabilities">Assets & Liabilities</TabsTrigger>
             <TabsTrigger value="reports">Reports</TabsTrigger>
@@ -53,8 +53,8 @@ const AdminFinance = () => {
             <BankAccountsSection />
           </TabsContent>
 
-          <TabsContent value="balance-sheet">
-            <BalanceSheet />
+          <TabsContent value="journal">
+            <JournalEntriesView />
           </TabsContent>
           
           <TabsContent value="categories">

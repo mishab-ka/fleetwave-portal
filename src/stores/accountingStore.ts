@@ -143,8 +143,9 @@ export const useAccountingStore = create<AccountingState>((set, get) => ({
           reference_number: entry.reference_number || undefined,
           description: entry.description,
           period_id: undefined,
-          is_posted: entry.posted,
-          created_at: entry.created_at
+          is_posted: entry.is_posted,
+          created_at: entry.created_at,
+          journal_lines: []
         }));
         
         set({ journalEntries: formattedEntries as JournalEntry[], loading: false });
@@ -180,7 +181,7 @@ export const useAccountingStore = create<AccountingState>((set, get) => ({
           reference_number: entryData.reference_number || undefined,
           description: entryData.description,
           period_id: undefined,
-          is_posted: entryData.posted,
+          is_posted: entryData.is_posted,
           created_at: entryData.created_at,
           journal_lines: linesData && !linesError ? linesData.map(line => ({
             id: line.id,
