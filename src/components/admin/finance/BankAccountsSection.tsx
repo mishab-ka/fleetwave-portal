@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -90,7 +89,7 @@ const BankAccountsSection = () => {
         .insert([{
           name: formData.name,
           type: formData.type,
-          balance: formData.balance,
+          balance: formData.balance || 0,
         }]);
         
       if (error) throw error;
@@ -135,7 +134,7 @@ const BankAccountsSection = () => {
         .update({
           name: formData.name,
           type: formData.type,
-          balance: formData.balance,
+          balance: formData.balance || 0,
         })
         .eq('id', selectedAccount.id);
 
@@ -205,9 +204,7 @@ const BankAccountsSection = () => {
           <DialogContent className="sm:max-w-[500px]">
             <DialogHeader>
               <DialogTitle>Add New Account</DialogTitle>
-              <DialogDescription>
-                Enter the details of the new bank or cash account.
-              </DialogDescription>
+              <DialogDescription>Enter the details of the new bank or cash account.</DialogDescription>
             </DialogHeader>
             
             <div className="grid gap-4 py-4">
@@ -306,9 +303,7 @@ const BankAccountsSection = () => {
         <DialogContent className="sm:max-w-[500px]">
           <DialogHeader>
             <DialogTitle>Edit Account</DialogTitle>
-            <DialogDescription>
-              Update the account details.
-            </DialogDescription>
+            <DialogDescription>Update the account details.</DialogDescription>
           </DialogHeader>
           
           <div className="grid gap-4 py-4">
