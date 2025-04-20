@@ -36,6 +36,51 @@ export type Database = {
         }
         Relationships: []
       }
+      accounts: {
+        Row: {
+          balance: number
+          created_at: string
+          id: number
+          name: string
+          type: string
+        }
+        Insert: {
+          balance?: number
+          created_at?: string
+          id?: number
+          name: string
+          type: string
+        }
+        Update: {
+          balance?: number
+          created_at?: string
+          id?: number
+          name?: string
+          type?: string
+        }
+        Relationships: []
+      }
+      categories: {
+        Row: {
+          created_at: string
+          id: number
+          name: string
+          type: string
+        }
+        Insert: {
+          created_at?: string
+          id?: number
+          name: string
+          type: string
+        }
+        Update: {
+          created_at?: string
+          id?: number
+          name?: string
+          type?: string
+        }
+        Relationships: []
+      }
       chart_of_accounts: {
         Row: {
           code: string
@@ -408,6 +453,7 @@ export type Database = {
         Row: {
           account_id: number | null
           amount: number
+          category_id: number | null
           created_at: string
           date: string
           description: string | null
@@ -417,6 +463,7 @@ export type Database = {
         Insert: {
           account_id?: number | null
           amount: number
+          category_id?: number | null
           created_at?: string
           date: string
           description?: string | null
@@ -426,13 +473,22 @@ export type Database = {
         Update: {
           account_id?: number | null
           amount?: number
+          category_id?: number | null
           created_at?: string
           date?: string
           description?: string | null
           id?: number
           type?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "transactions_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "categories"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       users: {
         Row: {

@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -24,7 +23,7 @@ const BalanceSheet = () => {
       const { data: assetTransactions, error: transactionsError } = await supabase
         .from('transactions')
         .select('*')
-        .eq('type', 'Asset');
+        .eq('type', 'income');
 
       if (accountsError || transactionsError) throw accountsError || transactionsError;
 
@@ -42,12 +41,9 @@ const BalanceSheet = () => {
       // Add asset transactions
       if (assetTransactions) {
         // Group assets by category (description)
-        const assetGroups = assetTransactions.reduce((acc, asset: Transaction) => {
+        const assetGroups = assetTransactions.reduce((acc: Record<string, number>, asset: Transaction) => {
           const category = asset.description?.split(' - ')[0] || 'Other Assets';
-          if (!acc[category]) {
-            acc[category] = 0;
-          }
-          acc[category] += asset.amount;
+          acc[category] = (acc[category] || 0) + asset.amount;
           return acc;
         }, {});
         
@@ -55,7 +51,7 @@ const BalanceSheet = () => {
         Object.entries(assetGroups).forEach(([category, amount]) => {
           balanceItems.push({
             category,
-            amount: amount as number,
+            amount,
             type: 'asset'
           });
         });

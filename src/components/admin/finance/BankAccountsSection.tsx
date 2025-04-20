@@ -41,7 +41,7 @@ const BankAccountsSection = () => {
       
       setAccounts(data || []);
       
-      const total = (data || []).reduce((sum, account) => sum + Number(account.balance), 0);
+      const total = (data || []).reduce((sum, account: Account) => sum + Number(account.balance), 0);
       setTotalBalance(total);
     } catch (error) {
       console.error('Error fetching bank accounts:', error);
