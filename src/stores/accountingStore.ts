@@ -1,3 +1,4 @@
+
 import { create } from 'zustand';
 import { supabase } from '@/integrations/supabase/client';
 import { 
@@ -83,7 +84,8 @@ export const useAccountingStore = create<AccountingState>((set, get) => ({
         description: account.description || account.name,
         account_type: account.type.toLowerCase() as 'asset' | 'liability' | 'equity' | 'revenue' | 'expense',
         is_active: account.is_active ?? true,
-        created_at: account.created_at
+        created_at: account.created_at,
+        balance: account.balance
       }));
       
       set({ accounts: formattedAccounts || [], loading: false });

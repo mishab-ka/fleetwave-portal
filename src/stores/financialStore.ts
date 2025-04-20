@@ -1,3 +1,4 @@
+
 import { create } from 'zustand';
 import { supabase } from '@/integrations/supabase/client';
 
@@ -66,22 +67,38 @@ export const useFinancialStore = create<FinancialStore>((set) => ({
   },
   
   fetchJournalEntries: async () => {
-    const { data, error } = await supabase
-      .from('journal_entries')
-      .select(`
-        *,
-        journal_entry_lines (
-          *,
-          account:chart_of_accounts(*)
-        )
-      `);
-    
-    if (data) {
-      // Transform the data to match the JournalEntry type
-      const formattedEntries = data.map(entry => ({
-        ...entry,
-        // Map journal_entry_lines to journal_lines to match our interface
-        journal_lines: entry.journal_entry_lines.map(line => ({
+    try {
+      // First get all journal entries
+      const { data: entriesData, error: entriesError } = await supabase
+        .from('journal_entries')
+        .select('*')
+        .order('entry_date', { ascending: false });
+      
+      if (entriesError) throw entriesError;
+      if (!entriesData) {
+        set({ journalEntries: [] });
+        return;
+      }
+      
+      // For each journal entry, get its lines
+      const entries = await Promise.all(entriesData.map(async (entry) => {
+        const { data: linesData, error: linesError } = await supabase
+          .from('journal_entry_lines')
+          .select(`
+            *,
+            account:chart_of_accounts(*)
+          `)
+          .eq('journal_entry_id', entry.id);
+        
+        if (linesError) {
+          console.error('Error fetching journal entry lines:', linesError);
+          return {
+            ...entry,
+            journal_lines: []
+          };
+        }
+        
+        const journalLines = (linesData || []).map(line => ({
           id: line.id,
           account: {
             ...line.account,
@@ -90,14 +107,18 @@ export const useFinancialStore = create<FinancialStore>((set) => ({
           debit_amount: line.debit_amount,
           credit_amount: line.credit_amount,
           description: line.description
-        }))
+        }));
+        
+        return {
+          ...entry,
+          journal_lines: journalLines
+        };
       }));
       
-      set({ journalEntries: formattedEntries });
-    }
-    
-    if (error) {
+      set({ journalEntries: entries });
+    } catch (error) {
       console.error('Error fetching journal entries:', error);
+      set({ journalEntries: [] });
     }
   },
 }));

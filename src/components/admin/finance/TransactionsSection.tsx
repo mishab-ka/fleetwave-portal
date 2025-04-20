@@ -152,23 +152,99 @@ const TransactionsSection = () => {
         toast.error('Please fill all required fields');
         return;
       }
-      console.log("Adding transaction with type:", formData.type);
-      const {
-        error
-      } = await supabase.from('transactions').insert([{
-        description: formData.description,
-        amount: formData.amount,
-        type: formData.type,
-        date: formData.date.toISOString(),
-        account_id: parseInt(formData.account_id),
-        category_id: parseInt(formData.category_id)
-      }]);
-      if (error) {
-        console.error('Insertion error details:', error);
-        throw error;
+      
+      const { data: transactionData, error: transactionError } = await supabase
+        .from('transactions')
+        .insert([{
+          description: formData.description,
+          amount: formData.amount,
+          type: formData.type,
+          date: formData.date.toISOString(),
+          account_id: parseInt(formData.account_id),
+          category_id: parseInt(formData.category_id)
+        }])
+        .select()
+        .single();
+      
+      if (transactionError) throw transactionError;
+      
+      const selectedAccount = accounts.find(acc => acc.id === parseInt(formData.account_id));
+      if (!selectedAccount) throw new Error('Account not found');
+      
+      let newBalance = selectedAccount.balance;
+      if (formData.type === 'income') {
+        newBalance += formData.amount;
+      } else if (formData.type === 'expense') {
+        newBalance -= formData.amount;
       }
+      
+      const { error: updateError } = await supabase
+        .from('accounts')
+        .update({ balance: newBalance })
+        .eq('id', formData.account_id);
+      
+      if (updateError) throw updateError;
+      
+      const { data: journalData, error: journalError } = await supabase
+        .from('journal_entries')
+        .insert([{
+          entry_date: formData.date.toISOString(),
+          description: formData.description,
+          is_posted: true,
+          reference_number: `TRANS-${transactionData.id}`
+        }])
+        .select()
+        .single();
+      
+      if (journalError) throw journalError;
+      
+      let journalLines = [];
+      
+      if (formData.type === 'income') {
+        journalLines = [
+          {
+            journal_entry_id: journalData.id,
+            account_id: parseInt(formData.account_id),
+            debit_amount: formData.amount,
+            credit_amount: 0,
+            description: 'Asset increase'
+          },
+          {
+            journal_entry_id: journalData.id,
+            account_id: parseInt(formData.category_id),
+            debit_amount: 0,
+            credit_amount: formData.amount,
+            description: 'Revenue recorded'
+          }
+        ];
+      } else if (formData.type === 'expense') {
+        journalLines = [
+          {
+            journal_entry_id: journalData.id,
+            account_id: parseInt(formData.category_id),
+            debit_amount: formData.amount,
+            credit_amount: 0,
+            description: 'Expense recorded'
+          },
+          {
+            journal_entry_id: journalData.id,
+            account_id: parseInt(formData.account_id),
+            debit_amount: 0,
+            credit_amount: formData.amount,
+            description: 'Asset decrease'
+          }
+        ];
+      }
+      
+      const { error: linesError } = await supabase
+        .from('journal_entry_lines')
+        .insert(journalLines);
+      
+      if (linesError) throw linesError;
+      
       toast.success('Transaction added successfully');
       fetchTransactions();
+      fetchAccounts();
       setIsAddDialogOpen(false);
       resetForm();
     } catch (error) {
@@ -197,23 +273,95 @@ const TransactionsSection = () => {
         toast.error('Please fill all required fields');
         return;
       }
-      console.log("Updating transaction with type:", formData.type);
-      const {
-        error
-      } = await supabase.from('transactions').update({
-        description: formData.description,
-        amount: formData.amount,
-        type: formData.type,
-        date: formData.date.toISOString(),
-        account_id: parseInt(formData.account_id),
-        category_id: parseInt(formData.category_id)
-      }).eq('id', selectedTransaction.id);
-      if (error) {
-        console.error('Update error details:', error);
-        throw error;
+      
+      const oldAmount = selectedTransaction.amount;
+      const newAmount = formData.amount;
+      const amountDifference = newAmount - oldAmount;
+      
+      const isAccountChanging = parseInt(formData.account_id) !== selectedTransaction.account_id;
+      const isTypeChanging = formData.type !== selectedTransaction.type;
+      
+      if (isAccountChanging) {
+        const oldAccount = accounts.find(acc => acc.id === selectedTransaction.account_id);
+        if (oldAccount) {
+          let oldAccountNewBalance = oldAccount.balance;
+          if (selectedTransaction.type === 'income') {
+            oldAccountNewBalance -= oldAmount;
+          } else if (selectedTransaction.type === 'expense') {
+            oldAccountNewBalance += oldAmount;
+          }
+          
+          await supabase
+            .from('accounts')
+            .update({ balance: oldAccountNewBalance })
+            .eq('id', oldAccount.id);
+        }
+        
+        const newAccount = accounts.find(acc => acc.id === parseInt(formData.account_id));
+        if (newAccount) {
+          let newAccountNewBalance = newAccount.balance;
+          if (formData.type === 'income') {
+            newAccountNewBalance += newAmount;
+          } else if (formData.type === 'expense') {
+            newAccountNewBalance -= newAmount;
+          }
+          
+          await supabase
+            .from('accounts')
+            .update({ balance: newAccountNewBalance })
+            .eq('id', newAccount.id);
+        }
+      } 
+      else if (amountDifference !== 0 || isTypeChanging) {
+        const account = accounts.find(acc => acc.id === parseInt(formData.account_id));
+        if (account) {
+          let newBalance = account.balance;
+          
+          if (isTypeChanging) {
+            if (selectedTransaction.type === 'income') {
+              newBalance -= oldAmount;
+            } else if (selectedTransaction.type === 'expense') {
+              newBalance += oldAmount;
+            }
+            
+            if (formData.type === 'income') {
+              newBalance += newAmount;
+            } else if (formData.type === 'expense') {
+              newBalance -= newAmount;
+            }
+          } 
+          else {
+            if (formData.type === 'income') {
+              newBalance += amountDifference;
+            } else if (formData.type === 'expense') {
+              newBalance -= amountDifference;
+            }
+          }
+          
+          await supabase
+            .from('accounts')
+            .update({ balance: newBalance })
+            .eq('id', account.id);
+        }
       }
+      
+      const { error } = await supabase
+        .from('transactions')
+        .update({
+          description: formData.description,
+          amount: formData.amount,
+          type: formData.type,
+          date: formData.date.toISOString(),
+          account_id: parseInt(formData.account_id),
+          category_id: parseInt(formData.category_id)
+        })
+        .eq('id', selectedTransaction.id);
+      
+      if (error) throw error;
+      
       toast.success('Transaction updated successfully');
       fetchTransactions();
+      fetchAccounts();
       setIsEditDialogOpen(false);
       setSelectedTransaction(null);
       resetForm();
@@ -225,12 +373,34 @@ const TransactionsSection = () => {
 
   const handleDeleteTransaction = async (id: number) => {
     try {
-      const {
-        error
-      } = await supabase.from('transactions').delete().eq('id', id);
+      const transaction = transactions.find(t => t.id === id);
+      if (!transaction) throw new Error('Transaction not found');
+      
+      const account = accounts.find(acc => acc.id === transaction.account_id);
+      if (account) {
+        let newBalance = account.balance;
+        if (transaction.type === 'income') {
+          newBalance -= transaction.amount;
+        } else if (transaction.type === 'expense') {
+          newBalance += transaction.amount;
+        }
+        
+        await supabase
+          .from('accounts')
+          .update({ balance: newBalance })
+          .eq('id', account.id);
+      }
+      
+      const { error } = await supabase
+        .from('transactions')
+        .delete()
+        .eq('id', id);
+      
       if (error) throw error;
+      
       toast.success('Transaction deleted successfully');
       fetchTransactions();
+      fetchAccounts();
     } catch (error) {
       console.error('Error deleting transaction:', error);
       toast.error('Failed to delete transaction');
