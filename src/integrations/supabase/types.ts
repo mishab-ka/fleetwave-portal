@@ -9,48 +9,30 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
-      accounts: {
+      accounting_periods: {
         Row: {
-          balance: number | null
-          created_at: string | null
+          created_at: string
+          end_date: string
           id: number
+          is_closed: boolean | null
           name: string
-          type: string
+          start_date: string
         }
         Insert: {
-          balance?: number | null
-          created_at?: string | null
+          created_at?: string
+          end_date: string
           id?: number
+          is_closed?: boolean | null
           name: string
-          type: string
+          start_date: string
         }
         Update: {
-          balance?: number | null
-          created_at?: string | null
+          created_at?: string
+          end_date?: string
           id?: number
+          is_closed?: boolean | null
           name?: string
-          type?: string
-        }
-        Relationships: []
-      }
-      categories: {
-        Row: {
-          created_at: string | null
-          id: number
-          name: string
-          type: string
-        }
-        Insert: {
-          created_at?: string | null
-          id?: number
-          name: string
-          type: string
-        }
-        Update: {
-          created_at?: string | null
-          id?: number
-          name?: string
-          type?: string
+          start_date?: string
         }
         Relationships: []
       }
@@ -60,6 +42,7 @@ export type Database = {
           created_at: string
           description: string | null
           id: number
+          is_active: boolean | null
           name: string
           parent_id: number | null
           type: string
@@ -69,6 +52,7 @@ export type Database = {
           created_at?: string
           description?: string | null
           id?: number
+          is_active?: boolean | null
           name: string
           parent_id?: number | null
           type: string
@@ -78,6 +62,7 @@ export type Database = {
           created_at?: string
           description?: string | null
           id?: number
+          is_active?: boolean | null
           name?: string
           parent_id?: number | null
           type?: string
@@ -89,20 +74,6 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "chart_of_accounts"
             referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "chart_of_accounts_parent_id_fkey"
-            columns: ["parent_id"]
-            isOneToOne: false
-            referencedRelation: "general_ledger"
-            referencedColumns: ["account_id"]
-          },
-          {
-            foreignKeyName: "chart_of_accounts_parent_id_fkey"
-            columns: ["parent_id"]
-            isOneToOne: false
-            referencedRelation: "trial_balance"
-            referencedColumns: ["account_id"]
           },
         ]
       }
@@ -230,34 +201,34 @@ export type Database = {
           description: string
           entry_date: string
           id: number
-          posted: boolean
+          is_posted: boolean | null
+          period_id: number | null
           reference_number: string | null
-          transaction_id: number | null
         }
         Insert: {
           created_at?: string
           description: string
           entry_date: string
           id?: number
-          posted?: boolean
+          is_posted?: boolean | null
+          period_id?: number | null
           reference_number?: string | null
-          transaction_id?: number | null
         }
         Update: {
           created_at?: string
           description?: string
           entry_date?: string
           id?: number
-          posted?: boolean
+          is_posted?: boolean | null
+          period_id?: number | null
           reference_number?: string | null
-          transaction_id?: number | null
         }
         Relationships: [
           {
-            foreignKeyName: "journal_entries_transaction_id_fkey"
-            columns: ["transaction_id"]
+            foreignKeyName: "journal_entries_period_id_fkey"
+            columns: ["period_id"]
             isOneToOne: false
-            referencedRelation: "transactions"
+            referencedRelation: "accounting_periods"
             referencedColumns: ["id"]
           },
         ]
@@ -297,27 +268,6 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "chart_of_accounts"
             referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "journal_entry_lines_account_id_fkey"
-            columns: ["account_id"]
-            isOneToOne: false
-            referencedRelation: "general_ledger"
-            referencedColumns: ["account_id"]
-          },
-          {
-            foreignKeyName: "journal_entry_lines_account_id_fkey"
-            columns: ["account_id"]
-            isOneToOne: false
-            referencedRelation: "trial_balance"
-            referencedColumns: ["account_id"]
-          },
-          {
-            foreignKeyName: "journal_entry_lines_journal_entry_id_fkey"
-            columns: ["journal_entry_id"]
-            isOneToOne: false
-            referencedRelation: "general_ledger"
-            referencedColumns: ["journal_entry_id"]
           },
           {
             foreignKeyName: "journal_entry_lines_journal_entry_id_fkey"
@@ -450,68 +400,6 @@ export type Database = {
             columns: ["user_id"]
             isOneToOne: false
             referencedRelation: "users"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      transactions: {
-        Row: {
-          account_id: number | null
-          amount: number
-          category_id: number | null
-          created_at: string | null
-          date: string
-          description: string | null
-          id: number
-          type: string
-        }
-        Insert: {
-          account_id?: number | null
-          amount: number
-          category_id?: number | null
-          created_at?: string | null
-          date: string
-          description?: string | null
-          id?: number
-          type: string
-        }
-        Update: {
-          account_id?: number | null
-          amount?: number
-          category_id?: number | null
-          created_at?: string | null
-          date?: string
-          description?: string | null
-          id?: number
-          type?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "fk_account"
-            columns: ["account_id"]
-            isOneToOne: false
-            referencedRelation: "accounts"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "fk_category"
-            columns: ["category_id"]
-            isOneToOne: false
-            referencedRelation: "categories"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "transactions_account_id_fkey"
-            columns: ["account_id"]
-            isOneToOne: false
-            referencedRelation: "accounts"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "transactions_category_id_fkey"
-            columns: ["category_id"]
-            isOneToOne: false
-            referencedRelation: "categories"
             referencedColumns: ["id"]
           },
         ]
@@ -717,23 +605,6 @@ export type Database = {
       }
     }
     Views: {
-      general_ledger: {
-        Row: {
-          account_code: string | null
-          account_id: number | null
-          account_name: string | null
-          account_type: string | null
-          credit_amount: number | null
-          debit_amount: number | null
-          entry_date: string | null
-          journal_description: string | null
-          journal_entry_id: number | null
-          line_description: string | null
-          line_id: number | null
-          reference_number: string | null
-        }
-        Relationships: []
-      }
       rent_due_view: {
         Row: {
           driver_id: string | null
@@ -760,18 +631,6 @@ export type Database = {
           },
         ]
       }
-      trial_balance: {
-        Row: {
-          account_code: string | null
-          account_id: number | null
-          account_name: string | null
-          account_type: string | null
-          balance: number | null
-          total_credits: number | null
-          total_debits: number | null
-        }
-        Relationships: []
-      }
     }
     Functions: {
       calculate_daily_health_score: {
@@ -780,10 +639,6 @@ export type Database = {
       }
       calculate_health_score: {
         Args: Record<PropertyKey, never>
-        Returns: undefined
-      }
-      update_account_balance: {
-        Args: { account_id: number; amount_change: number }
         Returns: undefined
       }
       update_weekly_leaderboard: {
