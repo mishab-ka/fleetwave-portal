@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
-import { Banknote, Plus, DollarSign, CreditCard } from 'lucide-react';
+import { Banknote, Plus, DollarSign, CreditCard, Edit, Trash2 } from 'lucide-react';
 import { formatter } from '@/lib/utils';
 
 interface Account {
@@ -25,6 +25,8 @@ const BankAccountsSection = () => {
   const [loading, setLoading] = useState<boolean>(true);
   const [totalBalance, setTotalBalance] = useState<number>(0);
   const [isAddDialogOpen, setIsAddDialogOpen] = useState<boolean>(false);
+  const [selectedAccount, setSelectedAccount] = useState<Account | null>(null);
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState<boolean>(false);
   
   const [formData, setFormData] = useState({
     name: '',
@@ -109,6 +111,62 @@ const BankAccountsSection = () => {
     });
   };
   
+  const handleEditClick = (account: Account) => {
+    setSelectedAccount(account);
+    setFormData({
+      name: account.name,
+      type: account.type,
+      balance: account.balance,
+    });
+    setIsEditDialogOpen(true);
+  };
+
+  const handleUpdateAccount = async () => {
+    try {
+      if (!selectedAccount || !formData.name || !formData.type) {
+        toast.error('Please fill all required fields');
+        return;
+      }
+
+      const { error } = await supabase
+        .from('accounts')
+        .update({
+          name: formData.name,
+          type: formData.type,
+          balance: formData.balance,
+        })
+        .eq('id', selectedAccount.id);
+
+      if (error) throw error;
+
+      toast.success('Account updated successfully');
+      fetchAccounts();
+      setIsEditDialogOpen(false);
+      resetForm();
+      setSelectedAccount(null);
+    } catch (error) {
+      console.error('Error updating account:', error);
+      toast.error('Failed to update account');
+    }
+  };
+
+  const handleDeleteAccount = async (id: number) => {
+    try {
+      const { error } = await supabase
+        .from('accounts')
+        .delete()
+        .eq('id', id);
+
+      if (error) throw error;
+
+      toast.success('Account deleted successfully');
+      fetchAccounts();
+    } catch (error) {
+      console.error('Error deleting account:', error);
+      toast.error('Failed to delete account');
+    }
+  };
+
   if (loading && accounts.length === 0) {
     return (
       <div className="flex justify-center items-center h-64">
@@ -242,6 +300,68 @@ const BankAccountsSection = () => {
         </Card>
       </div>
       
+      <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle>Edit Account</DialogTitle>
+            <DialogDescription>
+              Update the account details.
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="grid gap-4 py-4">
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="name" className="text-right">Name</Label>
+              <Input 
+                id="name" 
+                name="name" 
+                value={formData.name} 
+                onChange={handleInputChange} 
+                className="col-span-3" 
+                placeholder="Account name"
+              />
+            </div>
+            
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="type" className="text-right">Type</Label>
+              <Select 
+                value={formData.type} 
+                onValueChange={(value) => handleSelectChange('type', value)}
+              >
+                <SelectTrigger className="col-span-3">
+                  <SelectValue placeholder="Select type" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="bank">Bank Account</SelectItem>
+                  <SelectItem value="cash">Cash</SelectItem>
+                  <SelectItem value="card">Card</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="balance" className="text-right">Balance</Label>
+              <Input 
+                id="balance" 
+                name="balance" 
+                type="number" 
+                value={formData.balance} 
+                onChange={handleInputChange} 
+                className="col-span-3" 
+                placeholder="0.00"
+              />
+            </div>
+          </div>
+          
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsEditDialogOpen(false)}>Cancel</Button>
+            <Button onClick={handleUpdateAccount} className="bg-fleet-purple hover:bg-fleet-purple-dark">
+              Update Account
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      
       <Card>
         <CardHeader>
           <CardTitle>Accounts List</CardTitle>
@@ -254,6 +374,7 @@ const BankAccountsSection = () => {
                   <th className="text-left p-3">Name</th>
                   <th className="text-left p-3">Type</th>
                   <th className="text-right p-3">Balance</th>
+                  <th className="text-right p-3">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -266,6 +387,47 @@ const BankAccountsSection = () => {
                     <td className="p-3 capitalize">{account.type}</td>
                     <td className="p-3 text-right font-medium">
                       {formatter.format(account.balance)}
+                    </td>
+                    <td className="p-3 text-right">
+                      <div className="flex justify-end space-x-2">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleEditClick(account)}
+                          className="text-gray-600 hover:text-gray-900"
+                        >
+                          <Edit className="h-4 w-4" />
+                        </Button>
+                        
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="text-red-500 hover:text-red-700"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+                              <AlertDialogDescription>
+                                This action cannot be undone. This will permanently delete the account.
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>Cancel</AlertDialogCancel>
+                              <AlertDialogAction
+                                onClick={() => handleDeleteAccount(account.id)}
+                                className="bg-red-500 hover:bg-red-600"
+                              >
+                                Delete
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
+                      </div>
                     </td>
                   </tr>
                 ))}
