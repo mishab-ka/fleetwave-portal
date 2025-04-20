@@ -4,13 +4,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { formatter } from '@/lib/utils';
-import { Account, Transaction } from '@/types/accounting';
-
-interface BalanceItem {
-  category: string;
-  amount: number;
-  type: 'asset' | 'liability';
-}
+import { Account, Transaction, BalanceItem } from '@/types/accounting';
 
 const BalanceSheet = () => {
   const { data: assets = [], isLoading: assetsLoading } = useQuery({
@@ -31,7 +25,7 @@ const BalanceSheet = () => {
       
       // Add bank account balances
       if (accountsData) {
-        balanceItems = accountsData.map(account => ({
+        balanceItems = accountsData.map((account: Account) => ({
           category: account.name,
           amount: account.balance || 0,
           type: 'asset'
@@ -41,17 +35,17 @@ const BalanceSheet = () => {
       // Add asset transactions
       if (assetTransactions) {
         // Group assets by category (description)
-        const assetGroups = assetTransactions.reduce((acc: Record<string, number>, asset: Transaction) => {
+        const assetGroups = assetTransactions.reduce((acc: Record<string, number>, asset: any) => {
           const category = asset.description?.split(' - ')[0] || 'Other Assets';
           acc[category] = (acc[category] || 0) + asset.amount;
           return acc;
-        }, {});
+        }, {} as Record<string, number>);
         
         // Add grouped assets to balance items
         Object.entries(assetGroups).forEach(([category, amount]) => {
           balanceItems.push({
             category,
-            amount,
+            amount: Number(amount),
             type: 'asset'
           });
         });
@@ -72,7 +66,7 @@ const BalanceSheet = () => {
       if (error) throw error;
 
       // Group liabilities by category (first part of description)
-      const groupedLiabilities = (data || []).reduce((acc, transaction: Transaction) => {
+      const groupedLiabilities = (data || []).reduce((acc: Record<string, number>, transaction: any) => {
         const descParts = transaction.description?.split(' - ') || [];
         const key = descParts[0] || 'Other Liabilities';
         
@@ -81,12 +75,12 @@ const BalanceSheet = () => {
         }
         acc[key] += Math.abs(transaction.amount);
         return acc;
-      }, {});
+      }, {} as Record<string, number>);
 
       return Object.entries(groupedLiabilities).map(([category, amount]) => ({
         category,
-        amount: amount as number,
-        type: 'liability'
+        amount: Number(amount),
+        type: 'liability' as const
       }));
     }
   });

@@ -14,31 +14,13 @@ import { PlusSquare, ArrowUp, ArrowDown, Calendar, Edit, Trash } from 'lucide-re
 import { formatter } from '@/lib/utils';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-interface Account {
-  id: number;
-  name: string;
-  type: string;
-  balance: number;
-}
-interface Category {
-  id: number;
-  name: string;
-  type: string;
-}
-interface Transaction {
-  id: number;
-  description: string;
-  amount: number;
-  type: string;
-  date: string;
-  created_at: string;
-  account_id: number;
-  category_id: number;
-}
+import { Account, Category, Transaction } from '@/types/accounting';
+
 interface TransactionWithRelations extends Transaction {
-  accounts: Account;
-  categories: Category;
+  account?: Account;
+  category?: Category;
 }
+
 const TransactionsSection = () => {
   const [transactions, setTransactions] = useState<TransactionWithRelations[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
@@ -56,23 +38,40 @@ const TransactionsSection = () => {
     account_id: '',
     category_id: ''
   });
+
   const fetchTransactions = async () => {
     try {
       setLoading(true);
-      const {
-        data,
-        error
-      } = await supabase.from('transactions').select(`
-          *,
-          accounts!transactions_account_id_fkey(id, name, type, balance),
-          categories!transactions_category_id_fkey(id, name, type)
-        `).order('date', {
-        ascending: false
-      });
-      if (error) throw error;
-      if (data) {
-        setTransactions(data as TransactionWithRelations[]);
-      }
+      
+      const { data: transactionData, error: transactionError } = await supabase
+        .from('transactions')
+        .select('*')
+        .order('date', { ascending: false });
+
+      if (transactionError) throw transactionError;
+      
+      const { data: accountsData, error: accountsError } = await supabase
+        .from('accounts')
+        .select('*');
+      
+      if (accountsError) throw accountsError;
+      
+      const { data: categoriesData, error: categoriesError } = await supabase
+        .from('categories')
+        .select('*');
+      
+      if (categoriesError) throw categoriesError;
+      
+      const accountsMap = new Map(accountsData?.map(acc => [acc.id, acc]) || []);
+      const categoriesMap = new Map(categoriesData?.map(cat => [cat.id, cat]) || []);
+      
+      const joinedTransactions = transactionData?.map(transaction => ({
+        ...transaction,
+        account: accountsMap.get(transaction.account_id || 0),
+        category: categoriesMap.get(transaction.category_id || 0),
+      })) || [];
+      
+      setTransactions(joinedTransactions);
     } catch (error) {
       console.error('Error fetching transactions:', error);
       toast.error('Failed to load transactions');
@@ -80,12 +79,10 @@ const TransactionsSection = () => {
       setLoading(false);
     }
   };
+
   const fetchAccounts = async () => {
     try {
-      const {
-        data,
-        error
-      } = await supabase.from('accounts').select('id, name, type, balance');
+      const { data, error } = await supabase.from('accounts').select('*');
       if (error) throw error;
       setAccounts(data || []);
     } catch (error) {
@@ -93,12 +90,10 @@ const TransactionsSection = () => {
       toast.error('Failed to load accounts');
     }
   };
+
   const fetchCategories = async () => {
     try {
-      const {
-        data,
-        error
-      } = await supabase.from('categories').select('id, name, type');
+      const { data, error } = await supabase.from('categories').select('*');
       if (error) throw error;
       setCategories(data || []);
     } catch (error) {
@@ -106,11 +101,13 @@ const TransactionsSection = () => {
       toast.error('Failed to load categories');
     }
   };
+
   useEffect(() => {
     fetchTransactions();
     fetchAccounts();
     fetchCategories();
   }, []);
+
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const {
       name,
@@ -121,12 +118,14 @@ const TransactionsSection = () => {
       [name]: name === 'amount' ? parseFloat(value) : value
     }));
   };
+
   const handleSelectChange = (name: string, value: string) => {
     setFormData(prev => ({
       ...prev,
       [name]: value
     }));
   };
+
   const handleDateChange = (date: Date | undefined) => {
     if (date) {
       setFormData(prev => ({
@@ -135,6 +134,7 @@ const TransactionsSection = () => {
       }));
     }
   };
+
   const resetForm = () => {
     setFormData({
       description: '',
@@ -145,6 +145,7 @@ const TransactionsSection = () => {
       category_id: ''
     });
   };
+
   const handleAddTransaction = async () => {
     try {
       if (!formData.description || !formData.amount || !formData.date || !formData.account_id || !formData.category_id) {
@@ -175,6 +176,7 @@ const TransactionsSection = () => {
       toast.error('Failed to add transaction');
     }
   };
+
   const handleEditClick = (transaction: TransactionWithRelations) => {
     setSelectedTransaction(transaction);
     setFormData({
@@ -187,6 +189,7 @@ const TransactionsSection = () => {
     });
     setIsEditDialogOpen(true);
   };
+
   const handleUpdateTransaction = async () => {
     try {
       if (!selectedTransaction) return;
@@ -219,6 +222,7 @@ const TransactionsSection = () => {
       toast.error('Failed to update transaction');
     }
   };
+
   const handleDeleteTransaction = async (id: number) => {
     try {
       const {
@@ -232,13 +236,17 @@ const TransactionsSection = () => {
       toast.error('Failed to delete transaction');
     }
   };
+
   const filteredTransactions = activeTab === "all" ? transactions : transactions.filter(t => t.type === activeTab);
+
   if (loading) {
     return <div className="flex justify-center items-center h-64">
         <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-fleet-purple"></div>
       </div>;
   }
-  return <div className="space-y-6">
+
+  return (
+    <div className="space-y-6">
       <div className="flex justify-between items-center">
         <h2 className="text-3xl font-bold">Transactions</h2>
         
@@ -421,7 +429,6 @@ const TransactionsSection = () => {
       
       <Card>
         <CardHeader>
-          
           <Tabs defaultValue="all" className="w-full" onValueChange={setActiveTab}>
             <TabsList className="grid grid-cols-3 w-64">
               <TabsTrigger value="all">All</TabsTrigger>
@@ -445,7 +452,8 @@ const TransactionsSection = () => {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredTransactions.map(transaction => <TableRow key={transaction.id}>
+                {filteredTransactions.map(transaction => (
+                  <TableRow key={transaction.id}>
                     <TableCell>{transaction.description}</TableCell>
                     <TableCell>
                       <span className={`flex items-center font-medium ${transaction.type === 'expense' ? 'text-red-500' : 'text-green-500'}`}>
@@ -459,8 +467,8 @@ const TransactionsSection = () => {
                       </span>
                     </TableCell>
                     <TableCell>{new Date(transaction.date).toLocaleDateString()}</TableCell>
-                    <TableCell>{transaction.accounts?.name}</TableCell>
-                    <TableCell>{transaction.categories?.name}</TableCell>
+                    <TableCell>{transaction.account?.name || 'N/A'}</TableCell>
+                    <TableCell>{transaction.category?.name || 'N/A'}</TableCell>
                     <TableCell>
                       <div className="flex space-x-2">
                         <Button variant="ghost" size="sm" onClick={() => handleEditClick(transaction)} className="text-gray-600 hover:text-gray-900">
@@ -490,18 +498,23 @@ const TransactionsSection = () => {
                         </AlertDialog>
                       </div>
                     </TableCell>
-                  </TableRow>)}
+                  </TableRow>
+                ))}
                 
-                {filteredTransactions.length === 0 && <TableRow>
+                {filteredTransactions.length === 0 && (
+                  <TableRow>
                     <TableCell colSpan={7} className="text-center text-gray-500 py-8">
                       No transactions found
                     </TableCell>
-                  </TableRow>}
+                  </TableRow>
+                )}
               </TableBody>
             </Table>
           </ScrollArea>
         </CardContent>
       </Card>
-    </div>;
+    </div>
+  );
 };
+
 export default TransactionsSection;

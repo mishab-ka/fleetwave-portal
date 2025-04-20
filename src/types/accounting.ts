@@ -2,7 +2,7 @@
 export interface Transaction {
   id: number;
   amount: number;
-  type: 'income' | 'expense' | 'transfer';
+  type: string;
   description?: string;
   date: string;
   created_at: string;
@@ -13,7 +13,7 @@ export interface Transaction {
 export interface Account {
   id: number;
   name: string;
-  type: 'bank' | 'cash' | 'card';
+  type: string;
   balance: number;
   created_at: string;
 }
@@ -21,6 +21,92 @@ export interface Account {
 export interface Category {
   id: number;
   name: string;
-  type: 'income' | 'expense';
+  type: string;
   created_at: string;
+}
+
+// Additional types needed for the accounting system
+export interface AccountingAccount {
+  id: number;
+  code: string;
+  name: string;
+  description: string;
+  account_type: 'asset' | 'liability' | 'equity' | 'revenue' | 'expense';
+  is_active: boolean;
+  created_at: string;
+}
+
+export interface AccountingPeriod {
+  id: number;
+  name: string;
+  start_date: string;
+  end_date: string;
+  is_closed: boolean;
+  created_at: string;
+}
+
+export interface JournalEntryLine {
+  id: number;
+  journal_entry_id: number;
+  account_id: number;
+  debit_amount: number;
+  credit_amount: number;
+  description?: string;
+  created_at: string;
+  account?: AccountingAccount;
+}
+
+export interface JournalEntry {
+  id: number;
+  entry_date: string;
+  reference_number?: string;
+  description: string;
+  period_id?: number;
+  is_posted: boolean;
+  created_at: string;
+  journal_lines?: JournalEntryLine[];
+  transaction_id?: number;
+}
+
+export interface FinancialTransaction {
+  id: number;
+  transaction_date: string;
+  description: string;
+  amount: number;
+  transaction_type: 'income' | 'expense' | 'transfer';
+  category: string;
+  account_from_id?: number;
+  account_to_id?: number;
+  journal_entry_id?: number;
+  created_at: string;
+}
+
+export interface IncomeStatementItem {
+  account_id: number;
+  account_code: string;
+  account_name: string;
+  account_type: 'revenue' | 'expense';
+  amount: number;
+}
+
+export interface BalanceSheetItem {
+  account_id: number;
+  account_code: string;
+  account_name: string;
+  account_type: 'asset' | 'liability' | 'equity';
+  balance: number;
+}
+
+export interface CashFlowItem {
+  account_id: number;
+  account_code: string;
+  account_name: string;
+  cash_flow_type: 'Operating' | 'Investing' | 'Financing';
+  amount: number;
+}
+
+export interface BalanceItem {
+  category: string;
+  amount: number;
+  type: 'asset' | 'liability';
 }
