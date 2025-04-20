@@ -1,12 +1,13 @@
 
 import React from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/context/AuthContext';
 import { 
   LayoutDashboard, 
   Users, 
   Car, 
+  FileText,
   Calendar, 
   Settings, 
   LogOut,
@@ -24,12 +25,14 @@ interface AdminLayoutProps {
 const AdminLayout: React.FC<AdminLayoutProps> = ({ children, title }) => {
   const { signOut } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const location = useLocation();
 
   const navigation = [
     { name: 'Dashboard', href: '/admin', icon: LayoutDashboard },
-    { name: 'Customers', href: '/admin/customers', icon: Users },
-    { name: 'Fleet', href: '/admin/fleet', icon: Car },
-    { name: 'Bookings', href: '/admin/bookings', icon: Calendar },
+    { name: 'Drivers', href: '/admin/drivers', icon: Users },
+    { name: 'Vehicles', href: '/admin/vehicles', icon: Car },
+    { name: 'Reports', href: '/admin/reports', icon: FileText },
+    { name: 'Calendar', href: '/admin/calendar', icon: Calendar },
     { name: 'Settings', href: '/admin/settings', icon: Settings },
   ];
 
@@ -71,9 +74,19 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children, title }) => {
                   <Link
                     key={item.name}
                     to={item.href}
-                    className="group flex items-center px-2 py-2 text-base font-medium rounded-md text-gray-600 hover:bg-gray-50 hover:text-gray-900"
+                    className={cn(
+                      "group flex items-center px-2 py-2 text-base font-medium rounded-md",
+                      location.pathname === item.href
+                        ? "bg-gray-100 text-gray-900"
+                        : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
+                    )}
                   >
-                    <item.icon className="mr-4 h-6 w-6 text-gray-400 group-hover:text-gray-500" />
+                    <item.icon className={cn(
+                      "mr-4 h-6 w-6",
+                      location.pathname === item.href
+                        ? "text-gray-500"
+                        : "text-gray-400 group-hover:text-gray-500"
+                    )} />
                     {item.name}
                   </Link>
                 ))}
@@ -105,9 +118,19 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children, title }) => {
                 <Link
                   key={item.name}
                   to={item.href}
-                  className="group flex items-center px-2 py-2 text-sm font-medium rounded-md text-gray-600 hover:bg-gray-50 hover:text-gray-900"
+                  className={cn(
+                    "group flex items-center px-2 py-2 text-sm font-medium rounded-md",
+                    location.pathname === item.href
+                      ? "bg-gray-100 text-gray-900"
+                      : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
+                  )}
                 >
-                  <item.icon className="mr-3 h-5 w-5 text-gray-400 group-hover:text-gray-500" />
+                  <item.icon className={cn(
+                    "mr-3 h-5 w-5",
+                    location.pathname === item.href
+                      ? "text-gray-500"
+                      : "text-gray-400 group-hover:text-gray-500"
+                  )} />
                   {item.name}
                 </Link>
               ))}
