@@ -52,35 +52,27 @@ export const processReportData = (report: any): ReportData => {
     };
   }
 
-  // Determine status based on report status
-  let status: RentStatus;
-  
-  switch (report.status?.toLowerCase()) {
-    case 'approved':
-      status = 'approved';
-      break;
-    case 'pending_verification':
-      status = 'pending_verification';
-      break;
-    case 'overdue':
-      status = 'overdue';
-      break;
-    case 'leave':
-      status = 'leave';
-      break;
-    default:
-      status = 'pending_verification';
-  }
-
-  // Important: If a report exists, it means the user has submitted it,
-  // so it should be marked as pending_verification regardless of when it was submitted
-  // We don't need to check for overdue here since submission exists
+  // IMPORTANT FIX: If a report has a created_at timestamp, it means it was submitted, and its 
+  // status should take precedence over deadline calculations
   if (report.created_at) {
-    // If there's a created_at timestamp, a report was submitted, so mark as pending_verification
-    // unless it's already been approved or is on leave
-    if (status !== 'approved' && status !== 'leave') {
-      status = 'pending_verification';
+    // If the report has been submitted, use its status or default to pending_verification
+    let status: RentStatus;
+    
+    switch (report.status?.toLowerCase()) {
+      case 'approved':
+        status = 'approved';
+        break;
+      case 'pending_verification':
+        status = 'pending_verification';
+        break;
+      case 'leave':
+        status = 'leave';
+        break;
+      default:
+        // If status is not specifically set, default to pending verification
+        status = 'pending_verification';
     }
+    
     return {
       date: report.rent_date,
       userId: report.user_id,
@@ -95,14 +87,16 @@ export const processReportData = (report: any): ReportData => {
       shiftForDate: report.shift,
     };
   }
-  
+
   // For days with no submission, check if it should be marked as overdue
   const currentDate = new Date();
   const rentDate = parseISO(report.rent_date);
   const joiningDate = report.users.joining_date ? parseISO(report.users.joining_date) : null;
   
   // Only check for overdue if joining date is before or equal to rent date
-  if (joiningDate && !isBefore(rentDate, joiningDate) && isBefore(rentDate, currentDate) && status !== 'approved' && status !== 'leave') {
+  let status: RentStatus = 'pending_verification';
+  
+  if (joiningDate && !isBefore(rentDate, joiningDate) && isBefore(rentDate, currentDate)) {
     let deadlineForShift: Date;
     
     if (report.shift === 'morning') {
