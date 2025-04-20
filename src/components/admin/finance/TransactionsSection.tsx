@@ -1,77 +1,77 @@
+
 import React, { useState, useEffect } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { DatePicker } from "@/components/ui/date-picker";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { 
+  Table, 
+  TableBody, 
+  TableCaption, 
+  TableCell, 
+  TableHead, 
+  TableHeader, 
+  TableRow 
+} from "@/components/ui/table";
+import { 
+  Card, 
+  CardContent, 
+  CardDescription, 
+  CardHeader, 
+  CardTitle 
+} from "@/components/ui/card";
+import { Button } from '@/components/ui/button';
+import { TransactionForm } from './TransactionForm';
+import { Badge } from '@/components/ui/badge';
+import { formatter } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
-import { PlusSquare, ArrowUp, ArrowDown, Calendar, Edit, Trash } from 'lucide-react';
-import { formatter } from '@/lib/utils';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-import { Account, Category, Transaction } from '@/types/accounting';
+import { 
+  Sheet, 
+  SheetContent, 
+  SheetDescription, 
+  SheetHeader, 
+  SheetTitle 
+} from '@/components/ui/sheet';
+import { Skeleton } from '@/components/ui/skeleton';
+import { useFinancialStore } from '@/stores/financialStore';
 
-interface TransactionWithRelations extends Transaction {
-  account?: Account;
-  category?: Category;
+interface Transaction {
+  id: number;
+  date: string;
+  description: string;
+  amount: number;
+  type: 'income' | 'expense';
+  category: string;
+  account: string;
+  account_id: number;
+  created_at: string;
 }
 
 const TransactionsSection = () => {
-  const [transactions, setTransactions] = useState<TransactionWithRelations[]>([]);
-  const [accounts, setAccounts] = useState<Account[]>([]);
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
-  const [isAddDialogOpen, setIsAddDialogOpen] = useState<boolean>(false);
-  const [isEditDialogOpen, setIsEditDialogOpen] = useState<boolean>(false);
-  const [activeTab, setActiveTab] = useState<string>("all");
-  const [selectedTransaction, setSelectedTransaction] = useState<TransactionWithRelations | null>(null);
-  const [formData, setFormData] = useState({
-    description: '',
-    amount: 0,
-    type: 'income',
-    date: new Date(),
-    account_id: '',
-    category_id: ''
-  });
-
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [isTransactionFormOpen, setIsTransactionFormOpen] = useState(false);
+  const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
+  const { fetchJournalEntries } = useFinancialStore();
+  
   const fetchTransactions = async () => {
     try {
-      setLoading(true);
-      
-      const { data: transactionData, error: transactionError } = await supabase
+      const { data, error } = await supabase
         .from('transactions')
-        .select('*')
+        .select(`
+          *,
+          accounts:account_id (name)
+        `)
         .order('date', { ascending: false });
-
-      if (transactionError) throw transactionError;
       
-      const { data: accountsData, error: accountsError } = await supabase
-        .from('accounts')
-        .select('*');
+      if (error) {
+        throw error;
+      }
       
-      if (accountsError) throw accountsError;
-      
-      const { data: categoriesData, error: categoriesError } = await supabase
-        .from('categories')
-        .select('*');
-      
-      if (categoriesError) throw categoriesError;
-      
-      const accountsMap = new Map(accountsData?.map(acc => [acc.id, acc]) || []);
-      const categoriesMap = new Map(categoriesData?.map(cat => [cat.id, cat]) || []);
-      
-      const joinedTransactions = transactionData?.map(transaction => ({
-        ...transaction,
-        account: accountsMap.get(transaction.account_id || 0),
-        category: categoriesMap.get(transaction.category_id || 0),
-      })) || [];
-      
-      setTransactions(joinedTransactions);
+      if (data) {
+        const formattedTransactions = data.map(tx => ({
+          ...tx,
+          account: tx.accounts?.name || 'Unknown Account'
+        }));
+        setTransactions(formattedTransactions);
+      }
     } catch (error) {
       console.error('Error fetching transactions:', error);
       toast.error('Failed to load transactions');
@@ -80,609 +80,228 @@ const TransactionsSection = () => {
     }
   };
 
-  const fetchAccounts = async () => {
-    try {
-      const { data, error } = await supabase.from('accounts').select('*');
-      if (error) throw error;
-      setAccounts(data || []);
-    } catch (error) {
-      console.error('Error fetching accounts:', error);
-      toast.error('Failed to load accounts');
-    }
-  };
-
-  const fetchCategories = async () => {
-    try {
-      const { data, error } = await supabase.from('categories').select('*');
-      if (error) throw error;
-      setCategories(data || []);
-    } catch (error) {
-      console.error('Error fetching categories:', error);
-      toast.error('Failed to load categories');
-    }
-  };
-
   useEffect(() => {
     fetchTransactions();
-    fetchAccounts();
-    fetchCategories();
   }, []);
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const {
-      name,
-      value
-    } = e.target;
-    setFormData(prev => ({
-      ...prev,
-      [name]: name === 'amount' ? parseFloat(value) : value
-    }));
+  const handleEdit = (transaction: Transaction) => {
+    setEditingTransaction(transaction);
+    setIsTransactionFormOpen(true);
   };
-
-  const handleSelectChange = (name: string, value: string) => {
-    setFormData(prev => ({
-      ...prev,
-      [name]: value
-    }));
-  };
-
-  const handleDateChange = (date: Date | undefined) => {
-    if (date) {
-      setFormData(prev => ({
-        ...prev,
-        date: date
-      }));
-    }
-  };
-
-  const resetForm = () => {
-    setFormData({
-      description: '',
-      amount: 0,
-      type: 'income',
-      date: new Date(),
-      account_id: '',
-      category_id: ''
-    });
-  };
-
-  const handleAddTransaction = async () => {
+  
+  const handleDelete = async (id: number) => {
     try {
-      if (!formData.description || !formData.amount || !formData.date || !formData.account_id || !formData.category_id) {
-        toast.error('Please fill all required fields');
-        return;
+      // First create a debit/credit journal entry to reverse the transaction
+      const transactionToDelete = transactions.find(t => t.id === id);
+      
+      if (!transactionToDelete) {
+        throw new Error('Transaction not found');
       }
       
-      const { data: transactionData, error: transactionError } = await supabase
-        .from('transactions')
-        .insert([{
-          description: formData.description,
-          amount: formData.amount,
-          type: formData.type,
-          date: formData.date.toISOString(),
-          account_id: parseInt(formData.account_id),
-          category_id: parseInt(formData.category_id)
-        }])
-        .select()
-        .single();
-      
-      if (transactionError) throw transactionError;
-      
-      const selectedAccount = accounts.find(acc => acc.id === parseInt(formData.account_id));
-      if (!selectedAccount) throw new Error('Account not found');
-      
-      let newBalance = selectedAccount.balance;
-      if (formData.type === 'income') {
-        newBalance += formData.amount;
-      } else if (formData.type === 'expense') {
-        newBalance -= formData.amount;
-      }
-      
-      const { error: updateError } = await supabase
-        .from('accounts')
-        .update({ balance: newBalance })
-        .eq('id', formData.account_id);
-      
-      if (updateError) throw updateError;
-      
-      const { data: journalData, error: journalError } = await supabase
+      // Step 1: Create a journal entry
+      const { data: journalEntry, error: journalError } = await supabase
         .from('journal_entries')
-        .insert([{
-          entry_date: formData.date.toISOString(),
-          description: formData.description,
-          is_posted: true,
-          reference_number: `TRANS-${transactionData.id}`
-        }])
+        .insert({
+          entry_date: new Date().toISOString().split('T')[0],
+          description: `Reversal of transaction: ${transactionToDelete.description}`,
+          reference_number: `REV-${id}`,
+          posted: true
+        })
         .select()
         .single();
       
-      if (journalError) throw journalError;
-      
-      let journalLines = [];
-      
-      if (formData.type === 'income') {
-        journalLines = [
-          {
-            journal_entry_id: journalData.id,
-            account_id: parseInt(formData.account_id),
-            debit_amount: formData.amount,
-            credit_amount: 0,
-            description: 'Asset increase'
-          },
-          {
-            journal_entry_id: journalData.id,
-            account_id: parseInt(formData.category_id),
-            debit_amount: 0,
-            credit_amount: formData.amount,
-            description: 'Revenue recorded'
-          }
-        ];
-      } else if (formData.type === 'expense') {
-        journalLines = [
-          {
-            journal_entry_id: journalData.id,
-            account_id: parseInt(formData.category_id),
-            debit_amount: formData.amount,
-            credit_amount: 0,
-            description: 'Expense recorded'
-          },
-          {
-            journal_entry_id: journalData.id,
-            account_id: parseInt(formData.account_id),
-            debit_amount: 0,
-            credit_amount: formData.amount,
-            description: 'Asset decrease'
-          }
-        ];
+      if (journalError) {
+        throw journalError;
       }
       
+      // Get the appropriate account based on transaction type
+      const { data: accountData, error: accountError } = await supabase
+        .from('chart_of_accounts')
+        .select('id, type')
+        .eq('id', transactionToDelete.account_id)
+        .single();
+      
+      if (accountError) {
+        throw accountError;
+      }
+      
+      // Find the revenue or expense account based on the transaction type
+      const { data: counterpartAccount, error: counterpartError } = await supabase
+        .from('chart_of_accounts')
+        .select('id')
+        .eq('type', transactionToDelete.type === 'income' ? 'revenue' : 'expense')
+        .limit(1)
+        .single();
+      
+      if (counterpartError) {
+        throw counterpartError;
+      }
+      
+      // For income: Credit Asset (decrease), Debit Revenue (decrease)
+      // For expense: Debit Asset (increase), Credit Expense (decrease)
+      const journalLines = [
+        {
+          journal_entry_id: journalEntry.id,
+          account_id: transactionToDelete.account_id,
+          debit_amount: transactionToDelete.type === 'income' ? 0 : parseFloat(transactionToDelete.amount.toString()),
+          credit_amount: transactionToDelete.type === 'income' ? parseFloat(transactionToDelete.amount.toString()) : 0,
+          description: `Reversal: ${transactionToDelete.type === 'income' ? 'Decrease' : 'Increase'} in account`
+        },
+        {
+          journal_entry_id: journalEntry.id,
+          account_id: counterpartAccount.id,
+          debit_amount: transactionToDelete.type === 'income' ? parseFloat(transactionToDelete.amount.toString()) : 0,
+          credit_amount: transactionToDelete.type === 'income' ? 0 : parseFloat(transactionToDelete.amount.toString()),
+          description: `Reversal: ${transactionToDelete.type === 'income' ? 'Decrease' : 'Decrease'} in ${transactionToDelete.type}`
+        }
+      ];
+      
+      // Insert journal lines
       const { error: linesError } = await supabase
         .from('journal_entry_lines')
         .insert(journalLines);
       
-      if (linesError) throw linesError;
-      
-      toast.success('Transaction added successfully');
-      fetchTransactions();
-      fetchAccounts();
-      setIsAddDialogOpen(false);
-      resetForm();
-    } catch (error) {
-      console.error('Error adding transaction:', error);
-      toast.error('Failed to add transaction');
-    }
-  };
-
-  const handleEditClick = (transaction: TransactionWithRelations) => {
-    setSelectedTransaction(transaction);
-    setFormData({
-      description: transaction.description || '',
-      amount: transaction.amount,
-      type: transaction.type,
-      date: new Date(transaction.date),
-      account_id: transaction.account_id.toString(),
-      category_id: transaction.category_id.toString()
-    });
-    setIsEditDialogOpen(true);
-  };
-
-  const handleUpdateTransaction = async () => {
-    try {
-      if (!selectedTransaction) return;
-      if (!formData.description || !formData.amount || !formData.date || !formData.account_id || !formData.category_id) {
-        toast.error('Please fill all required fields');
-        return;
+      if (linesError) {
+        throw linesError;
       }
       
-      const oldAmount = selectedTransaction.amount;
-      const newAmount = formData.amount;
-      const amountDifference = newAmount - oldAmount;
-      
-      const isAccountChanging = parseInt(formData.account_id) !== selectedTransaction.account_id;
-      const isTypeChanging = formData.type !== selectedTransaction.type;
-      
-      if (isAccountChanging) {
-        const oldAccount = accounts.find(acc => acc.id === selectedTransaction.account_id);
-        if (oldAccount) {
-          let oldAccountNewBalance = oldAccount.balance;
-          if (selectedTransaction.type === 'income') {
-            oldAccountNewBalance -= oldAmount;
-          } else if (selectedTransaction.type === 'expense') {
-            oldAccountNewBalance += oldAmount;
-          }
-          
-          await supabase
-            .from('accounts')
-            .update({ balance: oldAccountNewBalance })
-            .eq('id', oldAccount.id);
-        }
-        
-        const newAccount = accounts.find(acc => acc.id === parseInt(formData.account_id));
-        if (newAccount) {
-          let newAccountNewBalance = newAccount.balance;
-          if (formData.type === 'income') {
-            newAccountNewBalance += newAmount;
-          } else if (formData.type === 'expense') {
-            newAccountNewBalance -= newAmount;
-          }
-          
-          await supabase
-            .from('accounts')
-            .update({ balance: newAccountNewBalance })
-            .eq('id', newAccount.id);
-        }
-      } 
-      else if (amountDifference !== 0 || isTypeChanging) {
-        const account = accounts.find(acc => acc.id === parseInt(formData.account_id));
-        if (account) {
-          let newBalance = account.balance;
-          
-          if (isTypeChanging) {
-            if (selectedTransaction.type === 'income') {
-              newBalance -= oldAmount;
-            } else if (selectedTransaction.type === 'expense') {
-              newBalance += oldAmount;
-            }
-            
-            if (formData.type === 'income') {
-              newBalance += newAmount;
-            } else if (formData.type === 'expense') {
-              newBalance -= newAmount;
-            }
-          } 
-          else {
-            if (formData.type === 'income') {
-              newBalance += amountDifference;
-            } else if (formData.type === 'expense') {
-              newBalance -= amountDifference;
-            }
-          }
-          
-          await supabase
-            .from('accounts')
-            .update({ balance: newBalance })
-            .eq('id', account.id);
-        }
-      }
-      
-      const { error } = await supabase
-        .from('transactions')
-        .update({
-          description: formData.description,
-          amount: formData.amount,
-          type: formData.type,
-          date: formData.date.toISOString(),
-          account_id: parseInt(formData.account_id),
-          category_id: parseInt(formData.category_id)
-        })
-        .eq('id', selectedTransaction.id);
-      
-      if (error) throw error;
-      
-      toast.success('Transaction updated successfully');
-      fetchTransactions();
-      fetchAccounts();
-      setIsEditDialogOpen(false);
-      setSelectedTransaction(null);
-      resetForm();
-    } catch (error) {
-      console.error('Error updating transaction:', error);
-      toast.error('Failed to update transaction');
-    }
-  };
-
-  const handleDeleteTransaction = async (id: number) => {
-    try {
-      const transaction = transactions.find(t => t.id === id);
-      if (!transaction) throw new Error('Transaction not found');
-      
-      const account = accounts.find(acc => acc.id === transaction.account_id);
-      if (account) {
-        let newBalance = account.balance;
-        if (transaction.type === 'income') {
-          newBalance -= transaction.amount;
-        } else if (transaction.type === 'expense') {
-          newBalance += transaction.amount;
-        }
-        
-        await supabase
-          .from('accounts')
-          .update({ balance: newBalance })
-          .eq('id', account.id);
-      }
-      
-      const { error } = await supabase
+      // Finally delete the transaction
+      const { error: deleteError } = await supabase
         .from('transactions')
         .delete()
         .eq('id', id);
       
-      if (error) throw error;
+      if (deleteError) {
+        throw deleteError;
+      }
       
       toast.success('Transaction deleted successfully');
       fetchTransactions();
-      fetchAccounts();
+      fetchJournalEntries();
     } catch (error) {
       console.error('Error deleting transaction:', error);
       toast.error('Failed to delete transaction');
     }
   };
-
-  const filteredTransactions = activeTab === "all" ? transactions : transactions.filter(t => t.type === activeTab);
-
-  if (loading) {
-    return <div className="flex justify-center items-center h-64">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-fleet-purple"></div>
-      </div>;
-  }
+  
+  const onTransactionComplete = () => {
+    setIsTransactionFormOpen(false);
+    setEditingTransaction(null);
+    fetchTransactions();
+    fetchJournalEntries();
+  };
 
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
-        <h2 className="text-3xl font-bold">Transactions</h2>
-        
-        <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
-          <DialogTrigger asChild>
-            <Button className="bg-fleet-purple hover:bg-fleet-purple-dark">
-              <PlusSquare className="mr-2 h-4 w-4" />
-              Add Transaction
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="sm:max-w-[500px]">
-            <DialogHeader>
-              <DialogTitle>Add New Transaction</DialogTitle>
-              <DialogDescription>
-                Enter the details of the new transaction.
-              </DialogDescription>
-            </DialogHeader>
-            
-            <div className="grid gap-4 py-4">
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="description" className="text-right">Description</Label>
-                <Input id="description" name="description" value={formData.description} onChange={handleInputChange} className="col-span-3" placeholder="Transaction description" />
-              </div>
-              
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="amount" className="text-right">Amount</Label>
-                <Input id="amount" name="amount" type="number" value={formData.amount} onChange={handleInputChange} className="col-span-3" placeholder="0.00" />
-              </div>
-              
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="type" className="text-right">Type</Label>
-                <Select value={formData.type} onValueChange={value => setFormData(prev => ({
-                ...prev,
-                type: value
-              }))}>
-                  <SelectTrigger className="col-span-3">
-                    <SelectValue placeholder="Select type" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="income">Income</SelectItem>
-                    <SelectItem value="expense">Expense</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="date" className="text-right">Date</Label>
-                <DatePicker date={formData.date} onSelect={handleDateChange} defaultValue={formData.date} className="col-span-3" />
-              </div>
-              
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="account_id" className="text-right">Account</Label>
-                <Select value={formData.account_id} onValueChange={value => setFormData(prev => ({
-                ...prev,
-                account_id: value
-              }))}>
-                  <SelectTrigger className="col-span-3">
-                    <SelectValue placeholder="Select account" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {accounts.map(account => <SelectItem key={account.id} value={account.id.toString()}>
-                        {account.name}
-                      </SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-              
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="category_id" className="text-right">Category</Label>
-                <Select value={formData.category_id} onValueChange={value => setFormData(prev => ({
-                ...prev,
-                category_id: value
-              }))}>
-                  <SelectTrigger className="col-span-3">
-                    <SelectValue placeholder="Select category" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {categories.map(category => <SelectItem key={category.id} value={category.id.toString()}>
-                        {category.name}
-                      </SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setIsAddDialogOpen(false)}>Cancel</Button>
-              <Button onClick={handleAddTransaction} className="bg-fleet-purple hover:bg-fleet-purple-dark">
-                Add Transaction
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-
-        <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
-          <DialogContent className="sm:max-w-[500px]">
-            <DialogHeader>
-              <DialogTitle>Edit Transaction</DialogTitle>
-              <DialogDescription>
-                Update the transaction details.
-              </DialogDescription>
-            </DialogHeader>
-            
-            <div className="grid gap-4 py-4">
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="edit-description" className="text-right">Description</Label>
-                <Input id="edit-description" name="description" value={formData.description} onChange={handleInputChange} className="col-span-3" placeholder="Transaction description" />
-              </div>
-              
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="edit-amount" className="text-right">Amount</Label>
-                <Input id="edit-amount" name="amount" type="number" value={formData.amount} onChange={handleInputChange} className="col-span-3" placeholder="0.00" />
-              </div>
-              
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="edit-type" className="text-right">Type</Label>
-                <Select value={formData.type} onValueChange={value => setFormData(prev => ({
-                ...prev,
-                type: value
-              }))}>
-                  <SelectTrigger className="col-span-3">
-                    <SelectValue placeholder="Select type" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="income">Income</SelectItem>
-                    <SelectItem value="expense">Expense</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="edit-date" className="text-right">Date</Label>
-                <DatePicker date={formData.date} onSelect={handleDateChange} defaultValue={formData.date} className="col-span-3" />
-              </div>
-              
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="edit-account_id" className="text-right">Account</Label>
-                <Select value={formData.account_id} onValueChange={value => setFormData(prev => ({
-                ...prev,
-                account_id: value
-              }))}>
-                  <SelectTrigger className="col-span-3">
-                    <SelectValue placeholder="Select account" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {accounts.map(account => <SelectItem key={account.id} value={account.id.toString()}>
-                        {account.name}
-                      </SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-              
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="edit-category_id" className="text-right">Category</Label>
-                <Select value={formData.category_id} onValueChange={value => setFormData(prev => ({
-                ...prev,
-                category_id: value
-              }))}>
-                  <SelectTrigger className="col-span-3">
-                    <SelectValue placeholder="Select category" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {categories.map(category => <SelectItem key={category.id} value={category.id.toString()}>
-                        {category.name}
-                      </SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setIsEditDialogOpen(false)}>Cancel</Button>
-              <Button onClick={handleUpdateTransaction} className="bg-fleet-purple hover:bg-fleet-purple-dark">
-                Update Transaction
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+        <h2 className="text-2xl font-bold">Transactions</h2>
+        <Button
+          onClick={() => {
+            setEditingTransaction(null);
+            setIsTransactionFormOpen(true);
+          }}
+        >
+          Add Transaction
+        </Button>
       </div>
       
       <Card>
         <CardHeader>
-          <Tabs defaultValue="all" className="w-full" onValueChange={setActiveTab}>
-            <TabsList className="grid grid-cols-3 w-64">
-              <TabsTrigger value="all">All</TabsTrigger>
-              <TabsTrigger value="income">Income</TabsTrigger>
-              <TabsTrigger value="expense">Expense</TabsTrigger>
-            </TabsList>
-          </Tabs>
+          <CardTitle>Transaction History</CardTitle>
+          <CardDescription>A record of all financial transactions</CardDescription>
         </CardHeader>
         <CardContent>
-          <ScrollArea className="h-[400px]">
+          {loading ? (
+            <div className="space-y-2">
+              {Array(5).fill(0).map((_, idx) => (
+                <div key={idx} className="flex gap-2 items-center">
+                  <Skeleton className="h-12 w-full" />
+                </div>
+              ))}
+            </div>
+          ) : transactions.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground">
+              No transactions found. Create your first transaction to get started.
+            </div>
+          ) : (
             <Table>
+              <TableCaption>Transaction history for the current period</TableCaption>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Description</TableHead>
-                  <TableHead>Amount</TableHead>
-                  <TableHead>Type</TableHead>
                   <TableHead>Date</TableHead>
-                  <TableHead>Account</TableHead>
+                  <TableHead>Description</TableHead>
                   <TableHead>Category</TableHead>
+                  <TableHead>Account</TableHead>
+                  <TableHead>Type</TableHead>
+                  <TableHead className="text-right">Amount</TableHead>
                   <TableHead>Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredTransactions.map(transaction => (
+                {transactions.map((transaction) => (
                   <TableRow key={transaction.id}>
+                    <TableCell>{new Date(transaction.date).toLocaleDateString()}</TableCell>
                     <TableCell>{transaction.description}</TableCell>
+                    <TableCell>{transaction.category}</TableCell>
+                    <TableCell>{transaction.account}</TableCell>
                     <TableCell>
-                      <span className={`flex items-center font-medium ${transaction.type === 'expense' ? 'text-red-500' : 'text-green-500'}`}>
-                        {transaction.type === 'expense' ? <ArrowDown className="mr-1 h-4 w-4" /> : <ArrowUp className="mr-1 h-4 w-4" />}
+                      <Badge variant={transaction.type === 'income' ? 'success' : 'destructive'}>
+                        {transaction.type === 'income' ? 'Income' : 'Expense'}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-right font-medium">
+                      <span className={transaction.type === 'income' ? 'text-green-600' : 'text-red-600'}>
+                        {transaction.type === 'income' ? '+' : '-'}
                         {formatter.format(transaction.amount)}
                       </span>
                     </TableCell>
                     <TableCell>
-                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${transaction.type === 'expense' ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800'}`}>
-                        {transaction.type}
-                      </span>
-                    </TableCell>
-                    <TableCell>{new Date(transaction.date).toLocaleDateString()}</TableCell>
-                    <TableCell>{transaction.account?.name || 'N/A'}</TableCell>
-                    <TableCell>{transaction.category?.name || 'N/A'}</TableCell>
-                    <TableCell>
                       <div className="flex space-x-2">
-                        <Button variant="ghost" size="sm" onClick={() => handleEditClick(transaction)} className="text-gray-600 hover:text-gray-900">
-                          <Edit className="h-4 w-4" />
+                        <Button 
+                          variant="outline" 
+                          size="sm"
+                          onClick={() => handleEdit(transaction)}
+                        >
+                          Edit
                         </Button>
-                        
-                        <AlertDialog>
-                          <AlertDialogTrigger asChild>
-                            <Button variant="ghost" size="sm" className="text-red-500 hover:text-red-700">
-                              <Trash className="h-4 w-4" />
-                            </Button>
-                          </AlertDialogTrigger>
-                          <AlertDialogContent>
-                            <AlertDialogHeader>
-                              <AlertDialogTitle>Are you sure?</AlertDialogTitle>
-                              <AlertDialogDescription>
-                                This action cannot be undone. This will permanently delete the transaction.
-                              </AlertDialogDescription>
-                            </AlertDialogHeader>
-                            <AlertDialogFooter>
-                              <AlertDialogCancel>Cancel</AlertDialogCancel>
-                              <AlertDialogAction onClick={() => handleDeleteTransaction(transaction.id)} className="bg-red-500 hover:bg-red-600">
-                                Delete
-                              </AlertDialogAction>
-                            </AlertDialogFooter>
-                          </AlertDialogContent>
-                        </AlertDialog>
+                        <Button 
+                          variant="destructive" 
+                          size="sm"
+                          onClick={() => handleDelete(transaction.id)}
+                        >
+                          Delete
+                        </Button>
                       </div>
                     </TableCell>
                   </TableRow>
                 ))}
-                
-                {filteredTransactions.length === 0 && (
-                  <TableRow>
-                    <TableCell colSpan={7} className="text-center text-gray-500 py-8">
-                      No transactions found
-                    </TableCell>
-                  </TableRow>
-                )}
               </TableBody>
             </Table>
-          </ScrollArea>
+          )}
         </CardContent>
       </Card>
+      
+      <Sheet 
+        open={isTransactionFormOpen} 
+        onOpenChange={setIsTransactionFormOpen}
+      >
+        <SheetContent className="sm:max-w-md overflow-y-auto">
+          <SheetHeader>
+            <SheetTitle>{editingTransaction ? 'Edit Transaction' : 'Add New Transaction'}</SheetTitle>
+            <SheetDescription>
+              {editingTransaction 
+                ? 'Update the details of your transaction' 
+                : 'Enter the details of your new transaction'}
+            </SheetDescription>
+          </SheetHeader>
+          <div className="py-4">
+            <TransactionForm 
+              onComplete={onTransactionComplete}
+              existingTransaction={editingTransaction}
+            />
+          </div>
+        </SheetContent>
+      </Sheet>
     </div>
   );
 };
