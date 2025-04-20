@@ -1,38 +1,13 @@
-export interface Transaction {
-  id: number;
-  amount: number;
-  type: string;
-  description?: string;
-  date: string;
-  created_at: string;
-  category_id?: number;
-  account_id?: number;
-}
-
-export interface Account {
-  id: number;
-  name: string;
-  type: string;
-  balance: number;
-  created_at: string;
-}
-
-export interface Category {
-  id: number;
-  name: string;
-  type: string;
-  created_at: string;
-}
 
 export interface AccountingAccount {
   id: number;
   code: string;
   name: string;
-  description: string;
+  description?: string;
   account_type: 'asset' | 'liability' | 'equity' | 'revenue' | 'expense';
+  parent_id?: number;
   is_active: boolean;
   created_at: string;
-  balance?: number;
 }
 
 export interface AccountingPeriod {
@@ -42,17 +17,6 @@ export interface AccountingPeriod {
   end_date: string;
   is_closed: boolean;
   created_at: string;
-}
-
-export interface JournalEntryLine {
-  id: number;
-  journal_entry_id: number;
-  account_id: number;
-  debit_amount: number;
-  credit_amount: number;
-  description?: string;
-  created_at: string;
-  account?: AccountingAccount;
 }
 
 export interface JournalEntry {
@@ -66,13 +30,24 @@ export interface JournalEntry {
   journal_lines?: JournalEntryLine[];
 }
 
+export interface JournalEntryLine {
+  id: number;
+  journal_entry_id: number;
+  account_id: number;
+  account?: AccountingAccount;
+  debit_amount: number;
+  credit_amount: number;
+  description?: string;
+  created_at: string;
+}
+
 export interface FinancialTransaction {
   id: number;
   transaction_date: string;
   description: string;
   amount: number;
   transaction_type: 'income' | 'expense' | 'transfer';
-  category: string;
+  category?: string;
   account_from_id?: number;
   account_to_id?: number;
   journal_entry_id?: number;
@@ -102,11 +77,3 @@ export interface CashFlowItem {
   cash_flow_type: 'Operating' | 'Investing' | 'Financing';
   amount: number;
 }
-
-export interface BalanceItem {
-  category: string;
-  amount: number;
-  type: 'asset' | 'liability';
-}
-
-export type AccountType = 'asset' | 'liability' | 'equity' | 'revenue' | 'expense';
