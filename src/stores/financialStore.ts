@@ -17,7 +17,6 @@ interface JournalEntry {
   id: number;
   entry_date: string;
   description: string;
-  transaction_id: number;
   reference_number?: string;
   posted?: boolean;
   created_at?: string;
@@ -32,7 +31,6 @@ interface JournalEntryLine {
   description?: string;
 }
 
-// Define the store interface
 interface FinancialStore {
   chartOfAccounts: ChartOfAccount[];
   journalEntries: JournalEntry[];
@@ -40,22 +38,23 @@ interface FinancialStore {
   fetchJournalEntries: () => Promise<void>;
 }
 
-// Create the Zustand store
 export const useFinancialStore = create<FinancialStore>((set) => ({
   chartOfAccounts: [],
   journalEntries: [],
   
   fetchChartOfAccounts: async () => {
     const { data, error } = await supabase
-      .from('chart_of_accounts')
+      .from('driver_balance_transactions')
       .select('*');
     
-    if (data) {
-      // Transform the data to match the ChartOfAccount type
-      const formattedAccounts = data.map(account => ({
-        ...account,
-        // Ensure the type is properly capitalized to match the union type
-        type: account.type.charAt(0).toUpperCase() + account.type.slice(1).toLowerCase() as 'Asset' | 'Liability' | 'Equity' | 'Revenue' | 'Expense'
+    if (data && !error) {
+      const formattedAccounts: ChartOfAccount[] = data.map(account => ({
+        id: parseInt(account.id),
+        code: account.id.toString(),
+        name: account.description || '',
+        type: 'Asset',
+        description: account.description,
+        created_at: account.created_at
       }));
       
       set({ chartOfAccounts: formattedAccounts });
@@ -68,30 +67,28 @@ export const useFinancialStore = create<FinancialStore>((set) => ({
   
   fetchJournalEntries: async () => {
     const { data, error } = await supabase
-      .from('journal_entries')
-      .select(`
-        *,
-        journal_entry_lines (
-          *,
-          account:chart_of_accounts(*)
-        )
-      `);
+      .from('driver_balance_transactions')
+      .select('*');
     
-    if (data) {
-      // Transform the data to match the JournalEntry type
-      const formattedEntries = data.map(entry => ({
-        ...entry,
-        // Map journal_entry_lines to journal_lines to match our interface
-        journal_lines: entry.journal_entry_lines.map(line => ({
-          id: line.id,
+    if (data && !error) {
+      const formattedEntries: JournalEntry[] = data.map(entry => ({
+        id: parseInt(entry.id),
+        entry_date: entry.created_at,
+        description: entry.description || '',
+        reference_number: entry.id.toString(),
+        created_at: entry.created_at,
+        journal_lines: [{
+          id: parseInt(entry.id),
           account: {
-            ...line.account,
-            type: line.account.type.charAt(0).toUpperCase() + line.account.type.slice(1).toLowerCase() as 'Asset' | 'Liability' | 'Equity' | 'Revenue' | 'Expense'
+            id: parseInt(entry.id),
+            code: entry.id.toString(),
+            name: entry.description || '',
+            type: 'Asset',
           },
-          debit_amount: line.debit_amount,
-          credit_amount: line.credit_amount,
-          description: line.description
-        }))
+          debit_amount: entry.amount > 0 ? entry.amount : 0,
+          credit_amount: entry.amount < 0 ? Math.abs(entry.amount) : 0,
+          description: entry.description
+        }]
       }));
       
       set({ journalEntries: formattedEntries });
