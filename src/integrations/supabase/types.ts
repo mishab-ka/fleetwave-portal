@@ -404,6 +404,36 @@ export type Database = {
           },
         ]
       }
+      transactions: {
+        Row: {
+          account_id: number | null
+          amount: number
+          created_at: string
+          date: string
+          description: string | null
+          id: number
+          type: string
+        }
+        Insert: {
+          account_id?: number | null
+          amount: number
+          created_at?: string
+          date: string
+          description?: string | null
+          id?: number
+          type: string
+        }
+        Update: {
+          account_id?: number | null
+          amount?: number
+          created_at?: string
+          date?: string
+          description?: string | null
+          id?: number
+          type?: string
+        }
+        Relationships: []
+      }
       users: {
         Row: {
           aadhar: string | null

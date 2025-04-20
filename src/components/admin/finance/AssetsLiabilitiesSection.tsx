@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -77,7 +76,7 @@ const AssetsLiabilitiesSection = () => {
         .from('transactions')
         .select('*')
         .eq('type', 'Liability')
-        .order('date', { ascending: true });
+        .order('created_at', { ascending: true });
         
       if (liabilitiesError) throw liabilitiesError;
       
@@ -171,7 +170,7 @@ const AssetsLiabilitiesSection = () => {
         .from('transactions')
         .insert([{
           amount: parseFloat(assetFormData.value as string),
-          type: 'Asset', // This is now allowed by the database constraint
+          type: 'Asset',
           description: assetFormData.type + (assetFormData.description ? ` - ${assetFormData.description}` : ''),
           date: assetFormData.purchase_date
         }]);
@@ -201,8 +200,8 @@ const AssetsLiabilitiesSection = () => {
       const { error } = await supabase
         .from('transactions')
         .insert([{
-          amount: -Math.abs(parseFloat(liabilityFormData.amount_due as string)), // Store as negative
-          type: 'Liability', // This is now allowed by the database constraint
+          amount: -Math.abs(parseFloat(liabilityFormData.amount_due as string)),
+          type: 'Liability',
           description: `${liabilityFormData.type} - ${liabilityFormData.status}${liabilityFormData.description ? ` - ${liabilityFormData.description}` : ''}`,
           date: liabilityFormData.due_date
         }]);
@@ -268,11 +267,9 @@ const AssetsLiabilitiesSection = () => {
       
       let updatedDescription = data.description || '';
       
-      // Replace status in description if it exists
       if (updatedDescription.includes('Pending') || updatedDescription.includes('Paid') || updatedDescription.includes('Overdue')) {
         updatedDescription = updatedDescription.replace(/Pending|Paid|Overdue/, newStatus);
       } else {
-        // Add status if not present
         updatedDescription = `${updatedDescription} - ${newStatus}`;
       }
       
