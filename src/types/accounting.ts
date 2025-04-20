@@ -1,4 +1,3 @@
-
 export interface Transaction {
   id: number;
   amount: number;
@@ -25,7 +24,6 @@ export interface Category {
   created_at: string;
 }
 
-// Additional types needed for the accounting system
 export interface AccountingAccount {
   id: number;
   code: string;
@@ -65,7 +63,6 @@ export interface JournalEntry {
   is_posted: boolean;
   created_at: string;
   journal_lines?: JournalEntryLine[];
-  transaction_id?: number;
 }
 
 export interface FinancialTransaction {

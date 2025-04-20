@@ -1,4 +1,3 @@
-
 import { create } from 'zustand';
 import { supabase } from '@/integrations/supabase/client';
 import { 
@@ -263,92 +262,122 @@ export const useAccountingStore = create<AccountingState>((set, get) => ({
     try {
       set({ loading: true, error: null });
       
-      // Check for missing account IDs and create them if necessary
-      const { data: existingAccounts, error: accountsError } = await supabase
-        .from('accounts')
-        .select('id, name, type')
-        .in('id', [transaction.account_from_id, transaction.account_to_id].filter(Boolean));
-      
-      if (accountsError) throw accountsError;
-      
-      const accountsMap = new Map();
-      
-      if (!existingAccounts || existingAccounts.length < 2) {
-        const neededAccountIds = [transaction.account_from_id, transaction.account_to_id].filter(Boolean);
-        const existingAccountIds = existingAccounts ? existingAccounts.map(a => a.id) : [];
-        const missingAccountIds = neededAccountIds.filter(id => !existingAccountIds.includes(id as number));
-        
-        if (missingAccountIds.length > 0) {
-          // Get chart of accounts entries for the missing accounts
-          const { data: chartAccounts, error: chartError } = await supabase
-            .from('chart_of_accounts')
-            .select('*')
-            .in('id', missingAccountIds);
-          
-          if (chartError) throw chartError;
-          
-          if (chartAccounts && chartAccounts.length > 0) {
-            for (const chartAccount of chartAccounts) {
-              console.log('Creating account from chart account:', chartAccount);
-              
-              // Map the account type to the format accepted by the database ('bank', 'cash', 'card')
-              const dbAccountType = mapAccountTypeForDatabase(chartAccount.type);
-              console.log(`Mapped account type from "${chartAccount.type}" to DB type "${dbAccountType}"`);
-              
-              // Insert the new account
-              const { data: newAccount, error: insertError } = await supabase
-                .from('accounts')
-                .insert({
-                  name: chartAccount.name,
-                  type: dbAccountType,
-                  balance: 0
-                })
-                .select()
-                .single();
-              
-              if (insertError) {
-                console.error('Error creating account:', insertError);
-                throw insertError;
-              }
-              
-              if (newAccount) {
-                console.log('Created new account:', newAccount);
-                accountsMap.set(chartAccount.id, newAccount.id);
-              }
+      // Start a Supabase transaction
+      const { data: journalEntry, error: journalError } = await supabase
+        .from('journal_entries')
+        .insert({
+          entry_date: transaction.transaction_date,
+          description: transaction.description,
+          is_posted: true,
+        })
+        .select()
+        .single();
+
+      if (journalError) throw journalError;
+
+      // For income transactions:
+      // 1. Debit the bank/cash account (asset increase)
+      // 2. Credit the revenue account
+      if (transaction.transaction_type === 'income') {
+        // Create journal entry lines
+        const { error: linesError } = await supabase
+          .from('journal_entry_lines')
+          .insert([
+            {
+              journal_entry_id: journalEntry.id,
+              account_id: transaction.account_to_id, // Bank/Cash account
+              debit_amount: transaction.amount,
+              credit_amount: 0,
+              description: 'Income received'
+            },
+            {
+              journal_entry_id: journalEntry.id,
+              account_id: transaction.account_from_id, // Revenue account
+              debit_amount: 0,
+              credit_amount: transaction.amount,
+              description: 'Income recorded'
             }
-          }
-        }
+          ]);
+
+        if (linesError) throw linesError;
+
+        // Update the account balance
+        const { error: updateError } = await supabase
+          .from('accounts')
+          .update({ 
+            balance: supabase.rpc('nullif', { 
+              val: `balance + ${transaction.amount}` 
+            }) 
+          })
+          .eq('id', transaction.account_to_id);
+
+        if (updateError) throw updateError;
       }
       
-      // Use the mapped account ID or the original one
-      const accountId = accountsMap.get(transaction.account_from_id) || transaction.account_from_id;
-      console.log('Using account ID for transaction:', accountId);
-      
-      // Make sure we have a valid account_id before proceeding
-      if (!accountId) {
-        throw new Error('Unable to determine a valid account ID for this transaction');
+      // For expense transactions:
+      // 1. Debit the expense account
+      // 2. Credit the bank/cash account (asset decrease)
+      else if (transaction.transaction_type === 'expense') {
+        // Create journal entry lines
+        const { error: linesError } = await supabase
+          .from('journal_entry_lines')
+          .insert([
+            {
+              journal_entry_id: journalEntry.id,
+              account_id: transaction.account_to_id, // Expense account
+              debit_amount: transaction.amount,
+              credit_amount: 0,
+              description: 'Expense recorded'
+            },
+            {
+              journal_entry_id: journalEntry.id,
+              account_id: transaction.account_from_id, // Bank/Cash account
+              debit_amount: 0,
+              credit_amount: transaction.amount,
+              description: 'Payment made'
+            }
+          ]);
+
+        if (linesError) throw linesError;
+
+        // Update the account balance
+        const { error: updateError } = await supabase
+          .from('accounts')
+          .update({ 
+            balance: supabase.rpc('nullif', { 
+              val: `balance - ${transaction.amount}` 
+            }) 
+          })
+          .eq('id', transaction.account_from_id);
+
+        if (updateError) throw updateError;
       }
-      
-      // Create the transaction
-      const { data, error } = await supabase
+
+      // Create the transaction record
+      const { data: transactionData, error: transError } = await supabase
         .from('transactions')
         .insert({
           date: transaction.transaction_date,
           description: transaction.description,
           amount: transaction.amount,
           type: transaction.transaction_type,
-          account_id: accountId
+          account_id: transaction.transaction_type === 'income' 
+            ? transaction.account_to_id 
+            : transaction.account_from_id,
+          category: transaction.category
         })
         .select()
         .single();
-      
-      if (error) throw error;
-      
-      // Refresh transactions
+
+      if (transError) throw transError;
+
+      // Refresh transactions and accounts
       await get().fetchTransactions();
+      await get().fetchAccounts();
       
       set({ loading: false });
-      return data?.id as number;
+      return transactionData?.id || null;
+
     } catch (error) {
       console.error('Error adding transaction:', error);
       set({ error: (error as Error).message, loading: false });

@@ -1,4 +1,3 @@
-
 import { 
   IncomeStatementItem, 
   BalanceSheetItem, 
@@ -58,6 +57,31 @@ export const calculateCashFlowTotals = (items: CashFlowItem[]) => {
   const netCashFlow = operating + investing + financing;
   
   return { operating, investing, financing, netCashFlow };
+};
+
+export const calculateAccountBalances = (
+  accounts: AccountingAccount[],
+  journalEntries: JournalEntry[]
+): Record<number, number> => {
+  const balances: Record<number, number> = {};
+
+  // Initialize balances for all accounts
+  accounts.forEach(account => {
+    balances[account.id] = 0;
+  });
+
+  // Calculate balances from journal entries
+  journalEntries.forEach(entry => {
+    if (!entry.journal_lines) return;
+
+    entry.journal_lines.forEach(line => {
+      const accountId = line.account_id;
+      balances[accountId] = (balances[accountId] || 0) + 
+        line.debit_amount - line.credit_amount;
+    });
+  });
+
+  return balances;
 };
 
 export const groupAccountsByType = (accounts: AccountingAccount[]) => {
