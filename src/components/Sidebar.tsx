@@ -17,6 +17,9 @@ export const Sidebar = () => {
     { to: '/admin/drivers', icon: Users, label: 'Drivers' },
     { to: '/admin/vehicles', icon: Car, label: 'Vehicles' },
     { to: '/admin/reports', icon: FileText, label: 'Reports' },
+    { to: '/admin/calendar', icon: Car, label: 'Calendar' },
+    { to: '/admin/finance', icon: FileText, label: 'Finance' },
+    { to: '/admin/accounting', icon: FileText, label: 'Accounting' },
     { to: '/admin/notifications', icon: Bell, label: 'Notifications' },
     { to: '/admin/settings', icon: Settings, label: 'Settings' },
   ];
