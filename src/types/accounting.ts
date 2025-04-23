@@ -1,3 +1,4 @@
+
 export interface AccountingAccount {
   id: string;
   code: string;
@@ -7,6 +8,7 @@ export interface AccountingAccount {
   parent_id?: string;
   is_active: boolean;
   created_at: string;
+  balance?: number;
 }
 
 export interface AccountingPeriod {
@@ -49,6 +51,7 @@ export interface FinancialTransaction {
   category?: string;
   account_from_id?: string;
   account_to_id?: string;
+  payment_mode?: string;
   journal_entry_id?: string;
   created_at: string;
 }

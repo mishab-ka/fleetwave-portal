@@ -5,16 +5,12 @@ import {
   AccountingAccount, 
   AccountingPeriod, 
   JournalEntry, 
+  JournalEntryLine,
   FinancialTransaction,
   IncomeStatementItem,
   BalanceSheetItem,
   CashFlowItem
 } from '@/types/accounting';
-import {
-  generateIncomeStatement,
-  generateBalanceSheet,
-  generateCashFlowStatement
-} from '@/lib/finance/financialReports';
 
 interface AccountingState {
   accounts: AccountingAccount[];
@@ -30,6 +26,7 @@ interface AccountingState {
   // Accounts
   fetchAccounts: () => Promise<void>;
   getAccountById: (id: string) => AccountingAccount | undefined;
+  createAccount: (account: Omit<AccountingAccount, 'id' | 'created_at'>) => Promise<string | null>;
   
   // Periods
   fetchPeriods: () => Promise<void>;
@@ -38,6 +35,7 @@ interface AccountingState {
   // Journal Entries
   fetchJournalEntries: () => Promise<void>;
   getJournalEntryById: (id: string) => Promise<JournalEntry | null>;
+  createJournalEntry: (journalEntry: Omit<JournalEntry, 'id' | 'created_at'>, lines: Omit<JournalEntryLine, 'id' | 'journal_entry_id' | 'created_at'>[]) => Promise<number | null>;
   
   // Transactions
   fetchTransactions: () => Promise<void>;
@@ -72,18 +70,20 @@ export const useAccountingStore = create<AccountingState>((set, get) => ({
       
       if (error) throw error;
       
-      const formattedAccounts = data.map(account => ({
+      // Map the accounts to our expected format
+      const formattedAccounts: AccountingAccount[] = data.map(account => ({
         id: account.id,
-        code: account.id.toString().substring(0, 4).padStart(4, '0'),
+        code: account.type.substring(0, 1).toUpperCase() + Math.floor(Math.random() * 10000).toString().padStart(4, '0'),
         name: account.name,
         description: account.name,
-        account_type: account.type,
+        account_type: account.type.toLowerCase() as any,
         is_active: true,
-        created_at: account.created_at || new Date().toISOString()
+        created_at: account.created_at || new Date().toISOString(),
+        balance: account.balance
       }));
       
       set({ 
-        accounts: formattedAccounts as AccountingAccount[], 
+        accounts: formattedAccounts, 
         loading: false 
       });
     } catch (error) {
@@ -94,6 +94,33 @@ export const useAccountingStore = create<AccountingState>((set, get) => ({
   
   getAccountById: (id: string) => {
     return get().accounts.find(account => account.id === id);
+  },
+  
+  createAccount: async (account) => {
+    try {
+      set({ loading: true, error: null });
+      
+      const { data, error } = await supabase
+        .from('accounts')
+        .insert({
+          name: account.name,
+          type: account.account_type,
+          balance: 0
+        })
+        .select()
+        .single();
+      
+      if (error) throw error;
+      
+      await get().fetchAccounts();
+      
+      set({ loading: false });
+      return data.id;
+    } catch (error) {
+      console.error('Error creating account:', error);
+      set({ error: (error as Error).message, loading: false });
+      return null;
+    }
   },
   
   // Periods
@@ -133,8 +160,42 @@ export const useAccountingStore = create<AccountingState>((set, get) => ({
     try {
       set({ loading: true, error: null });
       
-      // Fallback to empty array since journal_entries table might not exist yet
-      set({ journalEntries: [], loading: false });
+      // Fetch transactions and convert them to journal entries
+      const { data: transData, error: transError } = await supabase
+        .from('transactions')
+        .select('*')
+        .order('date', { ascending: false });
+      
+      if (transError) throw transError;
+      
+      // Create mock journal entries from transactions
+      const journalEntries: JournalEntry[] = transData.map((trans, index) => ({
+        id: index + 1,
+        entry_date: trans.date,
+        description: trans.description || '',
+        is_posted: true,
+        created_at: trans.created_at || new Date().toISOString(),
+        journal_lines: [
+          {
+            id: index * 2 + 1,
+            journal_entry_id: index + 1,
+            account_id: trans.type === 'income' ? trans.category_id || '' : trans.account_id || '',
+            debit_amount: trans.type === 'income' ? 0 : trans.amount,
+            credit_amount: trans.type === 'income' ? trans.amount : 0,
+            created_at: trans.created_at || new Date().toISOString()
+          },
+          {
+            id: index * 2 + 2,
+            journal_entry_id: index + 1,
+            account_id: trans.type === 'income' ? trans.account_id || '' : trans.category_id || '',
+            debit_amount: trans.type === 'income' ? trans.amount : 0,
+            credit_amount: trans.type === 'income' ? 0 : trans.amount,
+            created_at: trans.created_at || new Date().toISOString()
+          }
+        ]
+      }));
+      
+      set({ journalEntries, loading: false });
     } catch (error) {
       console.error('Error fetching journal entries:', error);
       set({ error: (error as Error).message, loading: false });
@@ -142,14 +203,55 @@ export const useAccountingStore = create<AccountingState>((set, get) => ({
   },
   
   getJournalEntryById: async (id: string) => {
+    const numericId = parseInt(id);
+    if (isNaN(numericId)) return null;
+    
+    const entry = get().journalEntries.find(entry => entry.id === numericId);
+    return entry || null;
+  },
+  
+  createJournalEntry: async (journalEntry, lines) => {
     try {
       set({ loading: true, error: null });
       
-      // Fallback to null since journal_entries table might not exist yet
+      // Validate that debits = credits
+      const totalDebits = lines.reduce((sum, line) => sum + line.debit_amount, 0);
+      const totalCredits = lines.reduce((sum, line) => sum + line.credit_amount, 0);
+      
+      if (totalDebits !== totalCredits) {
+        throw new Error('Debits must equal credits');
+      }
+      
+      // For now, we'll create a mock journal entry
+      const newEntryId = get().journalEntries.length + 1;
+      
+      const newEntry: JournalEntry = {
+        id: newEntryId,
+        entry_date: journalEntry.entry_date,
+        reference_number: journalEntry.reference_number,
+        description: journalEntry.description,
+        period_id: journalEntry.period_id,
+        is_posted: journalEntry.is_posted,
+        created_at: new Date().toISOString(),
+        journal_lines: lines.map((line, index) => ({
+          id: newEntryId * 100 + index + 1,
+          journal_entry_id: newEntryId,
+          account_id: line.account_id,
+          debit_amount: line.debit_amount,
+          credit_amount: line.credit_amount,
+          description: line.description,
+          created_at: new Date().toISOString()
+        }))
+      };
+      
+      set(state => ({
+        journalEntries: [...state.journalEntries, newEntry]
+      }));
+      
       set({ loading: false });
-      return null;
+      return newEntryId;
     } catch (error) {
-      console.error('Error fetching journal entry:', error);
+      console.error('Error creating journal entry:', error);
       set({ error: (error as Error).message, loading: false });
       return null;
     }
@@ -160,13 +262,15 @@ export const useAccountingStore = create<AccountingState>((set, get) => ({
     try {
       set({ loading: true, error: null });
       
-      // Try to get transactions from transactions table
+      // Fetch from transactions table
       const { data: transData, error: transError } = await supabase
         .from('transactions')
         .select('*')
         .order('date', { ascending: false });
       
-      if (transData && !transError) {
+      if (transError) throw transError;
+      
+      if (transData) {
         // Convert transactions to the expected format
         const formattedTransactions = transData.map(trans => ({
           id: trans.id,
@@ -175,16 +279,14 @@ export const useAccountingStore = create<AccountingState>((set, get) => ({
           amount: trans.amount,
           transaction_type: trans.type as 'income' | 'expense' | 'transfer',
           category: '',
-          account_from_id: trans.account_id,
-          account_to_id: undefined,
-          journal_entry_id: undefined,
-          created_at: trans.created_at
+          account_from_id: trans.type === 'expense' ? trans.account_id : undefined,
+          account_to_id: trans.type === 'income' ? trans.account_id : undefined,
+          payment_mode: 'Cash',
+          created_at: trans.created_at || new Date().toISOString()
         }));
         
         set({ transactions: formattedTransactions as FinancialTransaction[], loading: false });
       } else {
-        // Fall back to empty array
-        console.warn('Transactions table not found or empty, using empty array');
         set({ transactions: [], loading: false });
       }
     } catch (error) {
@@ -199,16 +301,34 @@ export const useAccountingStore = create<AccountingState>((set, get) => ({
       
       console.log('Adding transaction with data:', transaction);
       
-      // Insert into the transactions table directly with proper UUID handling
+      const { transaction_date, description, amount, transaction_type, account_from_id, account_to_id } = transaction;
+      
+      // Determine which account to use based on transaction type
+      let accountId;
+      let categoryId;
+      
+      if (transaction_type === 'income') {
+        accountId = account_to_id;  // Destination account for income
+        categoryId = account_from_id; // Revenue account/category
+      } else if (transaction_type === 'expense') {
+        accountId = account_from_id; // Source account for expense
+        categoryId = account_to_id; // Expense account/category
+      } else {
+        // For transfers, accountId is source and categoryId is destination
+        accountId = account_from_id;
+        categoryId = account_to_id;
+      }
+      
+      // Insert into the transactions table
       const { data, error } = await supabase
         .from('transactions')
         .insert({
-          date: transaction.transaction_date,
-          description: transaction.description,
-          amount: transaction.amount,
-          type: transaction.transaction_type,
-          account_id: transaction.account_from_id, // This should now be a UUID string
-          category_id: transaction.account_to_id // Using account_to_id as category_id for now
+          date: transaction_date,
+          description,
+          amount,
+          type: transaction_type,
+          account_id: accountId,
+          category_id: categoryId
         })
         .select()
         .single();
@@ -218,8 +338,64 @@ export const useAccountingStore = create<AccountingState>((set, get) => ({
         throw error;
       }
       
-      // Refresh the transactions list
+      // Create double-entry journal entry
+      // For a real app, this would be more sophisticated
+      const journalLines = [];
+      
+      if (transaction_type === 'income') {
+        // Debit the asset account (increase)
+        journalLines.push({
+          account_id: accountId || '',
+          debit_amount: amount,
+          credit_amount: 0
+        });
+        
+        // Credit the revenue account (increase)
+        journalLines.push({
+          account_id: categoryId || '',
+          debit_amount: 0,
+          credit_amount: amount
+        });
+      } else if (transaction_type === 'expense') {
+        // Debit the expense account (increase)
+        journalLines.push({
+          account_id: categoryId || '',
+          debit_amount: amount,
+          credit_amount: 0
+        });
+        
+        // Credit the asset account (decrease)
+        journalLines.push({
+          account_id: accountId || '',
+          debit_amount: 0,
+          credit_amount: amount
+        });
+      } else if (transaction_type === 'transfer') {
+        // Debit the destination account (increase)
+        journalLines.push({
+          account_id: categoryId || '',
+          debit_amount: amount,
+          credit_amount: 0
+        });
+        
+        // Credit the source account (decrease)
+        journalLines.push({
+          account_id: accountId || '',
+          debit_amount: 0,
+          credit_amount: amount
+        });
+      }
+      
+      // Create journal entry
+      await get().createJournalEntry({
+        entry_date: transaction_date,
+        description: `${transaction_type.charAt(0).toUpperCase() + transaction_type.slice(1)} - ${description}`,
+        is_posted: true
+      }, journalLines);
+      
+      // Refresh the transactions and journal entries
       await get().fetchTransactions();
+      await get().fetchJournalEntries();
       
       set({ loading: false });
       return data?.id;
@@ -235,23 +411,38 @@ export const useAccountingStore = create<AccountingState>((set, get) => ({
     try {
       set({ loading: true, error: null });
       
-      const result = await generateIncomeStatement(startDate, endDate);
+      const { data, error } = await supabase
+        .from('transactions')
+        .select('*')
+        .gte('date', startDate)
+        .lte('date', endDate);
+
+      if (error) throw error;
       
-      // Transform the data to match the IncomeStatementItem format
+      // Calculate revenues and expenses
+      const revenues = data
+        .filter(t => t.type === 'income')
+        .reduce((sum, t) => sum + t.amount, 0);
+        
+      const expenses = data
+        .filter(t => t.type === 'expense')
+        .reduce((sum, t) => sum + t.amount, 0);
+      
+      // Create income statement items
       const incomeStatementItems: IncomeStatementItem[] = [
         {
           account_id: '1',
           account_code: '4000',
-          account_name: 'Revenue',
+          account_name: 'Total Revenue',
           account_type: 'revenue',
-          amount: result.revenues
+          amount: revenues
         },
         {
           account_id: '2',
           account_code: '5000',
-          account_name: 'Expenses',
+          account_name: 'Total Expenses',
           account_type: 'expense',
-          amount: result.expenses
+          amount: expenses
         }
       ];
       
@@ -269,30 +460,47 @@ export const useAccountingStore = create<AccountingState>((set, get) => ({
     try {
       set({ loading: true, error: null });
       
-      const result = await generateBalanceSheet(asOfDate);
+      // Get assets
+      const { data: assets, error: assetsError } = await supabase
+        .from('assets')
+        .select('*');
+        
+      if (assetsError) throw assetsError;
       
-      // Transform the data to match the BalanceSheetItem format
+      // Get liabilities
+      const { data: liabilities, error: liabilitiesError } = await supabase
+        .from('liabilities')
+        .select('*');
+        
+      if (liabilitiesError) throw liabilitiesError;
+      
+      // Calculate totals
+      const totalAssets = assets.reduce((sum, asset) => sum + asset.value, 0);
+      const totalLiabilities = liabilities.reduce((sum, liability) => sum + liability.value, 0);
+      const equity = totalAssets - totalLiabilities;
+      
+      // Create balance sheet items
       const balanceSheetItems: BalanceSheetItem[] = [
         {
           account_id: '1',
           account_code: '1000',
-          account_name: 'Assets',
+          account_name: 'Total Assets',
           account_type: 'asset',
-          balance: result.assets
+          balance: totalAssets
         },
         {
           account_id: '2',
           account_code: '2000',
-          account_name: 'Liabilities',
+          account_name: 'Total Liabilities',
           account_type: 'liability',
-          balance: result.liabilities
+          balance: totalLiabilities
         },
         {
           account_id: '3',
           account_code: '3000',
           account_name: 'Equity',
           account_type: 'equity',
-          balance: result.equity
+          balance: equity
         }
       ];
       
@@ -310,30 +518,46 @@ export const useAccountingStore = create<AccountingState>((set, get) => ({
     try {
       set({ loading: true, error: null });
       
-      const result = await generateCashFlowStatement(startDate, endDate);
+      // Get operating cash flow from transactions
+      const { data, error } = await supabase
+        .from('transactions')
+        .select('*')
+        .gte('date', startDate)
+        .lte('date', endDate);
+
+      if (error) throw error;
       
-      // Transform the data to match the CashFlowItem format
+      // Calculate cash flows
+      const operatingCashFlow = data
+        .filter(t => ['income', 'expense'].includes(t.type))
+        .reduce((sum, t) => sum + (t.type === 'income' ? t.amount : -t.amount), 0);
+        
+      // In a real app, these would be calculated based on actual data
+      const investingCashFlow = 0;
+      const financingCashFlow = 0;
+      
+      // Create cash flow items
       const cashFlowItems: CashFlowItem[] = [
         {
           account_id: '1',
           account_code: '1100',
           account_name: 'Operating Activities',
           cash_flow_type: 'Operating',
-          amount: result.operatingCashFlow
+          amount: operatingCashFlow
         },
         {
           account_id: '2',
           account_code: '1200',
           account_name: 'Investing Activities',
           cash_flow_type: 'Investing',
-          amount: result.investingCashFlow
+          amount: investingCashFlow
         },
         {
           account_id: '3',
           account_code: '1300',
           account_name: 'Financing Activities',
           cash_flow_type: 'Financing',
-          amount: result.financingCashFlow
+          amount: financingCashFlow
         }
       ];
       
