@@ -1,4 +1,3 @@
-
 export interface AccountingAccount {
   id: string;
   code: string;
@@ -76,4 +75,20 @@ export interface CashFlowItem {
   account_name: string;
   cash_flow_type: 'Operating' | 'Investing' | 'Financing';
   amount: number;
+}
+
+export interface Asset {
+  id: string;
+  name: string;
+  value: number;
+  created_at: string;
+  updated_at?: string;
+}
+
+export interface Liability {
+  id: string;
+  name: string;
+  value: number;
+  created_at: string;
+  updated_at?: string;
 }

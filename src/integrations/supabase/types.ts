@@ -30,6 +30,30 @@ export type Database = {
         }
         Relationships: []
       }
+      assets: {
+        Row: {
+          created_at: string | null
+          id: string
+          name: string
+          updated_at: string | null
+          value: number
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          name: string
+          updated_at?: string | null
+          value?: number
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          name?: string
+          updated_at?: string | null
+          value?: number
+        }
+        Relationships: []
+      }
       categories: {
         Row: {
           id: string
@@ -158,6 +182,30 @@ export type Database = {
             referencedColumns: ["vehicle_number"]
           },
         ]
+      }
+      liabilities: {
+        Row: {
+          created_at: string | null
+          id: string
+          name: string
+          updated_at: string | null
+          value: number
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          name: string
+          updated_at?: string | null
+          value?: number
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          name?: string
+          updated_at?: string | null
+          value?: number
+        }
+        Relationships: []
       }
       notifications: {
         Row: {
