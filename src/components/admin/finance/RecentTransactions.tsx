@@ -1,9 +1,8 @@
-
-import React from 'react';
+import React from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { ArrowUp, ArrowDown } from 'lucide-react';
-import { formatter } from '@/lib/utils';
+import { ArrowUp, ArrowDown } from "lucide-react";
+import { formatter } from "@/lib/utils";
 
 interface Transaction {
   id: number;
@@ -23,27 +22,40 @@ const RecentTransactions = ({ transactions }: RecentTransactionsProps) => {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base font-medium">Recent Transactions</CardTitle>
+        <CardTitle className="text-base font-medium">
+          Recent Transactions
+        </CardTitle>
       </CardHeader>
       <CardContent>
         <ScrollArea className="h-[300px] pr-4">
           <div className="space-y-4">
             {transactions.map((transaction) => (
-              <div key={transaction.id} className="flex items-center justify-between">
+              <div
+                key={transaction.id}
+                className="flex items-center justify-between"
+              >
                 <div className="space-y-1">
-                  <p className="text-sm font-medium">{transaction.description}</p>
+                  <p className="text-sm font-medium">
+                    {transaction.description}
+                  </p>
                   <div className="flex items-center text-sm text-muted-foreground">
-                    <span>{transaction.accounts.name}</span>
+                    <span>
+                      {transaction.accounts?.name || "Unknown Account"}
+                    </span>
                     <span className="mx-2">•</span>
-                    <span>{transaction.categories.name}</span>
+                    <span>
+                      {transaction.categories?.name || "Unknown Category"}
+                    </span>
                   </div>
                 </div>
-                <div className={`flex items-center font-medium ${
-                  transaction.type === 'expense' 
-                    ? 'text-red-500' 
-                    : 'text-green-500'
-                }`}>
-                  {transaction.type === 'expense' ? (
+                <div
+                  className={`flex items-center font-medium ${
+                    transaction.type === "expense"
+                      ? "text-red-500"
+                      : "text-green-500"
+                  }`}
+                >
+                  {transaction.type === "expense" ? (
                     <ArrowDown className="mr-1 h-4 w-4" />
                   ) : (
                     <ArrowUp className="mr-1 h-4 w-4" />

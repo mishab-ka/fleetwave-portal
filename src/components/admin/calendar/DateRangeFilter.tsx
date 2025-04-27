@@ -1,12 +1,21 @@
-
-import React from 'react';
-import { CalendarIcon } from 'lucide-react';
-import { format } from 'date-fns';
-import { cn } from '@/lib/utils';
-import { Button } from '@/components/ui/button';
-import { Calendar } from '@/components/ui/calendar';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import React from "react";
+import { CalendarIcon } from "lucide-react";
+import { format } from "date-fns";
+import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
+import { Calendar } from "@/components/ui/calendar";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 interface DateRangeFilterProps {
   startDate: Date;
@@ -38,16 +47,14 @@ export const DateRangeFilter = ({
           <SelectItem value="custom">Custom range</SelectItem>
         </SelectContent>
       </Select>
-      
-      {selectedPreset === 'custom' && (
+
+      {selectedPreset === "custom" && (
         <div className="flex gap-2">
           <Popover>
             <PopoverTrigger asChild>
               <Button
                 variant="outline"
-                className={cn(
-                  "w-[160px] justify-start text-left font-normal",
-                )}
+                className={cn("w-[160px] justify-start text-left font-normal")}
               >
                 <CalendarIcon className="mr-2 h-4 w-4" />
                 {format(startDate, "MMM d, yyyy")}
@@ -63,16 +70,14 @@ export const DateRangeFilter = ({
               />
             </PopoverContent>
           </Popover>
-          
+
           <span className="text-muted-foreground self-center">to</span>
-          
+
           <Popover>
             <PopoverTrigger asChild>
               <Button
                 variant="outline"
-                className={cn(
-                  "w-[160px] justify-start text-left font-normal",
-                )}
+                className={cn("w-[160px] justify-start text-left font-normal")}
               >
                 <CalendarIcon className="mr-2 h-4 w-4" />
                 {format(endDate, "MMM d, yyyy")}

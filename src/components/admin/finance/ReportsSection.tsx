@@ -23,6 +23,10 @@ const ReportsSection = () => {
   
   const handleDateRangeChange = (value) => {
     setDateRange(value);
+
+    const test = Math.min(100, 200);
+    console.log(test);
+
     
     const today = new Date();
     

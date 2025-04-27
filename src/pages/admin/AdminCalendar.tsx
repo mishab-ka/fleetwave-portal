@@ -1,44 +1,51 @@
-
-import React, { useState, useEffect } from 'react';
-import { format, parseISO } from 'date-fns';
-import { supabase } from '@/integrations/supabase/client';
-import AdminLayout from '@/components/AdminLayout';
-import { Card, CardContent } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { CalendarHeader } from '@/components/admin/calendar/CalendarHeader';
-import { RentCalendarGrid } from '@/components/admin/calendar/RentCalendarGrid';
-import { useIsMobile } from '@/hooks/use-mobile';
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import { toast } from 'sonner';
-import { cn } from '@/lib/utils';
-import { DateRangeFilter } from '@/components/admin/calendar/DateRangeFilter';
-import { DriverDetailModal } from '@/components/admin/calendar/DriverDetailModal';
-import { useCalendarDateRange } from '@/hooks/useCalendarDateRange';
-import { processReportData, ReportData, getStatusColor, getStatusLabel, shouldIncludeDriver, RentStatus } from '@/components/admin/calendar/CalendarUtils';
+import React, { useState, useEffect } from "react";
+import { format, parseISO } from "date-fns";
+import { supabase } from "@/integrations/supabase/client";
+import AdminLayout from "@/components/AdminLayout";
+import { Card, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { CalendarHeader } from "@/components/admin/calendar/CalendarHeader";
+import { RentCalendarGrid } from "@/components/admin/calendar/RentCalendarGrid";
+import { useIsMobile } from "@/hooks/use-mobile";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { toast } from "sonner";
+import { cn } from "@/lib/utils";
+import { DateRangeFilter } from "@/components/admin/calendar/DateRangeFilter";
+import { DriverDetailModal } from "@/components/admin/calendar/DriverDetailModal";
+import { useCalendarDateRange } from "@/hooks/useCalendarDateRange";
+import {
+  processReportData,
+  ReportData,
+  getStatusColor,
+  getStatusLabel,
+  shouldIncludeDriver,
+  RentStatus,
+} from "@/components/admin/calendar/CalendarUtils";
 
 const AdminCalendar = () => {
   const [calendarData, setCalendarData] = useState<ReportData[]>([]);
   const [loading, setLoading] = useState(true);
   const [drivers, setDrivers] = useState<any[]>([]);
-  const [selectedDriver, setSelectedDriver] = useState<string>('all');
-  const [selectedShift, setSelectedShift] = useState<string>('all');
-  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedDriver, setSelectedDriver] = useState<string>("all");
+  const [selectedShift, setSelectedShift] = useState<string>("all");
+  const [searchQuery, setSearchQuery] = useState("");
   const [weekOffset, setWeekOffset] = useState(0);
-  const [selectedDriverData, setSelectedDriverData] = useState<ReportData | null>(null);
+  const [selectedDriverData, setSelectedDriverData] =
+    useState<ReportData | null>(null);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
   const [rentHistory, setRentHistory] = useState<any[]>([]);
   const [shiftHistory, setShiftHistory] = useState<any[]>([]);
   const [mobileStartIndex, setMobileStartIndex] = useState(0); // Track which days are visible on mobile
   const isMobile = useIsMobile();
-  
+
   const {
     startDate,
     endDate,
     preset: selectedDatePreset,
     setDateRangeByPreset,
-    setCustomDateRange
+    setCustomDateRange,
   } = useCalendarDateRange();
-  
+
   const [currentDate, setCurrentDate] = useState(new Date());
 
   useEffect(() => {
@@ -74,143 +81,161 @@ const AdminCalendar = () => {
   const fetchDrivers = async () => {
     try {
       const { data, error } = await supabase
-        .from('users')
-        .select('*')
-        .order('name');
+        .from("users")
+        .select("*")
+        .order("name");
 
       if (error) throw error;
       setDrivers(data || []);
     } catch (error) {
-      console.error('Error fetching drivers:', error);
+      console.error("Error fetching drivers:", error);
     }
   };
 
   const fetchRentHistory = async () => {
     try {
-      const formattedStartDate = format(startDate, 'yyyy-MM-dd');
-      const formattedEndDate = format(endDate, 'yyyy-MM-dd');
-      
+      const formattedStartDate = format(startDate, "yyyy-MM-dd");
+      const formattedEndDate = format(endDate, "yyyy-MM-dd");
+
       const { data, error } = await supabase
-        .from('rent_history')
-        .select('*')
-        .gte('rent_date', formattedStartDate)
-        .lte('rent_date', formattedEndDate);
-        
+        .from("rent_history")
+        .select("*")
+        .gte("rent_date", formattedStartDate)
+        .lte("rent_date", formattedEndDate);
+
       if (error) throw error;
       setRentHistory(data || []);
     } catch (error) {
-      console.error('Error fetching rent history:', error);
+      console.error("Error fetching rent history:", error);
     }
   };
 
   const fetchShiftHistory = async () => {
     try {
-      const formattedStartDate = format(startDate, 'yyyy-MM-dd');
-      const formattedEndDate = format(endDate, 'yyyy-MM-dd');
-      
+      const formattedStartDate = format(startDate, "yyyy-MM-dd");
+      const formattedEndDate = format(endDate, "yyyy-MM-dd");
+
       const { data, error } = await supabase
-        .from('shift_history')
-        .select('*')
-        .lte('effective_from_date', formattedEndDate);
-        
+        .from("shift_history")
+        .select("*")
+        .lte("effective_from_date", formattedEndDate);
+
       if (error) throw error;
       setShiftHistory(data || []);
     } catch (error) {
-      console.error('Error fetching shift history:', error);
+      console.error("Error fetching shift history:", error);
     }
   };
 
   const fetchCalendarData = async () => {
     setLoading(true);
     try {
-      const formattedStartDate = format(startDate, 'yyyy-MM-dd');
-      const formattedEndDate = format(endDate, 'yyyy-MM-dd');
-      
+      const formattedStartDate = format(startDate, "yyyy-MM-dd");
+      const formattedEndDate = format(endDate, "yyyy-MM-dd");
+
       let query = supabase
-        .from('fleet_reports')
-        .select(`
+        .from("fleet_reports")
+        .select(
+          `
           id, user_id, driver_name, vehicle_number, submission_date, 
-          rent_date, shift, rent_paid_status, total_earnings, status,
+          rent_date, shift, rent_paid_status, rent_paid_amount, status,
           remarks, created_at, users!inner(joining_date, online, offline_from_date)
-        `)
-        .gte('rent_date', formattedStartDate)
-        .lte('rent_date', formattedEndDate);
-      
-      if (selectedDriver !== 'all') {
-        query = query.eq('user_id', selectedDriver);
+        `
+        )
+        .gte("rent_date", formattedStartDate)
+        .lte("rent_date", formattedEndDate);
+
+      if (selectedDriver !== "all") {
+        query = query.eq("user_id", selectedDriver);
       }
-      
-      if (selectedShift !== 'all') {
-        query = query.eq('shift', selectedShift);
+
+      if (selectedShift !== "all") {
+        query = query.eq("shift", selectedShift);
       }
-      
+
       const { data: reportsData, error: reportsError } = await query;
 
       if (reportsError) throw reportsError;
 
       // Get all online drivers
       const { data: onlineDrivers, error: driversError } = await supabase
-        .from('users')
-        .select('id, name, vehicle_number, joining_date, shift, online')
-        .eq('online', true);
-        
+        .from("users")
+        .select("id, name, vehicle_number, joining_date, shift, online")
+        .eq("online", true);
+
       if (driversError) throw driversError;
-      
+
       // Create an array of all dates in the date range
       const allDates: string[] = [];
       let currentDateInRange = new Date(formattedStartDate);
       const endDateObj = new Date(formattedEndDate);
-      
+
       while (currentDateInRange <= endDateObj) {
-        allDates.push(format(currentDateInRange, 'yyyy-MM-dd'));
+        allDates.push(format(currentDateInRange, "yyyy-MM-dd"));
         currentDateInRange.setDate(currentDateInRange.getDate() + 1);
       }
-      
+
       // Process existing reports
-      let processedData: ReportData[] = reportsData?.map(report => processReportData(report)) || [];
-      
+      let processedData: ReportData[] =
+        reportsData?.map((report) => processReportData(report)) || [];
+
       // Create "not_joined" entries for drivers without reports
       if (onlineDrivers) {
         for (const driver of onlineDrivers) {
           for (const dateStr of allDates) {
             // Skip if the driver hadn't joined yet
             if (!shouldIncludeDriver(driver, dateStr)) continue;
-            
+
             // Check if a report exists for this driver and date
             const existingReport = processedData.find(
-              report => report.userId === driver.id && report.date === dateStr
+              (report) => report.userId === driver.id && report.date === dateStr
             );
 
             // Find the shift for this date based on shift history
             const shiftForDate = getShiftForDate(driver.id, dateStr);
-            
+
             // If no report exists, create a placeholder with "not_joined" status
             if (!existingReport) {
               // Check rent history if this was marked as leave or offline
               const historyEntry = rentHistory.find(
-                entry => entry.user_id === driver.id && entry.rent_date === dateStr
+                (entry) =>
+                  entry.user_id === driver.id && entry.rent_date === dateStr
               );
-              
-              let status: RentStatus = 'not_joined';
-              let notes = '';
-              
+
+              let status: RentStatus = "not_joined";
+              let notes = "";
+
               if (historyEntry) {
-                if (historyEntry.payment_status === 'leave') {
-                  status = 'leave';
-                  notes = 'Driver on leave';
+                if (historyEntry.payment_status === "leave") {
+                  status = "leave";
+                  notes = "Driver on leave";
                 } else if (!historyEntry.is_online) {
-                  status = 'offline';
-                  notes = 'Driver offline on this date';
+                  status = "offline";
+                  notes = "Driver offline on this date";
+                }
+              } else {
+                const joinDate = driver.joining_date
+                  ? new Date(driver.joining_date)
+                  : null;
+                const checkDate = new Date(dateStr);
+                const now = new Date();
+
+                if (!joinDate || checkDate < joinDate) {
+                  status = "not_joined";
+                  notes = "Driver not yet joined";
+                } else if (checkDate < now) {
+                  status = "overdue";
+                  notes = "No form submitted";
                 }
               }
-              
+
               processedData.push({
                 date: dateStr,
                 userId: driver.id,
-                driverName: driver.name || 'Unknown',
-                vehicleNumber: driver.vehicle_number || '',
+                driverName: driver.name || "Unknown",
+                vehicleNumber: driver.vehicle_number || "",
                 status,
-                shift: driver.shift || 'unknown',
+                shift: driver.shift || "unknown",
                 shiftForDate,
                 notes,
                 joiningDate: driver.joining_date,
@@ -222,29 +247,64 @@ const AdminCalendar = () => {
           }
         }
       }
-      
+
       setCalendarData(processedData);
     } catch (error) {
-      console.error('Error fetching calendar data:', error);
-      toast.error('Failed to load calendar data');
+      console.error("Error fetching calendar data:", error);
+      toast.error("Failed to load calendar data");
     } finally {
       setLoading(false);
     }
   };
 
+  const handleMarkAsLeave = async (
+    userId: string,
+    driverName: string,
+    vehicleNumber: string,
+    shift: string,
+    date: string
+  ) => {
+    try {
+      const { error } = await supabase.from("fleet_reports").upsert({
+        user_id: userId,
+        driver_name: driverName,
+        vehicle_number: vehicleNumber,
+        shift,
+        rent_date: date,
+        submission_date: new Date().toISOString(),
+        rent_paid_status: false,
+        rent_verified: false,
+        status: "leave",
+        remarks: "Marked as leave",
+      });
+
+      if (error) throw error;
+
+      toast.success("Marked as leave");
+      fetchCalendarData(); // refresh calendar
+    } catch (error) {
+      console.error("Error marking as leave:", error);
+      toast.error("Failed to mark as leave");
+    }
+  };
+
   const getShiftForDate = (userId: string, dateStr: string) => {
-    const userShiftHistory = shiftHistory.filter(history => history.user_id === userId);
-    
+    const userShiftHistory = shiftHistory.filter(
+      (history) => history.user_id === userId
+    );
+
     if (userShiftHistory.length === 0) return null;
-    
-    userShiftHistory.sort((a, b) => 
-      new Date(b.effective_from_date).getTime() - new Date(a.effective_from_date).getTime()
+
+    userShiftHistory.sort(
+      (a, b) =>
+        new Date(b.effective_from_date).getTime() -
+        new Date(a.effective_from_date).getTime()
     );
-    
-    const relevantShift = userShiftHistory.find(history => 
-      new Date(history.effective_from_date) <= new Date(dateStr)
+
+    const relevantShift = userShiftHistory.find(
+      (history) => new Date(history.effective_from_date) <= new Date(dateStr)
     );
-    
+
     return relevantShift ? relevantShift.shift : null;
   };
 
@@ -261,38 +321,50 @@ const AdminCalendar = () => {
     setDateRangeByPreset(preset);
   };
 
-  const filteredDrivers = drivers.filter(driver => {
-    if (searchQuery && !((driver.name && driver.name.toLowerCase().includes(searchQuery.toLowerCase())) ||
-      (driver.driver_id && driver.driver_id.toLowerCase().includes(searchQuery.toLowerCase())) ||
-      (driver.vehicle_number && driver.vehicle_number.toLowerCase().includes(searchQuery.toLowerCase())))) {
+  const filteredDrivers = drivers.filter((driver) => {
+    if (
+      searchQuery &&
+      !(
+        (driver.name &&
+          driver.name.toLowerCase().includes(searchQuery.toLowerCase())) ||
+        (driver.driver_id &&
+          driver.driver_id.toLowerCase().includes(searchQuery.toLowerCase())) ||
+        (driver.vehicle_number &&
+          driver.vehicle_number
+            .toLowerCase()
+            .includes(searchQuery.toLowerCase()))
+      )
+    ) {
       return false;
     }
-    
+
     if (!driver.online) {
       return false;
     }
-    
+
     return true;
   });
 
   const getShiftFilteredDrivers = (shiftType: string) => {
-    return filteredDrivers.filter(driver => driver.shift === shiftType);
+    return filteredDrivers.filter((driver) => driver.shift === shiftType);
   };
 
-  const morningShiftDrivers = getShiftFilteredDrivers('morning');
-  const nightShiftDrivers = getShiftFilteredDrivers('night');
-  const fullDayShiftDrivers = getShiftFilteredDrivers('24hr');
+  const morningShiftDrivers = getShiftFilteredDrivers("morning");
+  const nightShiftDrivers = getShiftFilteredDrivers("night");
+  const fullDayShiftDrivers = getShiftFilteredDrivers("24");
 
-  const morningShiftData = calendarData.filter(data => data.shift === 'morning');
-  const nightShiftData = calendarData.filter(data => data.shift === 'night');
-  const fullDayShiftData = calendarData.filter(data => data.shift === '24hr');
+  const morningShiftData = calendarData.filter(
+    (data) => data.shift === "morning"
+  );
+  const nightShiftData = calendarData.filter((data) => data.shift === "night");
+  const fullDayShiftData = calendarData.filter((data) => data.shift === "24");
 
   const statusLegend = [
-    { status: 'paid', label: 'Paid' },
-    { status: 'pending', label: 'Pending Verification' },
-    { status: 'overdue', label: 'Overdue' },
-    { status: 'leave', label: 'Leave' },
-    { status: 'not_joined', label: 'Not Paid' }
+    { status: "paid", label: "Paid" },
+    { status: "pending", label: "Pending" },
+    { status: "overdue", label: "Overdue" },
+    { status: "leave", label: "Leave" },
+    { status: "not_joined", label: "Not Paid" },
   ];
 
   // When clicking "Today", reset the mobile view to start from the first day of the current week
@@ -306,14 +378,14 @@ const AdminCalendar = () => {
     <AdminLayout title="Rent Due Calendar">
       <div className="space-y-4">
         <div className="flex flex-col sm:flex-row justify-between gap-4">
-          <DateRangeFilter 
+          <DateRangeFilter
             startDate={startDate}
             endDate={endDate}
             onDateRangeChange={handleDateRangeChange}
             onPresetChange={handleDatePresetChange}
             selectedPreset={selectedDatePreset}
           />
-          
+
           {!isMobile && (
             <Input
               placeholder="Search drivers..."
@@ -323,14 +395,13 @@ const AdminCalendar = () => {
             />
           )}
         </div>
-        
+
         <div className="flex flex-wrap gap-3 mb-4">
           {statusLegend.map((item) => (
             <div key={item.status} className="flex items-center gap-2">
-              <div className={cn(
-                "w-3 h-3 rounded",
-                getStatusColor(item.status)
-              )}></div>
+              <div
+                className={cn("w-3 h-3 rounded", getStatusColor(item.status))}
+              ></div>
               <span className="text-xs">{item.label}</span>
             </div>
           ))}
@@ -343,7 +414,7 @@ const AdminCalendar = () => {
             <TabsTrigger value="night">Night</TabsTrigger>
             <TabsTrigger value="fullday">24 Hours</TabsTrigger>
           </TabsList>
-          
+
           <TabsContent value="all">
             <Card>
               <CardContent className="p-6">
@@ -373,6 +444,7 @@ const AdminCalendar = () => {
                       calendarData={calendarData}
                       isMobile={isMobile}
                       onCellClick={handleOpenDriverDetail}
+                      onMarkAsLeave={handleMarkAsLeave}
                       mobileStartIndex={mobileStartIndex}
                     />
                   </>
@@ -474,7 +546,7 @@ const AdminCalendar = () => {
                       onPreviousWeek={() => setWeekOffset(weekOffset - 1)}
                       onNextWeek={() => setWeekOffset(weekOffset + 1)}
                       onTodayClick={handleTodayClick}
-                      selectedShift="24hr"
+                      selectedShift="24"
                       onShiftChange={() => {}}
                       isMobile={isMobile}
                       hideShiftSelector
@@ -488,7 +560,7 @@ const AdminCalendar = () => {
                       filteredDrivers={fullDayShiftDrivers}
                       calendarData={fullDayShiftData}
                       isMobile={isMobile}
-                      shiftType="24hr"
+                      shiftType="24"
                       onCellClick={handleOpenDriverDetail}
                       mobileStartIndex={mobileStartIndex}
                     />
@@ -498,8 +570,9 @@ const AdminCalendar = () => {
             </Card>
           </TabsContent>
         </Tabs>
-        
-        <DriverDetailModal 
+
+        <DriverDetailModal
+          onMarkAsLeave={handleMarkAsLeave}
           isOpen={isDetailModalOpen}
           onClose={() => setIsDetailModalOpen(false)}
           driverData={selectedDriverData}

@@ -23,6 +23,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 
+import { subDays, startOfWeek, endOfWeek, format } from "date-fns";
+
 interface Vehicle {
   vehicle_number: string;
   fleet_name: string | null;
@@ -40,6 +42,10 @@ const AdminVehicles = () => {
   const [editData, setEditData] = useState<Partial<Vehicle>>({});
   const [isSaving, setIsSaving] = useState(false);
 
+  const [filterType, setFilterType] = useState("week");
+  const [customStart, setCustomStart] = useState<Date | null>(null);
+  const [customEnd, setCustomEnd] = useState<Date | null>(null);
+  const [tripHistory, setTripHistory] = useState<any[]>([]);
   const [newVehicleData, setNewVehicleData] = useState({
     vehicle_number: "",
     fleet_name: "",
@@ -68,19 +74,97 @@ const AdminVehicles = () => {
     }
   };
 
-  // async function updateZeroTotalTrips(newTripCount: number) {
-  //   const { data, error } = await supabase
-  //     .from("vehicles")
-  //     .update({ total_trips: newTripCount })
-  //     .eq("vehicle_number", newVehicleData.vehicle_number);
-  //   console.log("Updated :", newVehicleData);
+  async function updateZeroTotalTrips(newVehiclenumber: string) {
+    // Get the current total_trips before resetting
+    const { data: currentData, error: fetchError } = await supabase
+      .from("vehicles")
+      .select("total_trips")
+      .eq("vehicle_number", newVehiclenumber)
+      .single();
 
-  //   if (error) {
-  //     console.error("Error updating total_trips:", error.message);
-  //   } else {
-  //     console.log("Updated vehicles:", data);
-  //   }
-  // }
+    if (fetchError) {
+      console.error("Error fetching current total_trips:", fetchError.message);
+      return;
+    }
+
+    const previousTrips = currentData?.total_trips || 0;
+
+    // Save to daily trip history
+    const { error: dailyHistoryError } = await supabase
+      .from("vehicle_trip_history")
+      .insert({
+        vehicle_number: newVehiclenumber,
+        recorded_at: new Date().toISOString(),
+        total_trips: previousTrips,
+        type: "daily",
+      });
+
+    if (dailyHistoryError) {
+      console.error(
+        "Error saving daily trip history:",
+        dailyHistoryError.message
+      );
+      return;
+    }
+
+    // Save to weekly trip history
+    const startOfWeekDate = startOfWeek(new Date());
+    const { error: weeklyHistoryError } = await supabase
+      .from("vehicle_trip_history")
+      .insert({
+        vehicle_number: newVehiclenumber,
+        recorded_at: startOfWeekDate.toISOString(),
+        total_trips: previousTrips,
+        type: "weekly",
+      });
+
+    if (weeklyHistoryError) {
+      console.error(
+        "Error saving weekly trip history:",
+        weeklyHistoryError.message
+      );
+      return;
+    }
+
+    // Reset total_trips to 0
+    const { data, error } = await supabase
+      .from("vehicles")
+      .update({ total_trips: 0 })
+      .eq("vehicle_number", newVehiclenumber);
+
+    if (error) {
+      console.error("Error updating total_trips:", error.message);
+    } else {
+      console.log("Updated vehicles:", data);
+      window.location.reload();
+    }
+  }
+
+  const fetchFilteredTripHistory = async () => {
+    try {
+      let query = supabase
+        .from("vehicle_trip_history")
+        .select("*")
+        .order("recorded_at", { ascending: false });
+
+      if (filterType === "daily") {
+        query = query.eq("type", "daily");
+      } else if (filterType === "weekly") {
+        query = query.eq("type", "weekly");
+      }
+
+      const { data, error } = await query;
+
+      if (error) throw error;
+      setTripHistory(data || []);
+    } catch (error) {
+      console.error("Error fetching filtered trip history:", error);
+    }
+  };
+
+  useEffect(() => {
+    fetchFilteredTripHistory();
+  }, [filterType]);
 
   const toggleVehicleStatus = async (
     vehicle_number: string,
@@ -238,9 +322,33 @@ const AdminVehicles = () => {
             className="pl-8"
           />
         </div>
-        <Button onClick={handleAddNewVehicle}>
-          <PlusCircle className="h-4 w-4 mr-2" /> Add New Vehicle
-        </Button>
+        <div className="space-x-2 flex items-center">
+          <Button onClick={handleAddNewVehicle}>
+            <PlusCircle className="h-4 w-4 mr-2" /> Add New Vehicle
+          </Button>
+          <select
+            className="border px-2 py-1 rounded"
+            value={filterType}
+            onChange={(e) => setFilterType(e.target.value)}
+          >
+            <option value="week">This Week</option>
+            <option value="month">Last 30 Days</option>
+            <option value="custom">Custom Range</option>
+          </select>
+
+          {filterType === "custom" && (
+            <div className="flex gap-2 mt-2">
+              <input
+                type="date"
+                onChange={(e) => setCustomStart(new Date(e.target.value))}
+              />
+              <input
+                type="date"
+                onChange={(e) => setCustomEnd(new Date(e.target.value))}
+              />
+            </div>
+          )}
+        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
@@ -287,6 +395,33 @@ const AdminVehicles = () => {
 
       <Card>
         <CardContent className="p-6">
+          <div className="flex flex-col md:flex-row gap-4 mb-4">
+            <select
+              className="border px-3 py-2 rounded-md text-sm"
+              value={filterType}
+              onChange={(e) => setFilterType(e.target.value)}
+            >
+              <option value="all">All Time</option>
+              <option value="week">This Week</option>
+              <option value="month">Last 30 Days</option>
+              <option value="custom">Custom Range</option>
+            </select>
+            {filterType === "custom" && (
+              <div className="flex gap-2">
+                <input
+                  type="date"
+                  onChange={(e) => setCustomStart(new Date(e.target.value))}
+                  className="border px-2 py-1 rounded text-sm"
+                />
+                <input
+                  type="date"
+                  onChange={(e) => setCustomEnd(new Date(e.target.value))}
+                  className="border px-2 py-1 rounded text-sm"
+                />
+              </div>
+            )}
+          </div>
+
           {loading ? (
             <div className="flex items-center justify-center h-64">
               <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-fleet-purple"></div>
@@ -323,7 +458,6 @@ const AdminVehicles = () => {
                           {vehicle.vehicle_number}
                         </TableCell>
                         <TableCell>{vehicle.fleet_name || "N/A"}</TableCell>
-
                         <TableCell>
                           ₹{vehicle.deposit?.toLocaleString() || "0"}
                         </TableCell>
@@ -356,13 +490,15 @@ const AdminVehicles = () => {
                             : "N/A"}
                         </TableCell>
                         <TableCell className="text-right space-x-2">
-                          {/* <Button
+                          <Button
                             variant="ghost"
                             size="sm"
-                            onClick={updateZeroTotalTrips(0)}
+                            onClick={() =>
+                              updateZeroTotalTrips(vehicle.vehicle_number)
+                            }
                           >
                             Reset
-                          </Button> */}
+                          </Button>
                           <Button
                             variant="ghost"
                             size="sm"

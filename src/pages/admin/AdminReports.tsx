@@ -60,6 +60,7 @@ interface Report {
   payment_screenshot: string | null;
   status: string | null;
   remarks: string | null;
+  toll: number;
 }
 
 interface VehicleInfo {
@@ -122,7 +123,7 @@ const AdminReports = () => {
       const { data, error } = await supabase
         .from("fleet_reports")
         .select("*")
-        .order("rent_date", { ascending: false });
+        .order("submission_date", { ascending: false });
 
       if (error) throw error;
 
@@ -201,7 +202,11 @@ const AdminReports = () => {
       case "rejected":
         return <Badge variant="destructive">Rejected</Badge>;
       case "leave":
-        return <Badge variant="outline" className="bg-yellow-100 text-yellow-800">Leave</Badge>;
+        return (
+          <Badge variant="outline" className="bg-yellow-100 text-yellow-800">
+            Leave
+          </Badge>
+        );
       default:
         return <Badge variant="outline">Pending</Badge>;
     }
@@ -311,7 +316,7 @@ const AdminReports = () => {
   const cashInUber = totalEarnings - totalCashCollect;
   const cashInHand = totalRentPaid;
 
-  const earningsPerRow = 600;
+  // const earningsPerRow = 600;
   const verifyRent = async (reportId: string) => {
     const { error } = await supabase
       .from("fleet_reports")
@@ -323,6 +328,54 @@ const AdminReports = () => {
       console.error("Error verifying rent:", error);
     } else {
       toast.success("Rent verified successfully!");
+    }
+  };
+
+  const handleDeleteReport = async () => {
+    if (!selectedReport) return;
+
+    try {
+      // Step 1: Delete the report
+      const { error: deleteError } = await supabase
+        .from("fleet_reports")
+        .delete()
+        .eq("id", selectedReport.id);
+
+      if (deleteError) throw deleteError;
+
+      // Step 2: Fetch the current vehicle's total_trips
+      const { data: vehicleData, error: vehicleError } = await supabase
+        .from("vehicles")
+        .select("total_trips")
+        .eq("vehicle_number", selectedReport.vehicle_number)
+        .single();
+
+      if (vehicleError) throw vehicleError;
+
+      const currentTrips = vehicleData?.total_trips || 0;
+      const newTripCount = Math.max(
+        currentTrips - (selectedReport.total_trips || 0),
+        0
+      );
+
+      // Step 3: Update the vehicle's trip count
+      const { error: updateError } = await supabase
+        .from("vehicles")
+        .update({ total_trips: newTripCount })
+        .eq("vehicle_number", selectedReport.vehicle_number);
+
+      if (updateError) throw updateError;
+
+      // Step 4: Update local state
+      setReports((prev) =>
+        prev.filter((report) => report.id !== selectedReport.id)
+      );
+      setIsModalOpen(false);
+
+      toast.success("Report deleted and vehicle trips updated.");
+    } catch (error) {
+      console.error("Error deleting report:", error);
+      toast.error("Failed to delete report.");
     }
   };
 
@@ -493,16 +546,29 @@ const AdminReports = () => {
                     <TableHeader className="bg-muted/50 sticky top-0">
                       <TableRow>
                         <TableHead className="w-[50px]">ID</TableHead>
-                        <TableHead className="min-w-[150px]">Date&time</TableHead>
+                        <TableHead className="min-w-[150px]">
+                          Date&time
+                        </TableHead>
                         <TableHead className="min-w-[120px]">Driver</TableHead>
                         <TableHead className="min-w-[120px]">Vehicle</TableHead>
                         <TableHead className="min-w-[80px]">Trips</TableHead>
-                        <TableHead className="min-w-[100px]">Earnings</TableHead>
-                        <TableHead className="min-w-[120px]">Cash Collected</TableHead>
-                        <TableHead className="min-w-[100px]">Rent Paid</TableHead>
-                        <TableHead className="min-w-[100px]">Screenshots</TableHead>
+                        <TableHead className="min-w-[100px]">
+                          Earnings
+                        </TableHead>
+                        <TableHead className="min-w-[100px]">Toll</TableHead>
+                        <TableHead className="min-w-[120px]">
+                          Cash Collected
+                        </TableHead>
+                        <TableHead className="min-w-[100px]">
+                          Rent Paid
+                        </TableHead>
+                        <TableHead className="min-w-[100px]">
+                          Screenshots
+                        </TableHead>
                         <TableHead className="min-w-[100px]">Status</TableHead>
-                        <TableHead className="text-right min-w-[120px]">Actions</TableHead>
+                        <TableHead className="text-right min-w-[120px]">
+                          Actions
+                        </TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -515,17 +581,27 @@ const AdminReports = () => {
                       ) : (
                         filteredReports.map((report, index) => (
                           <TableRow key={report.id} className="text-sm">
-                            <TableCell className="font-medium">{index + 1}</TableCell>
+                            <TableCell className="font-medium">
+                              {index + 1}
+                            </TableCell>
                             <TableCell className="whitespace-nowrap">
-                              {format(new Date(report.submission_date), "d MMM yyyy, hh:mm a")}
+                              {format(
+                                new Date(report.submission_date),
+                                "d MMM yyyy, hh:mm a"
+                              )}
                             </TableCell>
                             <TableCell className="font-medium">
                               {report.driver_name}
                             </TableCell>
                             <TableCell>{report.vehicle_number}</TableCell>
                             <TableCell>{report.total_trips}</TableCell>
-                            <TableCell>₹{report.total_earnings.toLocaleString()}</TableCell>
-                            <TableCell>₹{report.total_cashcollect.toLocaleString()}</TableCell>
+                            <TableCell>
+                              ₹{report.total_earnings.toLocaleString()}
+                            </TableCell>
+                            <TableCell>₹{report.toll}</TableCell>
+                            <TableCell>
+                              ₹{report.total_cashcollect.toLocaleString()}
+                            </TableCell>
                             <TableCell
                               className={`whitespace-nowrap ${
                                 report.rent_paid_amount < 0
@@ -549,7 +625,9 @@ const AdminReports = () => {
                                 )}
                               </div>
                             </TableCell>
-                            <TableCell>{getStatusBadge(report.status)}</TableCell>
+                            <TableCell>
+                              {getStatusBadge(report.status)}
+                            </TableCell>
                             <TableCell>
                               <div className="flex justify-end space-x-1">
                                 <Button
@@ -746,21 +824,7 @@ const AdminReports = () => {
 
             <div className="flex justify-between items-center">
               <div className="flex gap-4">
-                <Button
-                  variant="destructive"
-                  onClick={async () => {
-                    await supabase
-                      .from("fleet_reports")
-                      .delete()
-                      .eq("id", selectedReport?.id);
-                    setIsModalOpen(false);
-                    setReports((prev) =>
-                      prev.filter(
-                        (report) => report.id !== selectedReport?.id
-                      )
-                    );
-                  }}
-                >
+                <Button variant="destructive" onClick={handleDeleteReport}>
                   Delete Report
                 </Button>
 
@@ -785,10 +849,7 @@ const AdminReports = () => {
               </div>
 
               <div className="flex gap-4">
-                <Button
-                  variant="outline"
-                  onClick={() => setIsModalOpen(false)}
-                >
+                <Button variant="outline" onClick={() => setIsModalOpen(false)}>
                   Cancel
                 </Button>
                 <Button

@@ -1,9 +1,14 @@
-
-import React from 'react';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { format, addDays, startOfWeek } from 'date-fns';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import React from "react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { format, addDays, startOfWeek } from "date-fns";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 interface CalendarHeaderProps {
   currentDate: Date;
@@ -15,9 +20,9 @@ interface CalendarHeaderProps {
   onShiftChange: (value: string) => void;
   isMobile?: boolean;
   hideShiftSelector?: boolean;
-  onPreviousDay?: () => void;  // New prop for mobile day navigation
-  onNextDay?: () => void;      // New prop for mobile day navigation
-  mobileStartIndex?: number;   // New prop to track current mobile view position
+  onPreviousDay?: () => void; // New prop for mobile day navigation
+  onNextDay?: () => void; // New prop for mobile day navigation
+  mobileStartIndex?: number; // New prop to track current mobile view position
 }
 
 export const CalendarHeader = ({
@@ -34,11 +39,15 @@ export const CalendarHeader = ({
   onNextDay,
   mobileStartIndex = 0,
 }: CalendarHeaderProps) => {
-  const weekStart = startOfWeek(addDays(currentDate, weekOffset * 7), { weekStartsOn: 1 });
+  const weekStart = startOfWeek(addDays(currentDate, weekOffset * 7), {
+    weekStartsOn: 1,
+  });
   const weekEnd = addDays(weekStart, isMobile ? 1 : 6);
-  
+
   // For mobile view, calculate which days are being shown
-  const mobileViewStart = isMobile ? addDays(weekStart, mobileStartIndex) : weekStart;
+  const mobileViewStart = isMobile
+    ? addDays(weekStart, mobileStartIndex)
+    : weekStart;
   const mobileViewEnd = isMobile ? addDays(mobileViewStart, 1) : weekEnd;
 
   return (
@@ -70,13 +79,18 @@ export const CalendarHeader = ({
           </>
         )}
         <span className="text-sm font-medium">
-          {isMobile 
-            ? `${format(mobileViewStart, 'd MMM')} - ${format(mobileViewEnd, 'd MMM')}`
-            : `${format(weekStart, 'MMM d')} - ${format(weekEnd, 'MMM d, yyyy')}`
-          }
+          {isMobile
+            ? `${format(mobileViewStart, "d MMM")} - ${format(
+                mobileViewEnd,
+                "d MMM"
+              )}`
+            : `${format(weekStart, "MMM d")} - ${format(
+                weekEnd,
+                "MMM d, yyyy"
+              )}`}
         </span>
       </div>
-      
+
       {!hideShiftSelector && (
         <Select value={selectedShift} onValueChange={onShiftChange}>
           <SelectTrigger className="w-[150px] h-9">
