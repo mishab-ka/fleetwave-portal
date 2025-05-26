@@ -1,4 +1,3 @@
-
 import React from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
@@ -18,6 +17,14 @@ import AdminReports from "./pages/admin/AdminReports";
 import AdminSettings from "./pages/admin/AdminSettings";
 import AdminCalendar from "./pages/admin/AdminCalendar";
 import AdminFinance from "./pages/admin/AdminFinance"; // Import the AdminFinance component
+import AdminVehicleAudit from "./pages/admin/AdminVehicleAudit"; // Import the AdminVehicleAudit component
+import AdminVehicleAuditReports from "./pages/admin/AdminVehicleAuditReports";
+import AdminShifts from "./pages/admin/AdminShifts";
+import VehicleAttendance from "./pages/admin/VehicleAttendance";
+import AdminVehicleAttendance from "./pages/admin/AdminVehicleAttendance";
+import AdminUberAudit from "./pages/admin/AdminUberAudit";
+import AdminHR from "./pages/admin/AdminHR";
+import ApplyDriver from "./pages/ApplyDriver";
 
 // Create a new query client instance
 const queryClient = new QueryClient({
@@ -43,7 +50,6 @@ const App = () => (
                 <Route path="/" element={<Index />} />
                 <Route path="/profile" element={<Profile />} />
                 <Route path="/submit-report" element={<SubmitReport />} />
-                
                 {/* Admin Routes */}
                 <Route path="/admin" element={<AdminDashboard />} />
                 <Route path="/admin/drivers" element={<AdminDrivers />} />
@@ -51,8 +57,25 @@ const App = () => (
                 <Route path="/admin/reports" element={<AdminReports />} />
                 <Route path="/admin/calendar" element={<AdminCalendar />} />
                 <Route path="/admin/settings" element={<AdminSettings />} />
-                <Route path="/admin/finance" element={<AdminFinance />} /> {/* Add the AdminFinance route */}
-                
+                <Route path="/admin/finance" element={<AdminFinance />} />{" "}
+                <Route path="/admin/shift" element={<AdminShifts />} />{" "}
+                <Route
+                  path="/admin/vehicles-calander"
+                  element={<AdminVehicleAttendance />}
+                />{" "}
+                {/* Add the AdminFinance route */}
+                <Route
+                  path="/admin/AdminVehicleAudit"
+                  element={<AdminVehicleAudit />}
+                />{" "}
+                <Route
+                  path="/admin/AdminVehicleAuditReports"
+                  element={<AdminVehicleAuditReports />}
+                />{" "}
+                <Route path="/admin/uber-audit" element={<AdminUberAudit />} />{" "}
+                {/* Add the AdminVehicleAudit route */}
+                <Route path="/admin/hr" element={<AdminHR />} />
+                <Route path="/apply-driver" element={<ApplyDriver />} />
                 {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
                 <Route path="*" element={<NotFound />} />
               </Routes>

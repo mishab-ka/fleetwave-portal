@@ -12,7 +12,9 @@ import { toast } from "sonner";
 import { FileUp } from "lucide-react";
 // import dayjs from "dayjs";
 import WeeklyCalendar from "@/components/ui/weeklycalander";
+// import CopyUpiButton from "@/components/ui/CopyUPI";
 // import { Alert } from "@/components/ui/alert";
+// import UpiPayment from "@/components/UpiPayment";
 
 const SubmitReport = () => {
   const [totalTrips, setTotalTrips] = useState(0); // Default to 0
@@ -113,6 +115,19 @@ const SubmitReport = () => {
 
   //   fetchData();
   // }, [formData.vehicle_number]);
+
+  const [copied, setCopied] = useState(false);
+  const upiId = "8590253089@ikwik";
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(upiId);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      console.error("Failed to copy!", err);
+    }
+  };
 
   const handleInputChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
@@ -219,8 +234,6 @@ const SubmitReport = () => {
 
     const formattedSubmissionDate = new Date(submissionDateIST).toISOString(); // if needed
 
-    // const submissionDate = new Date().toISOString();
-
     if (!userData) {
       toast.error("User data not available");
       return;
@@ -296,6 +309,7 @@ const SubmitReport = () => {
       const newTotalEarnings =
         Number(currentEarnings) + Number(formData.total_earnings);
       const newTotalTrips = Number(currentTrips) + Number(formData.total_trips);
+
       const newVehicleTrips = vehicleTrips + Number(formData.total_trips);
 
       const { error: userUpdateError } = await supabase
@@ -311,6 +325,7 @@ const SubmitReport = () => {
       if (userUpdateError || vehicleUpdateError) {
         console.warn("Partial success:", userUpdateError || vehicleUpdateError);
         toast.error("Report saved but updating stats failed.");
+        navigate("/profile");
       } else {
         toast.success("Daily report submitted successfully!");
         navigate("/profile");
@@ -479,6 +494,17 @@ const SubmitReport = () => {
                   </label>
                 </div>
               </div>
+            </div>
+
+            <div className="flex items-center gap-2 mb-6">
+              <span className="text-sm font-medium">{upiId}</span>
+              <button
+                onClick={handleCopy}
+                type="button"
+                className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-sm"
+              >
+                {copied ? "Copied!" : "Copy UPI"}
+              </button>
             </div>
 
             <div className="flex justify-end">

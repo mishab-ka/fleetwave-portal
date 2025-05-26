@@ -51,11 +51,11 @@ const Profile = () => {
         </div>
         
         <Tabs defaultValue="profile" className="w-full">
-          <TabsList className="mb-6 grid w-full grid-cols-4">
+          <TabsList className="mb-6 grid w-full grid-cols-3">
             <TabsTrigger value="profile">Profile</TabsTrigger>
             <TabsTrigger value="documents">Documents</TabsTrigger>
             <TabsTrigger value="history">Payment History</TabsTrigger>
-            <TabsTrigger value="leaderboard">Leaderboard</TabsTrigger>
+            {/* <TabsTrigger value="leaderboard">Leaderboard</TabsTrigger> */}
           </TabsList>
           
           <TabsContent value="profile">
@@ -70,9 +70,9 @@ const Profile = () => {
             <PaymentHistory />
           </TabsContent>
 
-          <TabsContent value="leaderboard">
+          {/* <TabsContent value="leaderboard">
             <Leaderboard />
-          </TabsContent>
+          </TabsContent> */}
         </Tabs>
       </main>
       <Footer />

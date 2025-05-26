@@ -34,6 +34,30 @@ export interface ReportData {
 export const processReportData = (report: any): ReportData => {
   // Offline user handling
   if (!report.users.online) {
+    // Calculate if this should show as "leave" based on offline date
+    const rentDate = parseISO(report.rent_date);
+    const offlineFromDate = report.users.offline_from_date
+      ? parseISO(report.users.offline_from_date)
+      : null;
+
+    // If user is offline and has an offline_from_date and the rent_date is after or equal to offline_from_date
+    if (offlineFromDate && !isBefore(rentDate, offlineFromDate)) {
+      return {
+        date: report.rent_date,
+        userId: report.user_id,
+        driverName: report.driver_name,
+        vehicleNumber: report.vehicle_number,
+        status: "leave" as RentStatus,
+        shift: report.shift,
+        created_at: report.created_at,
+        rent_paid_amount: report.rent_paid_amount,
+        notes: `On leave since ${format(offlineFromDate, "PP")}`,
+        joiningDate: report.users.joining_date,
+        shiftForDate: report.shift,
+      };
+    }
+
+    // Otherwise show as offline
     return {
       date: report.rent_date,
       userId: report.user_id,
@@ -53,6 +77,12 @@ export const processReportData = (report: any): ReportData => {
     };
   }
 
+  // If user is online but has an online_from_date, then only show overdue for dates after that
+  const rentDate = parseISO(report.rent_date);
+  const onlineFromDate = report.users.online_from_date
+    ? parseISO(report.users.online_from_date)
+    : null;
+
   // Leave status handling
   if (report.remarks?.toLowerCase().includes("leave")) {
     return {
@@ -70,8 +100,6 @@ export const processReportData = (report: any): ReportData => {
     };
   }
 
-  // IMPORTANT FIX: If a report has a created_at timestamp, it means it was submitted, and its
-  // status should take precedence over deadline calculations
   // IMPORTANT FIX: If a report has a created_at timestamp, it means it was submitted, and its
   // status should take precedence over deadline calculations
   if (report.created_at) {
@@ -109,10 +137,53 @@ export const processReportData = (report: any): ReportData => {
 
   // For days with no submission, check if it should be marked as overdue
   const currentDate = new Date();
-  const rentDate = parseISO(report.rent_date);
   const joiningDate = report.users.joining_date
     ? parseISO(report.users.joining_date)
     : null;
+
+  // If this rent date is before online_from_date, show as leave
+  if (onlineFromDate && isBefore(rentDate, onlineFromDate)) {
+    // Special logic: If the user was offline and brought online after 3+ days, mark the onlineFromDate as not_joined
+    if (
+      report.users.offline_from_date &&
+      format(rentDate, "yyyy-MM-dd") === format(onlineFromDate, "yyyy-MM-dd")
+    ) {
+      const offlineFromDate = parseISO(report.users.offline_from_date);
+      // If offline period is 3 or more days
+      const diffDays = Math.floor(
+        (onlineFromDate.getTime() - offlineFromDate.getTime()) /
+          (1000 * 60 * 60 * 24)
+      );
+      if (diffDays >= 3) {
+        return {
+          date: report.rent_date,
+          userId: report.user_id,
+          driverName: report.driver_name,
+          vehicleNumber: report.vehicle_number,
+          status: "not_joined" as RentStatus,
+          shift: report.shift,
+          created_at: report.created_at,
+          rent_paid_amount: report.rent_paid_amount,
+          notes: `Returned online after ${diffDays} days offline`,
+          joiningDate: report.users.joining_date,
+          shiftForDate: report.shift,
+        };
+      }
+    }
+    return {
+      date: report.rent_date,
+      userId: report.user_id,
+      driverName: report.driver_name,
+      vehicleNumber: report.vehicle_number,
+      status: "leave" as RentStatus,
+      shift: report.shift,
+      created_at: report.created_at,
+      rent_paid_amount: report.rent_paid_amount,
+      notes: `On leave until ${format(onlineFromDate, "PP")}`,
+      joiningDate: report.users.joining_date,
+      shiftForDate: report.shift,
+    };
+  }
 
   // Only check for overdue if joining date is before or equal to rent date
   let status: RentStatus = "pending_verification";
@@ -125,15 +196,15 @@ export const processReportData = (report: any): ReportData => {
     let deadlineForShift: Date;
 
     if (report.shift === "morning") {
-      // Morning shift deadline: 4 PM same day + 30 min grace
+      // Morning shift deadline: 5 PM same day (changed from 4 PM)
       const dateObj = new Date(rentDate);
-      dateObj.setHours(16, 0, 0, 0);
-      deadlineForShift = addMinutes(dateObj, 30);
+      dateObj.setHours(17, 0, 0, 0); // Changed from 16 to 17 for 5PM
+      deadlineForShift = dateObj;
     } else {
-      // Night or 24hr shift deadline: 4 AM next day + 30 min grace
+      // Night or 24hr shift deadline: 5 AM next day (changed from 4 AM)
       const nextDay = addDays(new Date(rentDate), 1);
-      nextDay.setHours(4, 0, 0, 0);
-      deadlineForShift = addMinutes(nextDay, 30);
+      nextDay.setHours(5, 0, 0, 0); // Changed from 4 to 5 for 5AM
+      deadlineForShift = nextDay;
     }
 
     if (isAfter(currentDate, deadlineForShift)) {
@@ -160,9 +231,11 @@ export const processReportData = (report: any): ReportData => {
 export const determineOverdueStatus = (
   date: string,
   shift: string,
-  joiningDate?: string
+  joiningDate?: string,
+  isOnline: boolean = true,
+  offlineFromDate?: string,
+  onlineFromDate?: string
 ): RentStatus => {
-  // If no joining date or joining date is after the current date, return not_joined
   if (!joiningDate) {
     return "not_joined";
   }
@@ -171,31 +244,40 @@ export const determineOverdueStatus = (
   const checkDate = parseISO(date);
   const joinDate = parseISO(joiningDate);
 
-  // If joining date is after the check date, return not_joined
+  if (!isOnline && offlineFromDate) {
+    const offlineDate = parseISO(offlineFromDate);
+    if (!isBefore(checkDate, offlineDate)) {
+      return "leave";
+    }
+  }
+
+  if (isOnline && onlineFromDate) {
+    const onlineDate = parseISO(onlineFromDate);
+    if (isBefore(checkDate, onlineDate)) {
+      return "leave";
+    }
+  }
+
   if (isAfter(joinDate, checkDate)) {
     return "not_joined";
   }
 
-  // Calculate deadline based on shift
+  console.warn("Shift value received:", shift);
+
   let deadlineTime: Date;
   if (shift === "morning") {
-    // Morning shift: deadline is 4 PM (16:00) same day + 30 min grace
     const deadlineDate = new Date(checkDate);
-    deadlineDate.setHours(16, 0, 0, 0);
-    deadlineTime = addMinutes(deadlineDate, 30);
-  } else if (shift === "night") {
-    // Night shift: deadline is 4 AM (04:00) next day + 30 min grace
+    deadlineDate.setHours(17, 0, 0, 0);
+    deadlineTime = deadlineDate;
+  } else if (shift === "night" || shift === "24hr") {
     const nextDay = addDays(new Date(checkDate), 1);
-    nextDay.setHours(4, 0, 0, 0);
-    deadlineTime = addMinutes(nextDay, 30);
+    nextDay.setHours(5, 0, 0, 0);
+    deadlineTime = nextDay;
   } else {
-    // 24hr shift: deadline is 4 AM (04:00) next day + 30 min grace
-    const nextDay = addDays(new Date(checkDate), 1);
-    nextDay.setHours(4, 0, 0, 0);
-    deadlineTime = addMinutes(nextDay, 30);
+    throw new Error("Invalid shift type"); // Optional: safer code
   }
 
-  // If current date is past the deadline and no report, it's overdue
+  // If past deadline time and today is after checkDate
   if (
     isAfter(currentDate, deadlineTime) &&
     isBefore(startOfDay(checkDate), startOfDay(currentDate))
@@ -203,23 +285,23 @@ export const determineOverdueStatus = (
     return "overdue";
   }
 
-  // Otherwise it's just not submitted yet
-  return "pending_verification";
+  // ✅ If not overdue but joined, status should be something else like "pending"
+  return "not_joined"; // <-- instead of "not_joined"
 };
 
 // Get status color for UI
 export const getStatusColor = (status: string) => {
   switch (status) {
     case "paid":
-      return "bg-green-100";
+      return "bg-green-300";
     case "pending_verification":
-      return "bg-yellow-100";
+      return "bg-yellow-300";
     case "overdue":
-      return "bg-red-100";
+      return "bg-red-300";
     case "leave":
-      return "bg-blue-100";
+      return "bg-blue-300";
     case "offline":
-      return "bg-gray-100";
+      return "bg-gray-300";
     case "not_joined":
       return "bg-white";
     default:
@@ -231,7 +313,9 @@ export const getStatusColor = (status: string) => {
 export const getStatusLabel = (status: string) => {
   switch (status) {
     case "approved":
-      return "paid";
+      return "Paid";
+    case "paid":
+      return "Paid";
     case "pending_verification":
       return "Pending";
     case "overdue":

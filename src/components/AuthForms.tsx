@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -14,12 +13,12 @@ const AuthForms = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [session, setSession] = useState(null);
   const navigate = useNavigate();
-  
+
   const [loginForm, setLoginForm] = useState({
     email: "",
     password: "",
   });
-  
+
   const [signupForm, setSignupForm] = useState({
     name: "",
     email: "",
@@ -74,7 +73,7 @@ const AuthForms = () => {
         toast.error(error.message);
       } else {
         toast.success("Successfully logged in!");
-        
+
         // Update user table if necessary
         if (data.user) {
           // Check if user exists in our users table
@@ -83,13 +82,13 @@ const AuthForms = () => {
             .select("*")
             .eq("id", data.user.id)
             .single();
-            
+
           if (!userData) {
             // Create user profile if it doesn't exist
             // Generate a unique driver ID
             const driverId = `D${Math.floor(100000 + Math.random() * 900000)}`;
             const today = new Date().toISOString();
-            
+
             await supabase.from("users").insert({
               id: data.user.id,
               name: data.user.user_metadata?.name || "User",
@@ -97,7 +96,7 @@ const AuthForms = () => {
               online: true,
               driver_id: driverId,
               joining_date: today,
-              phone_number: data.user.user_metadata?.phone || "0000000000"
+              phone_number: data.user.user_metadata?.phone || "0000000000",
             });
           } else {
             // Update online status
@@ -129,7 +128,6 @@ const AuthForms = () => {
           data: {
             name: signupForm.name,
             phone: signupForm.phone,
-            company: signupForm.company,
           },
         },
       });
@@ -142,7 +140,7 @@ const AuthForms = () => {
           // Generate a unique driver ID
           const driverId = `D${Math.floor(100000 + Math.random() * 900000)}`;
           const today = new Date().toISOString();
-          
+
           const { error: profileError } = await supabase.from("users").insert({
             id: data.user.id,
             name: signupForm.name,
@@ -150,14 +148,18 @@ const AuthForms = () => {
             joining_date: today,
             driver_id: driverId,
             phone_number: signupForm.phone || "0000000000",
-            online: true
+            online: true,
           });
 
           if (profileError) {
             console.error("Error creating profile:", profileError);
-            toast.error("Account created but profile setup failed. Please contact support.");
+            toast.error(
+              "Account created but profile setup failed. Please contact support."
+            );
           } else {
-            toast.success("Account created successfully! Please check your email to confirm your registration.");
+            toast.success(
+              "Account created successfully! Please check your email to confirm your registration."
+            );
           }
         }
       }
@@ -323,9 +325,7 @@ const AuthForms = () => {
         <TabsContent value="signup">
           <div className="space-y-2 text-center mb-6">
             <h2 className="text-2xl font-bold">Create an account</h2>
-            <p className="text-gray-500">
-              Enter your details to get started
-            </p>
+            <p className="text-gray-500">Enter your details to get started</p>
           </div>
 
           <form onSubmit={handleSignupSubmit} className="space-y-4">
@@ -395,7 +395,7 @@ const AuthForms = () => {
               />
             </div>
 
-            <div className="space-y-2">
+            {/* <div className="space-y-2">
               <Label htmlFor="signup-company">Company Name</Label>
               <Input
                 id="signup-company"
@@ -404,7 +404,7 @@ const AuthForms = () => {
                 value={signupForm.company}
                 onChange={handleSignupChange}
               />
-            </div>
+            </div> */}
 
             <Button
               type="submit"

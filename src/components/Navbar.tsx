@@ -27,15 +27,35 @@ const Navbar = () => {
     <nav className="bg-white py-4 shadow-md">
       <div className="container mx-auto px-4">
         <div className="flex items-center justify-between">
-          <Link to="/" className="navbar-brand text-2xl font-bold text-fleet-purple">
-            Fleet Manager
+          <Link
+            to="/"
+            className="navbar-brand text-2xl font-bold text-fleet-purple"
+          >
+            Tawaaq
           </Link>
 
           <div className="navbar-right hidden md:flex items-center space-x-4">
-            <NavLink to="/" className="text-gray-700 hover:text-fleet-purple">Home</NavLink>
-            <NavLink to="/#features" className="text-gray-700 hover:text-fleet-purple">Features</NavLink>
-            <NavLink to="/#how-it-works" className="text-gray-700 hover:text-fleet-purple">How It Works</NavLink>
-            <NavLink to="/#contact" className="text-gray-700 hover:text-fleet-purple">Contact</NavLink>
+            <NavLink to="/" className="text-gray-700 hover:text-fleet-purple">
+              Home
+            </NavLink>
+            <NavLink
+              to="/#features"
+              className="text-gray-700 hover:text-fleet-purple"
+            >
+              Features
+            </NavLink>
+            <NavLink
+              to="/#how-it-works"
+              className="text-gray-700 hover:text-fleet-purple"
+            >
+              How It Works
+            </NavLink>
+            <NavLink
+              to="/#contact"
+              className="text-gray-700 hover:text-fleet-purple"
+            >
+              Contact
+            </NavLink>
 
             {isAuthenticated ? (
               <DropdownMenu>
@@ -96,24 +116,41 @@ const Navbar = () => {
       </div>
 
       {/* Mobile Menu */}
-      <div className={`mobile-menu md:hidden ${isMenuOpen ? "block" : "hidden"}`}>
+      <div
+        className={`mobile-menu md:hidden ${isMenuOpen ? "block" : "hidden"}`}
+      >
         <div className="bg-white shadow-md rounded-md p-4">
-          <NavLink to="/" className="block py-2 text-gray-700 hover:text-fleet-purple">
+          <NavLink
+            to="/"
+            className="block py-2 text-gray-700 hover:text-fleet-purple"
+          >
             Home
           </NavLink>
-          <NavLink to="/#features" className="block py-2 text-gray-700 hover:text-fleet-purple">
+          <NavLink
+            to="/#features"
+            className="block py-2 text-gray-700 hover:text-fleet-purple"
+          >
             Features
           </NavLink>
-          <NavLink to="/#how-it-works" className="block py-2 text-gray-700 hover:text-fleet-purple">
+          <NavLink
+            to="/#how-it-works"
+            className="block py-2 text-gray-700 hover:text-fleet-purple"
+          >
             How It Works
           </NavLink>
-          <NavLink to="/#contact" className="block py-2 text-gray-700 hover:text-fleet-purple">
+          <NavLink
+            to="/#contact"
+            className="block py-2 text-gray-700 hover:text-fleet-purple"
+          >
             Contact
           </NavLink>
 
           {isAuthenticated ? (
             <>
-              <NavLink to="/profile" className="block py-2 text-gray-700 hover:text-fleet-purple">
+              <NavLink
+                to="/profile"
+                className="block py-2 text-gray-700 hover:text-fleet-purple"
+              >
                 Profile
               </NavLink>
               <button

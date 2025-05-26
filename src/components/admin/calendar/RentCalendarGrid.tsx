@@ -80,6 +80,13 @@ export const RentCalendarGrid = ({
   // Filter to show only online drivers
   const onlineDrivers = filteredDrivers.filter((driver) => driver.online);
 
+  // Sort drivers by shift type - morning first, then night
+  const sortedDrivers = [...onlineDrivers].sort((a, b) => {
+    if (a.shift === "morning" && b.shift !== "morning") return -1;
+    if (a.shift !== "morning" && b.shift === "morning") return 1;
+    return 0;
+  });
+
   const handleCellClick = (reportData: ReportData | undefined) => {
     if (reportData && onCellClick) {
       onCellClick(reportData);
@@ -102,7 +109,7 @@ export const RentCalendarGrid = ({
               </div>
 
               <div className="divide-y">
-                {onlineDrivers.map((driver, index) => {
+                {sortedDrivers.map((driver, index) => {
                   const rentData = getStatusForDay(driver.id, day);
                   const driverStatus = rentData
                     ? rentData.status
@@ -147,7 +154,7 @@ export const RentCalendarGrid = ({
                 })}
 
                 {/* If no drivers for this day */}
-                {onlineDrivers.length === 0 && (
+                {sortedDrivers.length === 0 && (
                   <div className="p-4 text-center text-sm text-muted-foreground">
                     No drivers available
                   </div>
@@ -190,7 +197,7 @@ export const RentCalendarGrid = ({
             </TableRow>
           </TableHeader>
           <TableBody>
-            {onlineDrivers.map((driver, index) => (
+            {sortedDrivers.map((driver, index) => (
               <TableRow key={driver.id}>
                 <TableCell className="font-semibold sticky left-0 bg-background z-10 border-r text-center w-[40px]">
                   {index + 1}
@@ -288,7 +295,7 @@ export const RentCalendarGrid = ({
               </TableRow>
             ))}
 
-            {onlineDrivers.length === 0 && (
+            {sortedDrivers.length === 0 && (
               <TableRow>
                 <TableCell
                   colSpan={weekDays.length + 2}

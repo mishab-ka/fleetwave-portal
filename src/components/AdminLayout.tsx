@@ -1,24 +1,31 @@
-
-import React, { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { useAuth } from '@/context/AuthContext';
-import { useAdmin } from '@/context/AdminContext';
-import { 
-  LayoutDashboard, 
-  Users, 
-  Car, 
-  FileText, 
+import React, { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { useAuth } from "@/context/AuthContext";
+import { useAdmin } from "@/context/AdminContext";
+import {
+  LayoutDashboard,
+  Users,
+  Car,
+  FileText,
   Settings,
   LogOut,
   Menu,
   Calendar,
   ChevronLeft,
-  Wallet
-} from 'lucide-react';
-import { Button } from './ui/button';
-import { Sheet, SheetContent, SheetTrigger } from './ui/sheet';
-import { ScrollArea } from './ui/scroll-area';
-import { toast } from 'sonner';
+  Wallet,
+  Gauge,
+  CalendarCheck,
+  UserCheck,
+  Calendar1,
+  CalendarClock,
+  KeySquare,
+  UserPlus,
+  DollarSign,
+} from "lucide-react";
+import { Button } from "./ui/button";
+import { Sheet, SheetContent, SheetTrigger } from "./ui/sheet";
+import { ScrollArea } from "./ui/scroll-area";
+import { toast } from "sonner";
 
 interface AdminLayoutProps {
   children: React.ReactNode;
@@ -34,16 +41,16 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children, title }) => {
 
   useEffect(() => {
     if (!loading && !isAdmin) {
-      toast.error('You do not have admin privileges');
-      navigate('/');
+      toast.error("You do not have admin privileges");
+      navigate("/");
     }
   }, [isAdmin, loading, navigate]);
 
   useEffect(() => {
     // Load sidebar state from localStorage
-    const savedState = localStorage.getItem('admin-sidebar-state');
+    const savedState = localStorage.getItem("admin-sidebar-state");
     if (savedState) {
-      setIsCollapsed(savedState === 'collapsed');
+      setIsCollapsed(savedState === "collapsed");
     }
   }, []);
 
@@ -51,7 +58,10 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children, title }) => {
     const newState = !isCollapsed;
     setIsCollapsed(newState);
     // Save state to localStorage
-    localStorage.setItem('admin-sidebar-state', newState ? 'collapsed' : 'expanded');
+    localStorage.setItem(
+      "admin-sidebar-state",
+      newState ? "collapsed" : "expanded"
+    );
   };
 
   if (loading) {
@@ -67,31 +77,79 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children, title }) => {
   }
 
   const navItems = [
-    { label: 'Dashboard', icon: <LayoutDashboard size={20} />, path: '/admin' },
-    { label: 'Drivers', icon: <Users size={20} />, path: '/admin/drivers' },
-    { label: 'Vehicles', icon: <Car size={20} />, path: '/admin/vehicles' },
-    { label: 'Reports', icon: <FileText size={20} />, path: '/admin/reports' },
-    { label: 'Rent Calendar', icon: <Calendar size={20} />, path: '/admin/calendar' },
-    { label: 'Finance', icon: <Wallet size={20} />, path: '/admin/finance' },
-    { label: 'Settings', icon: <Settings size={20} />, path: '/admin/settings' },
+    { label: "Dashboard", icon: <LayoutDashboard size={20} />, path: "/admin" },
+    { label: "Drivers", icon: <Users size={20} />, path: "/admin/drivers" },
+    { label: "Vehicles", icon: <Car size={20} />, path: "/admin/vehicles" },
+    {
+      label: "Finance",
+      icon: <DollarSign size={20} />,
+      path: "/admin/finance",
+    },
+
+    {
+      label: "Vehicles Audit",
+      icon: <Gauge size={20} />,
+      path: "/admin/AdminVehicleAuditReports",
+    },
+    {
+      label: "Uber Acc Audit",
+      icon: <UserCheck size={20} />,
+      path: "/admin/uber-audit",
+    },
+    { label: "Reports", icon: <FileText size={20} />, path: "/admin/reports" },
+    {
+      label: "Rent Calendar",
+      icon: <Calendar size={20} />,
+      path: "/admin/calendar",
+    },
+    {
+      label: "Shifts",
+      icon: <CalendarClock size={20} />,
+      path: "/admin/Shift",
+    },
+    {
+      label: "Vehicle Attendance",
+      icon: <KeySquare size={20} />,
+      path: "/admin/vehicles-calander",
+    },
+    {
+      label: "HR",
+      icon: <UserPlus size={20} />,
+      path: "/admin/hr",
+    },
+    {
+      label: "Settings",
+      icon: <Settings size={20} />,
+      path: "/admin/settings",
+    },
   ];
 
   const handleLogout = async () => {
     await signOut();
-    navigate('/');
+    navigate("/");
   };
 
   const NavContent = () => (
     <div className="flex flex-col h-full">
       <div className="p-4 border-b flex justify-between items-center">
-        <h2 className={`text-xl font-bold text-fleet-purple ${isCollapsed ? 'hidden' : 'block'}`}>Admin Portal</h2>
-        <Button 
-          variant="ghost" 
-          size="icon" 
+        <h2
+          className={`text-xl font-bold text-fleet-purple ${
+            isCollapsed ? "hidden" : "block"
+          }`}
+        >
+          Admin Portal
+        </h2>
+        <Button
+          variant="ghost"
+          size="icon"
           onClick={toggleSidebar}
           className="md:flex hidden"
         >
-          <ChevronLeft className={`h-5 w-5 transition-transform duration-200 ${isCollapsed ? 'rotate-180' : ''}`} />
+          <ChevronLeft
+            className={`h-5 w-5 transition-transform duration-200 ${
+              isCollapsed ? "rotate-180" : ""
+            }`}
+          />
         </Button>
       </div>
       <ScrollArea className="flex-1">
@@ -106,8 +164,8 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children, title }) => {
                   }}
                   className={`flex items-center w-full px-4 py-3 text-left transition-colors ${
                     window.location.pathname === item.path
-                      ? 'bg-fleet-purple text-white'
-                      : 'text-gray-700 hover:bg-gray-100'
+                      ? "bg-fleet-purple text-white"
+                      : "text-black hover:bg-gray-100"
                   }`}
                   title={isCollapsed ? item.label : undefined}
                 >
@@ -122,11 +180,13 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children, title }) => {
       <div className="p-4 border-t mt-auto">
         <Button
           variant="outline"
-          className={`w-full flex items-center justify-center ${isCollapsed ? 'p-2' : ''}`}
+          className={`w-full flex items-center justify-center ${
+            isCollapsed ? "p-2" : ""
+          }`}
           onClick={handleLogout}
         >
-          <LogOut size={18} className={isCollapsed ? '' : 'mr-2'} />
-          {!isCollapsed && 'Logout'}
+          <LogOut size={18} className={isCollapsed ? "" : "mr-2"} />
+          {!isCollapsed && "Logout"}
         </Button>
       </div>
     </div>
@@ -135,9 +195,9 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children, title }) => {
   return (
     <div className="min-h-screen bg-gray-100 flex">
       {/* Desktop Sidebar */}
-      <div 
+      <div
         className={`hidden md:block bg-white shadow-lg flex-shrink-0 transition-all duration-300 ease-in-out ${
-          isCollapsed ? 'w-16' : 'w-64'
+          isCollapsed ? "w-16" : "w-64"
         }`}
       >
         <div className="h-screen sticky top-0">
@@ -170,9 +230,7 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children, title }) => {
             {title}
           </h1>
         </header>
-        <main className="p-4 md:p-6">
-          {children}
-        </main>
+        <main className="p-4 md:p-6">{children}</main>
       </div>
     </div>
   );

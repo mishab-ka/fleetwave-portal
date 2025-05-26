@@ -23,6 +23,7 @@ import {
   Search,
   WifiOff,
   Wifi,
+  Download,
 } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { toast } from "sonner";
@@ -39,6 +40,7 @@ import {
 } from "@/components/ui/select";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { format } from "date-fns";
 
 const AdminDrivers = () => {
   const [drivers, setDrivers] = useState([]);
@@ -52,6 +54,7 @@ const AdminDrivers = () => {
   const [verificationFilter, setVerificationFilter] = useState<string>("all");
   const [showFilters, setShowFilters] = useState(false);
   const [isUpdating, setIsUpdating] = useState<string | null>(null);
+  const [showLowDeposit, setShowLowDeposit] = useState(false);
   const isMobile = useIsMobile();
 
   useEffect(() => {
@@ -60,7 +63,14 @@ const AdminDrivers = () => {
 
   useEffect(() => {
     applyFilters();
-  }, [drivers, showOnlineOnly, searchQuery, shiftFilter, verificationFilter]);
+  }, [
+    drivers,
+    showOnlineOnly,
+    searchQuery,
+    shiftFilter,
+    verificationFilter,
+    showLowDeposit,
+  ]);
 
   const fetchDrivers = async () => {
     try {
@@ -106,6 +116,10 @@ const AdminDrivers = () => {
     if (verificationFilter !== "all") {
       const isVerified = verificationFilter === "verified";
       result = result.filter((driver) => driver.is_verified === isVerified);
+    }
+
+    if (showLowDeposit) {
+      result = result.filter((driver) => (driver.pending_balance || 0) < 2500);
     }
 
     setFilteredDrivers(result);
@@ -187,15 +201,80 @@ const AdminDrivers = () => {
     setVerificationFilter(value);
   };
 
+  const handleLowDepositToggle = (checked: boolean) => {
+    setShowLowDeposit(checked);
+  };
+
   const resetFilters = () => {
     setSearchQuery("");
     setShiftFilter("all");
     setVerificationFilter("all");
     setShowOnlineOnly(false);
+    setShowLowDeposit(false);
   };
 
   const toggleFilters = () => {
     setShowFilters(!showFilters);
+  };
+
+  const downloadDriverReport = () => {
+    // Create CSV header
+    const headers = [
+      "Name",
+      "Email",
+      "Phone Number",
+      "Vehicle Number",
+      "Shift",
+      "Status",
+      "Verified",
+      "Total Trips",
+      "Deposit",
+      "Joining Date",
+      "Documents",
+    ].join(",");
+
+    // Create CSV rows
+    const rows = filteredDrivers.map((driver) => {
+      const documents = [
+        driver.license ? "License" : "",
+        driver.aadhar ? "Aadhar" : "",
+        driver.pan ? "PAN" : "",
+      ]
+        .filter(Boolean)
+        .join("; ");
+
+      return [
+        `"${driver.name || ""}"`,
+        `"${driver.email_id || ""}"`,
+        `"${driver.phone_number || ""}"`,
+        `"${driver.vehicle_number || ""}"`,
+        `"${driver.shift || ""}"`,
+        driver.online ? "Online" : "Offline",
+        driver.is_verified ? "Yes" : "No",
+        driver.total_trip || "0",
+        driver.pending_balance || "0",
+        driver.joining_date
+          ? format(new Date(driver.joining_date), "dd MMM yyyy")
+          : "Not available",
+        `"${documents}"`,
+      ].join(",");
+    });
+
+    // Combine header and rows
+    const csvContent = [headers, ...rows].join("\n");
+
+    // Create and trigger download
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const link = document.createElement("a");
+    const url = URL.createObjectURL(blob);
+    link.setAttribute("href", url);
+    link.setAttribute(
+      "download",
+      `driver_report_${format(new Date(), "yyyy-MM-dd")}.csv`
+    );
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   const MobileDriverCard = ({ driver }) => (
@@ -283,7 +362,7 @@ const AdminDrivers = () => {
             <span className="text-sm text-muted-foreground">Deposit:</span>
             <span className="flex items-center">
               <IndianRupee className="h-3 w-3 mr-1" />
-              {driver.deposit_amount || "0"}
+              {driver.pending_balance}
             </span>
           </div>
         </div>
@@ -308,6 +387,51 @@ const AdminDrivers = () => {
 
   return (
     <AdminLayout title="Drivers Management">
+      <Card className="mb-4">
+        <CardContent className="p-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="flex flex-col items-center">
+              <span className="text-sm font-medium text-gray-500">
+                Total Drivers
+              </span>
+              <span className="text-2xl font-bold">
+                {filteredDrivers.length}
+              </span>
+            </div>
+            <div className="flex flex-col items-center">
+              <span className="text-sm font-medium text-gray-500">
+                Active Drivers
+              </span>
+              <span className="text-2xl font-bold text-green-500">
+                {filteredDrivers.filter((driver) => driver.online).length}
+              </span>
+            </div>
+            <div className="flex flex-col items-center">
+              <span className="text-sm font-medium text-gray-500">
+                Offline Drivers
+              </span>
+              <span className="text-2xl font-bold text-red-500">
+                {filteredDrivers.filter((driver) => !driver.online).length}
+              </span>
+            </div>
+            <div className="flex flex-col items-center">
+              <span className="text-sm font-medium text-gray-500">
+                Total Deposit
+              </span>
+              <span className="text-2xl font-bold text-blue-500">
+                ₹
+                {filteredDrivers
+                  .reduce(
+                    (total, driver) => total + (driver.pending_balance || 0),
+                    0
+                  )
+                  .toLocaleString()}
+              </span>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
       <Card className="mb-4">
         <CardContent className="p-4">
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
@@ -337,6 +461,20 @@ const AdminDrivers = () => {
                 </Label>
               </div>
 
+              <div className="flex items-center gap-2">
+                <Switch
+                  id="low-deposit-filter"
+                  checked={showLowDeposit}
+                  onCheckedChange={handleLowDepositToggle}
+                />
+                <Label
+                  htmlFor="low-deposit-filter"
+                  className="text-sm whitespace-nowrap"
+                >
+                  Show low deposit (&lt; 2500)
+                </Label>
+              </div>
+
               <Button
                 variant="outline"
                 size="sm"
@@ -345,6 +483,16 @@ const AdminDrivers = () => {
               >
                 <Filter className="h-4 w-4 mr-1" />
                 {showFilters ? "Hide Filters" : "Show Filters"}
+              </Button>
+
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={downloadDriverReport}
+                className="flex items-center"
+              >
+                <Download className="h-4 w-4 mr-1" />
+                Download Report
               </Button>
             </div>
           </div>
@@ -440,7 +588,8 @@ const AdminDrivers = () => {
                         <TableRow>
                           <TableHead className="w-12">Profile</TableHead>
                           <TableHead>Name</TableHead>
-                          <TableHead>Email</TableHead>
+                          <TableHead>Joining Date</TableHead>
+                          <TableHead>Ph No</TableHead>
                           <TableHead>Vehicle</TableHead>
                           <TableHead>Shift</TableHead>
                           <TableHead className="w-20">Status</TableHead>
@@ -477,7 +626,15 @@ const AdminDrivers = () => {
                               <TableCell className="font-medium">
                                 {driver.name}
                               </TableCell>
-                              <TableCell>{driver.email_id}</TableCell>
+                              <TableCell>
+                                {driver.joining_date
+                                  ? format(
+                                      new Date(driver.joining_date),
+                                      "dd MMM yyyy"
+                                    )
+                                  : "Not available"}
+                              </TableCell>
+                              <TableCell>{driver.phone_number}</TableCell>
                               <TableCell>
                                 {driver.vehicle_number || "Not assigned"}
                               </TableCell>
@@ -566,7 +723,7 @@ const AdminDrivers = () => {
                               <TableCell>
                                 <div className="flex items-center">
                                   <IndianRupee className="h-3 w-3 mr-1" />
-                                  {driver.deposit_amount || "0"}
+                                  {driver.pending_balance || "0"}
                                 </div>
                               </TableCell>
                               <TableCell className="text-right">
@@ -594,7 +751,7 @@ const AdminDrivers = () => {
       <DriverDetailsModal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
-        driverId={selectedDriver?.id}
+        driverId={selectedDriver?.id ?? ""}
         onDriverUpdate={fetchDrivers}
       />
     </AdminLayout>

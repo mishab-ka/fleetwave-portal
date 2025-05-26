@@ -213,7 +213,7 @@ const AdminReports = () => {
   };
 
   const [statusFilter, setStatusFilter] = useState<
-    "all" | "pending_verification" | "approved" | "leave"
+    "all" | "pending_verification" | "approved" | "leave" | "rejected"
   >("all");
 
   const calculateFleetRent = (tripCount: number): number => {
@@ -240,7 +240,8 @@ const AdminReports = () => {
       (statusFilter === "pending_verification" &&
         report.status === "pending_verification") ||
       (statusFilter === "approved" && report.status === "approved") ||
-      (statusFilter === "leave" && report.status === "leave");
+      (statusFilter === "leave" && report.status === "leave") ||
+      (statusFilter === "rejected" && report.status === "rejected");
 
     const reportDate = new Date(report.rent_date);
     const today = new Date();
@@ -315,6 +316,12 @@ const AdminReports = () => {
 
   const cashInUber = totalEarnings - totalCashCollect;
   const cashInHand = totalRentPaid;
+  const TollAmount = filteredReports.reduce((total, report) => {
+    return total + report.toll;
+  }, 0);
+  const totalToll = TollAmount * 7;
+
+  console.log(totalToll);
 
   // const earningsPerRow = 600;
   const verifyRent = async (reportId: string) => {
@@ -379,6 +386,64 @@ const AdminReports = () => {
     }
   };
 
+  const handleExportReports = () => {
+    // Create CSV header
+    const headers = [
+      "Date",
+      "Driver Name",
+      "Vehicle Number",
+      "Total Trips",
+      "Total Earnings",
+      "Toll",
+      "Cash Collected",
+      "Rent Paid",
+      "Status",
+    ];
+
+    // Create CSV rows
+    const rows = filteredReports.map((report) => {
+      const date = format(
+        new Date(report.submission_date),
+        "d MMM yyyy, hh:mm a"
+      );
+      const status = report.status || "Pending";
+
+      return [
+        date,
+        report.driver_name,
+        report.vehicle_number,
+        report.total_trips,
+        report.total_earnings,
+        report.toll,
+        report.total_cashcollect,
+        report.rent_paid_amount,
+        status,
+      ];
+    });
+
+    // Combine header and rows
+    const csvContent = [
+      headers.join(","),
+      ...rows.map((row) => row.join(",")),
+    ].join("\n");
+
+    // Create blob and download
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const link = document.createElement("a");
+    const url = URL.createObjectURL(blob);
+
+    link.setAttribute("href", url);
+    link.setAttribute(
+      "download",
+      `reports_${new Date().toISOString().split("T")[0]}.csv`
+    );
+    link.style.visibility = "hidden";
+
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   return (
     <AdminLayout title="Reports Management">
       <div className="flex flex-col space-y-4 lg:space-y-0 lg:flex-row lg:justify-between mb-6">
@@ -396,7 +461,12 @@ const AdminReports = () => {
             value={statusFilter}
             onValueChange={(value) =>
               setStatusFilter(
-                value as "all" | "pending_verification" | "approved" | "leave"
+                value as
+                  | "all"
+                  | "pending_verification"
+                  | "approved"
+                  | "leave"
+                  | "rejected"
               )
             }
           >
@@ -407,6 +477,7 @@ const AdminReports = () => {
               <SelectItem value="all">All</SelectItem>
               <SelectItem value="pending_verification">Pending</SelectItem>
               <SelectItem value="approved">Approved</SelectItem>
+              <SelectItem value="rejected">Rejected</SelectItem>
               <SelectItem value="leave">Leave</SelectItem>
             </SelectContent>
           </Select>
@@ -463,13 +534,13 @@ const AdminReports = () => {
           >
             Clear
           </Button>
-          <Button className="flex-1 sm:flex-none">
+          <Button className="flex-1 sm:flex-none" onClick={handleExportReports}>
             <Download className="h-4 w-4 mr-2" /> Export
           </Button>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4 mb-6">
         <Card className="bg-gradient-to-br from-purple-50 to-white">
           <CardContent className="p-4">
             <div className="text-sm font-medium text-gray-500">
@@ -519,6 +590,17 @@ const AdminReports = () => {
             </div>
             <div className="text-2xl font-bold">
               ₹{cashInHand.toLocaleString()}
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-gradient-to-br from-yellow-50 to-white">
+          <CardContent className="p-4">
+            <div className="text-sm font-medium text-gray-500">
+              Total Toll Amount
+            </div>
+            <div className="text-2xl font-bold text-yellow-500">
+              ₹{TollAmount.toLocaleString()}
             </div>
           </CardContent>
         </Card>
@@ -787,6 +869,19 @@ const AdminReports = () => {
                     setSelectedReport((prev) => ({
                       ...prev!,
                       rent_paid_amount: Number(e.target.value),
+                    }))
+                  }
+                />
+              </div>
+              <div className="space-y-2">
+                <label>Toll Amount</label>
+                <Input
+                  type="number"
+                  value={selectedReport?.toll}
+                  onChange={(e) =>
+                    setSelectedReport((prev) => ({
+                      ...prev!,
+                      toll: Number(e.target.value),
                     }))
                   }
                 />

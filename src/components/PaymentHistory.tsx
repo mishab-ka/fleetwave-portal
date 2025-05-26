@@ -32,10 +32,10 @@ const PaymentHistory = () => {
 
   // Fetch rent history
   const { data: rentHistory, isLoading: isLoadingRent } = useQuery({
-    queryKey: ['rentHistory', user?.id],
+    queryKey: ['fleet_reports', user?.id],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from('rent_history')
+        .from('fleet_reports')
         .select('*')
         .eq('user_id', user?.id)
         .order('rent_date', { ascending: false });
@@ -179,21 +179,22 @@ const PaymentHistory = () => {
                         <TableCell>
                           <Badge 
                             variant={
-                              record.payment_status === 'paid' ? 'success' :
-                              record.payment_status === 'pending' ? 'secondary' :
+                              record.status === 'approved' ? 'success' :
+                              record.status === 'leave' ? 'default' :
+                              record.status === 'pending_verification' ? 'secondary' :
                               'destructive'
                             }
                           >
-                            {record.payment_status}
+                            {record.status}
                           </Badge>
                         </TableCell>
-                        <TableCell>
-                          <Badge
-                            variant={record.is_online ? 'success' : 'secondary'}
-                          >
-                            {record.is_online ? 'Online' : 'Offline'}
-                          </Badge>
-                        </TableCell>
+                        <TableCell
+  className={`whitespace-nowrap ${
+    record.rent_paid_amount < 0 ? "text-green-500" : "text-red-500"
+  }`}
+>
+  ₹{(record.rent_paid_amount > 0 ? -record.rent_paid_amount : Math.abs(record.rent_paid_amount)).toLocaleString()}
+</TableCell>
                       </TableRow>
                     ))}
                     {(!rentHistory || rentHistory.length === 0) && (

@@ -1,6 +1,5 @@
-
 import React from "react";
-import { Link } from "react-router-dom";
+import { Link, NavLink } from "react-router-dom";
 import { Facebook, Twitter, Instagram, Linkedin, Github } from "lucide-react";
 
 const Footer = () => {
@@ -12,14 +11,14 @@ const Footer = () => {
           <div className="lg:col-span-2">
             <Link to="/" className="flex items-center space-x-2 mb-4">
               <div className="w-10 h-10 rounded-md bg-fleet-purple flex items-center justify-center text-white font-bold text-xl">
-                F
+                T
               </div>
-              <span className="text-xl font-bold">FleetWave</span>
+              <span className="text-xl font-bold">Tawaaq</span>
             </Link>
             <p className="text-gray-600 mb-4 max-w-md">
-              Transforming fleet management with cutting-edge technology. 
-              Our comprehensive platform helps businesses optimize operations, 
-              reduce costs, and improve safety.
+              “Empowering drivers with smart technology. Our platform helps you
+              track earnings, manage trips, and ensure a safe and efficient
+              driving experience.”
             </p>
             <div className="flex space-x-4">
               <a
@@ -193,7 +192,7 @@ const Footer = () => {
 
         <div className="border-t border-gray-100 mt-12 pt-8 flex flex-col md:flex-row justify-between items-center">
           <p className="text-gray-500 text-sm mb-4 md:mb-0">
-            &copy; {new Date().getFullYear()} FleetWave. All rights reserved.
+            &copy; {new Date().getFullYear()} Tawaaq. All rights reserved.
           </p>
           <div className="flex flex-wrap justify-center gap-4 md:gap-8">
             <Link
@@ -214,6 +213,12 @@ const Footer = () => {
             >
               Cookie Policy
             </Link>
+            <NavLink
+              to="/admin"
+              className="text-gray-700 hover:text-fleet-purple"
+            >
+              Login as admin
+            </NavLink>
           </div>
         </div>
       </div>

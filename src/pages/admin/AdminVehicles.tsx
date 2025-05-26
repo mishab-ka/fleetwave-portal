@@ -53,6 +53,8 @@ const AdminVehicles = () => {
     total_trips: 0,
   });
 
+  const [showOnlyActive, setShowOnlyActive] = useState(false);
+
   useEffect(() => {
     fetchVehicles();
   }, []);
@@ -303,11 +305,14 @@ const AdminVehicles = () => {
 
   const filteredVehicles = vehicles.filter(
     (vehicle) =>
-      vehicle.vehicle_number
+      (vehicle.vehicle_number
         .toLowerCase()
         .includes(searchQuery.toLowerCase()) ||
-      (vehicle.fleet_name?.toLowerCase().includes(searchQuery.toLowerCase()) ??
-        false)
+        (vehicle.fleet_name
+          ?.toLowerCase()
+          .includes(searchQuery.toLowerCase()) ??
+          false)) &&
+      (!showOnlyActive || vehicle.online)
   );
 
   return (
@@ -326,6 +331,13 @@ const AdminVehicles = () => {
           <Button onClick={handleAddNewVehicle}>
             <PlusCircle className="h-4 w-4 mr-2" /> Add New Vehicle
           </Button>
+          <div className="flex items-center space-x-2">
+            <Switch
+              checked={showOnlyActive}
+              onCheckedChange={setShowOnlyActive}
+            />
+            <span>Show Only Active Vehicles</span>
+          </div>
           <select
             className="border px-2 py-1 rounded"
             value={filterType}

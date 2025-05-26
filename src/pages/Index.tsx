@@ -1,4 +1,3 @@
-
 import React, { useEffect } from "react";
 import Navbar from "@/components/Navbar";
 import Hero from "@/components/Hero";
@@ -37,15 +36,10 @@ const Index = () => {
       <div className="fixed bottom-8 right-8 z-50">
         <Dialog>
           <DialogTrigger asChild>
-            <Button
-              className="bg-fleet-purple hover:bg-fleet-purpleDark text-white shadow-lg rounded-full h-14 px-6 transition-all duration-300 hover:scale-105"
-            >
-              Get Started
+            <Button className="bg-fleet-purple hover:bg-fleet-purpleDark text-white shadow-lg rounded-full h-14 px-6 transition-all duration-300 hover:scale-105">
+              <a href="/submit-report">Submit Form</a>
             </Button>
           </DialogTrigger>
-          <DialogContent className="sm:max-w-md p-6">
-            <AuthForms />
-          </DialogContent>
         </Dialog>
       </div>
 

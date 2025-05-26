@@ -18,7 +18,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import { format, isValid, parseISO } from "date-fns";
+import { format, isValid, parseISO, differenceInDays } from "date-fns";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -40,11 +40,22 @@ import {
   FileText,
   Car,
   IndianRupee,
+  AlertCircle,
+  Clock,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { BalanceTransactions } from "@/components/admin/drivers/BalanceTransactions";
 import { useIsMobile } from "@/hooks/use-mobile";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHeader,
+  TableRow,
+  TableHead,
+} from "@/components/ui/table";
+import { RentStatusBadge } from "@/components/RentStatusBadge";
 
 interface DriverDetailsModalProps {
   isOpen: boolean;
@@ -56,10 +67,6 @@ interface DriverDetailsModalProps {
 type Vehicle = {
   vehicle_number: string;
   id: string;
-  assigned_driver_1?: string | null;
-  assigned_driver_2?: string | null;
-  driver1_name?: string | null;
-  driver2_name?: string | null;
 };
 
 export const DriverDetailsModal = ({
@@ -83,12 +90,23 @@ export const DriverDetailsModal = ({
   const [phone, setPhone] = useState<string>("");
   const [joiningDate, setJoiningDate] = useState<string>("");
   const [driverId2, setDriverId2] = useState<string>("");
+  const [overdueData, setOverdueData] = useState<any>(null);
+  const [rentHistory, setRentHistory] = useState<any[]>([]);
+  const [isLoadingRent, setIsLoadingRent] = useState(false);
   const isMobile = useIsMobile();
+
+  useEffect(() => {
+    if (currentTab === "balance" && driverId) {
+      fetchDriverDetails();
+    }
+  }, [currentTab, driverId]);
 
   useEffect(() => {
     if (driverId && isOpen) {
       fetchDriverDetails();
       fetchVehicles();
+      fetchOverdueData();
+      fetchRentHistory();
     }
   }, [driverId, isOpen]);
 
@@ -125,46 +143,63 @@ export const DriverDetailsModal = ({
     try {
       const { data, error } = await supabase.from("vehicles").select(`
           id,
-          vehicle_number,
-          assigned_driver_1,
-          assigned_driver_2
+          vehicle_number
         `);
 
       if (error) throw error;
 
-      const driverIds = data
-        .flatMap((vehicle) => [
-          vehicle.assigned_driver_1,
-          vehicle.assigned_driver_2,
-        ])
-        .filter((id) => id !== null && id !== undefined);
-
-      const { data: driversData, error: driversError } = await supabase
-        .from("users")
-        .select("id, name")
-        .in("id", driverIds);
-
-      if (driversError) throw driversError;
-
-      const driverMap = {};
-      driversData.forEach((driver) => {
-        driverMap[driver.id] = driver.name;
-      });
-
-      const vehiclesWithDrivers = data.map((vehicle) => ({
-        ...vehicle,
-        driver1_name: vehicle.assigned_driver_1
-          ? driverMap[vehicle.assigned_driver_1]
-          : null,
-        driver2_name: vehicle.assigned_driver_2
-          ? driverMap[vehicle.assigned_driver_2]
-          : null,
-      }));
-
-      setVehicles(vehiclesWithDrivers);
+      setVehicles(data);
     } catch (error) {
       console.error("Error fetching vehicles:", error);
       toast.error("Failed to load vehicles");
+    }
+  };
+
+  const fetchOverdueData = async () => {
+    try {
+      const { data, error } = await supabase
+        .from("driver_balance_transactions")
+        .select("*")
+        .eq("user_id", driverId)
+        .eq("type", "due")
+        .order("created_at", { ascending: false });
+
+      if (error) throw error;
+
+      // Calculate overdue amounts
+      const today = new Date();
+      const overdueAmounts =
+        data?.filter((tx) => {
+          const txDate = new Date(tx.created_at);
+          return differenceInDays(today, txDate) > 7; // Consider overdue after 7 days
+        }) || [];
+
+      setOverdueData({
+        totalOverdue: overdueAmounts.reduce((sum, tx) => sum + tx.amount, 0),
+        overdueCount: overdueAmounts.length,
+        lastOverdueDate: overdueAmounts[0]?.created_at,
+      });
+    } catch (error) {
+      console.error("Error fetching overdue data:", error);
+    }
+  };
+
+  const fetchRentHistory = async () => {
+    setIsLoadingRent(true);
+    try {
+      const { data, error } = await supabase
+        .from("fleet_reports")
+        .select("*")
+        .eq("user_id", driverId)
+        .order("rent_date", { ascending: false });
+
+      if (error) throw error;
+      setRentHistory(data || []);
+    } catch (error) {
+      console.error("Error fetching rent history:", error);
+      toast.error("Failed to load rent history");
+    } finally {
+      setIsLoadingRent(false);
     }
   };
 
@@ -224,54 +259,12 @@ export const DriverDetailsModal = ({
     setIsProcessing(true);
 
     try {
-      const selectedVehicleData = vehicles.find(
-        (v) => v.vehicle_number === vehicleNumber
-      );
-
-      if (!selectedVehicleData) {
-        toast.error("Vehicle not found");
-        return;
-      }
-
-      const hasDriver1 = !!selectedVehicleData.assigned_driver_1;
-      const hasDriver2 = !!selectedVehicleData.assigned_driver_2;
-
-      if (
-        hasDriver1 &&
-        hasDriver2 &&
-        selectedVehicleData.assigned_driver_1 !== driverId &&
-        selectedVehicleData.assigned_driver_2 !== driverId
-      ) {
-        const driver1Name = selectedVehicleData.driver1_name || "Unknown";
-        const driver2Name = selectedVehicleData.driver2_name || "Unknown";
-
-        toast.error(
-          `Vehicle already has 2 drivers assigned: ${driver1Name} and ${driver2Name}`
-        );
-        return;
-      }
-
-      let slotToUse = "assigned_driver_1";
-      if (hasDriver1 && selectedVehicleData.assigned_driver_1 !== driverId) {
-        slotToUse = "assigned_driver_2";
-      }
-
       const { error: updateError } = await supabase
         .from("users")
         .update({ vehicle_number: vehicleNumber })
         .eq("id", driverId);
 
       if (updateError) throw updateError;
-
-      const vehicleUpdate: any = {};
-      vehicleUpdate[slotToUse] = driverId;
-
-      const { error: vehicleError } = await supabase
-        .from("vehicles")
-        .update(vehicleUpdate)
-        .eq("vehicle_number", selectedVehicleData.vehicle_number);
-
-      if (vehicleError) throw vehicleError;
 
       setSelectedVehicle(vehicleNumber);
       toast.success(`Vehicle assigned successfully: ${vehicleNumber}`);
@@ -370,9 +363,7 @@ export const DriverDetailsModal = ({
   };
 
   const formattedJoiningDate = driver?.joining_date
-    ? isValid(parseISO(driver.joining_date))
-      ? format(parseISO(driver.joining_date), "PPP")
-      : "Invalid date"
+    ? format(parseISO(driver.joining_date), "dd MMM yyyy")
     : "Not available";
 
   if (loading) {
@@ -402,10 +393,11 @@ export const DriverDetailsModal = ({
           value={currentTab}
           onValueChange={setCurrentTab}
         >
-          <TabsList className="grid w-full grid-cols-3">
+          <TabsList className="grid w-full grid-cols-4">
             <TabsTrigger value="view">View Details</TabsTrigger>
             <TabsTrigger value="edit">Edit Details</TabsTrigger>
             <TabsTrigger value="balance">Balance</TabsTrigger>
+            <TabsTrigger value="transactions">Transactions</TabsTrigger>
           </TabsList>
 
           <ScrollArea className="h-[calc(100vh-220px)] w-full">
@@ -486,7 +478,19 @@ export const DriverDetailsModal = ({
                         <FileText className="h-4 w-4 text-muted-foreground" />
                         <span className="text-sm">License:</span>
                         {driver?.license ? (
-                          <CheckCircle className="h-4 w-4 text-green-500" />
+                          <div className="flex items-center space-x-2">
+                            <CheckCircle className="h-4 w-4 text-green-500" />
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-6 px-2"
+                              onClick={() =>
+                                window.open(driver.license, "_blank")
+                              }
+                            >
+                              View
+                            </Button>
+                          </div>
                         ) : (
                           <XCircle className="h-4 w-4 text-red-500" />
                         )}
@@ -496,7 +500,19 @@ export const DriverDetailsModal = ({
                         <FileText className="h-4 w-4 text-muted-foreground" />
                         <span className="text-sm">Aadhar:</span>
                         {driver?.aadhar ? (
-                          <CheckCircle className="h-4 w-4 text-green-500" />
+                          <div className="flex items-center space-x-2">
+                            <CheckCircle className="h-4 w-4 text-green-500" />
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-6 px-2"
+                              onClick={() =>
+                                window.open(driver.aadhar, "_blank")
+                              }
+                            >
+                              View
+                            </Button>
+                          </div>
                         ) : (
                           <XCircle className="h-4 w-4 text-red-500" />
                         )}
@@ -506,7 +522,39 @@ export const DriverDetailsModal = ({
                         <FileText className="h-4 w-4 text-muted-foreground" />
                         <span className="text-sm">PAN:</span>
                         {driver?.pan ? (
-                          <CheckCircle className="h-4 w-4 text-green-500" />
+                          <div className="flex items-center space-x-2">
+                            <CheckCircle className="h-4 w-4 text-green-500" />
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-6 px-2"
+                              onClick={() => window.open(driver.pan, "_blank")}
+                            >
+                              View
+                            </Button>
+                          </div>
+                        ) : (
+                          <XCircle className="h-4 w-4 text-red-500" />
+                        )}
+                      </div>
+
+                      <div className="flex items-center space-x-2">
+                        <FileText className="h-4 w-4 text-muted-foreground" />
+                        <span className="text-sm">Uber Profile:</span>
+                        {driver?.uber_profile ? (
+                          <div className="flex items-center space-x-2">
+                            <CheckCircle className="h-4 w-4 text-green-500" />
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-6 px-2"
+                              onClick={() =>
+                                window.open(driver.uber_profile, "_blank")
+                              }
+                            >
+                              View
+                            </Button>
+                          </div>
                         ) : (
                           <XCircle className="h-4 w-4 text-red-500" />
                         )}
@@ -532,6 +580,42 @@ export const DriverDetailsModal = ({
                       </div>
                     </div>
                   </div>
+
+                  {overdueData && overdueData.totalOverdue > 0 && (
+                    <>
+                      <Separator />
+                      <div className="space-y-2">
+                        <div className="flex items-center space-x-2 text-red-500">
+                          <AlertCircle className="h-4 w-4" />
+                          <span className="text-sm font-medium">
+                            Overdue Amounts
+                          </span>
+                        </div>
+                        <div className="flex justify-between items-center">
+                          <span className="text-sm">Total Overdue:</span>
+                          <div className="flex items-center text-red-500">
+                            <IndianRupee className="h-3 w-3 mr-1" />
+                            <span>{overdueData.totalOverdue}</span>
+                          </div>
+                        </div>
+                        <div className="flex justify-between items-center">
+                          <span className="text-sm">Overdue Count:</span>
+                          <span>{overdueData.overdueCount}</span>
+                        </div>
+                        {overdueData.lastOverdueDate && (
+                          <div className="flex justify-between items-center">
+                            <span className="text-sm">Last Overdue:</span>
+                            <span>
+                              {format(
+                                new Date(overdueData.lastOverdueDate),
+                                "dd MMM yyyy"
+                              )}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    </>
+                  )}
                 </CardContent>
               </Card>
             </TabsContent>
@@ -637,8 +721,23 @@ export const DriverDetailsModal = ({
                     </Select>
                   </div>
 
-                  <div className="flex flex-col gap-1">
+                  <div className="space-y-2">
                     <Label htmlFor="vehicle">Assigned Vehicle</Label>
+                    <Input
+                      id="vehicle-search"
+                      placeholder="Search last 4 digits of vehicle number..."
+                      onChange={(e) => {
+                        const searchQuery = e.target.value.toLowerCase();
+                        setVehicles((prevVehicles) =>
+                          prevVehicles.filter((vehicle) =>
+                            vehicle.vehicle_number
+                              .slice(-4) // Extract last 4 digits
+                              .toLowerCase()
+                              .includes(searchQuery)
+                          )
+                        );
+                      }}
+                    />
                     <Select
                       value={selectedVehicle}
                       onValueChange={handleVehicleChange}
@@ -695,6 +794,112 @@ export const DriverDetailsModal = ({
                     currentBalance={driver?.pending_balance || 0}
                     onBalanceUpdate={fetchDriverDetails}
                   />
+                </div>
+              )}
+            </TabsContent>
+
+            <TabsContent value="transactions" className="w-full">
+              {driverId && (
+                <div className="w-full space-y-6">
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-lg font-medium">
+                        Rent History
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      {isLoadingRent ? (
+                        <div className="flex justify-center py-8">
+                          <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-primary"></div>
+                        </div>
+                      ) : (
+                        <div className="rounded-md border">
+                          <Table>
+                            <TableHeader>
+                              <TableRow>
+                                <TableHead>Date</TableHead>
+                                <TableHead>Shift</TableHead>
+                                <TableHead>Status</TableHead>
+                                <TableHead>Amount</TableHead>
+                              </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                              {rentHistory.map((record) => (
+                                <TableRow key={record.id}>
+                                  <TableCell className="font-medium">
+                                    <div className="flex items-center gap-2">
+                                      <Calendar className="h-4 w-4 text-muted-foreground" />
+                                      {format(
+                                        new Date(record.rent_date),
+                                        "dd MMM yyyy"
+                                      )}
+                                    </div>
+                                  </TableCell>
+                                  <TableCell className="capitalize">
+                                    {record.shift}
+                                  </TableCell>
+                                  <TableCell>
+                                    <Badge
+                                      variant={
+                                        record.status === "approved"
+                                          ? "success"
+                                          : record.status === "leave"
+                                          ? "default"
+                                          : record.status ===
+                                            "pending_verification"
+                                          ? "secondary"
+                                          : "destructive"
+                                      }
+                                    >
+                                      {record.status}
+                                    </Badge>
+                                  </TableCell>
+                                  <TableCell
+                                    className={`whitespace-nowrap ${
+                                      record.rent_paid_amount < 0
+                                        ? "text-green-500"
+                                        : "text-red-500"
+                                    }`}
+                                  >
+                                    ₹
+                                    {(record.rent_paid_amount > 0
+                                      ? -record.rent_paid_amount
+                                      : Math.abs(record.rent_paid_amount)
+                                    ).toLocaleString()}
+                                  </TableCell>
+                                </TableRow>
+                              ))}
+                              {(!rentHistory || rentHistory.length === 0) && (
+                                <TableRow>
+                                  <TableCell
+                                    colSpan={4}
+                                    className="h-24 text-center"
+                                  >
+                                    No rent history found
+                                  </TableCell>
+                                </TableRow>
+                              )}
+                            </TableBody>
+                          </Table>
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+
+                  {/* <Card>
+                    <CardHeader>
+                      <CardTitle className="text-lg font-medium">
+                        Balance Transactions
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <BalanceTransactions
+                        driverId={driverId}
+                        currentBalance={driver?.pending_balance || 0}
+                        onBalanceUpdate={fetchDriverDetails}
+                      />
+                    </CardContent>
+                  </Card> */}
                 </div>
               )}
             </TabsContent>

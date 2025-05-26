@@ -5,7 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
-import { AlertCircle, ArrowDown, ArrowUp, Plus, Edit, Trash } from 'lucide-react';
+import { AlertCircle, ArrowDown, ArrowUp, Plus, Edit, Trash, Save, X } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -56,12 +56,21 @@ export const BalanceTransactions = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [selectedTransaction, setSelectedTransaction] = useState<BalanceTransaction | null>(null);
   const [isEditing, setIsEditing] = useState<boolean>(false);
+  const [isEditingBalance, setIsEditingBalance] = useState<boolean>(false);
+  const [newBalance, setNewBalance] = useState<string>('');
+  const [editBalanceReason, setEditBalanceReason] = useState<string>('');
+  const [editDate, setEditDate] = useState<string>('');
 
   useEffect(() => {
     if (driverId) {
       fetchTransactions();
     }
   }, [driverId]);
+
+  useEffect(() => {
+    // Update the newBalance state whenever currentBalance changes
+    setNewBalance(currentBalance.toString());
+  }, [currentBalance]);
 
   const fetchTransactions = async () => {
     try {
@@ -134,12 +143,36 @@ export const BalanceTransactions = ({
 
   const handleDeleteTransaction = async (transactionId: string) => {
     try {
+      // First, get the transaction details to calculate balance adjustment
+      const { data: transactionData, error: fetchError } = await supabase
+        .from('driver_balance_transactions')
+        .select('*')
+        .eq('id', transactionId)
+        .single();
+        
+      if (fetchError) throw fetchError;
+      
+      // Calculate the balance adjustment
+      const isPositive = ['deposit', 'refund', 'bonus'].includes(transactionData.type);
+      const amountChange = isPositive ? -transactionData.amount : transactionData.amount;
+      
+      // Delete the transaction
       const { error } = await supabase
         .from('driver_balance_transactions')
         .delete()
         .eq('id', transactionId);
 
       if (error) throw error;
+      
+      // Update the user's balance
+      const { error: userError } = await supabase
+        .from('users')
+        .update({
+          pending_balance: currentBalance + amountChange
+        })
+        .eq('id', driverId);
+
+      if (userError) throw userError;
       
       toast.success('Transaction deleted successfully');
       fetchTransactions();
@@ -154,14 +187,15 @@ export const BalanceTransactions = ({
     setAmount(transaction.amount.toString());
     setDescription(transaction.description || '');
     setTransactionType(transaction.type);
+    setEditDate(transaction.created_at.split('T')[0]);
     setSelectedTransaction(transaction);
     setIsAdding(false);
     setIsEditing(true);
   };
 
   const handleUpdateTransaction = async () => {
-    if (!selectedTransaction || !amount || parseFloat(amount) <= 0 || !transactionType) {
-      toast.error('Please enter a valid amount and select a transaction type');
+    if (!selectedTransaction || !amount || parseFloat(amount) <= 0 || !transactionType || !editDate) {
+      toast.error('Please enter a valid amount, select a transaction type, and provide a date');
       return;
     }
 
@@ -170,22 +204,42 @@ export const BalanceTransactions = ({
       
       const isPositive = ['deposit', 'refund', 'bonus'].includes(transactionType);
       const numericAmount = parseFloat(amount);
+      const oldAmount = selectedTransaction.amount;
+      const oldIsPositive = ['deposit', 'refund', 'bonus'].includes(selectedTransaction.type);
       
+      // Calculate the balance difference
+      const oldBalanceChange = oldIsPositive ? oldAmount : -oldAmount;
+      const newBalanceChange = isPositive ? numericAmount : -numericAmount;
+      const balanceDifference = newBalanceChange - oldBalanceChange;
+      
+      // Update the transaction
       const { error: txError } = await supabase
         .from('driver_balance_transactions')
         .update({
           amount: numericAmount,
           type: transactionType,
-          description: description || undefined
+          description: description || undefined,
+          created_at: editDate
         })
         .eq('id', selectedTransaction.id);
 
       if (txError) throw txError;
+
+      // Update the user's balance
+      const { error: userError } = await supabase
+        .from('users')
+        .update({
+          pending_balance: currentBalance + balanceDifference
+        })
+        .eq('id', driverId);
+
+      if (userError) throw userError;
       
       toast.success('Transaction updated successfully');
 
       setAmount('');
       setDescription('');
+      setEditDate('');
       setIsEditing(false);
       setSelectedTransaction(null);
 
@@ -194,6 +248,80 @@ export const BalanceTransactions = ({
     } catch (error) {
       console.error('Error updating transaction:', error);
       toast.error('Failed to update transaction');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleEditBalance = () => {
+    setIsEditingBalance(true);
+    setNewBalance(currentBalance.toString());
+    setEditBalanceReason('');
+  };
+
+  const handleCancelEditBalance = () => {
+    setIsEditingBalance(false);
+    setNewBalance(currentBalance.toString());
+    setEditBalanceReason('');
+  };
+
+  const handleSaveNewBalance = async () => {
+    if (!newBalance || isNaN(parseFloat(newBalance))) {
+      toast.error('Please enter a valid balance amount');
+      return;
+    }
+
+    if (!editBalanceReason.trim()) {
+      toast.error('Please provide a reason for the balance adjustment');
+      return;
+    }
+
+    try {
+      setIsSubmitting(true);
+      
+      const oldBalance = currentBalance;
+      const newBalanceValue = parseFloat(newBalance);
+      const balanceDifference = newBalanceValue - oldBalance;
+      
+      // Determine transaction type based on the balance change
+      let adjustmentType: TransactionType = 'deposit';
+      if (balanceDifference < 0) {
+        adjustmentType = 'due';
+      } else {
+        adjustmentType = 'deposit';
+      }
+      
+      // Add a transaction record for the manual adjustment
+      const { error: txError } = await supabase
+        .from('driver_balance_transactions')
+        .insert({
+          user_id: driverId,
+          amount: Math.abs(balanceDifference),
+          type: adjustmentType,
+          description: `Manual balance adjustment: ${editBalanceReason}`,
+          created_by: user?.id
+        });
+
+      if (txError) throw txError;
+
+      // Update the user's balance
+      const { error: userError } = await supabase
+        .from('users')
+        .update({
+          pending_balance: newBalanceValue
+        })
+        .eq('id', driverId);
+
+      if (userError) throw userError;
+      
+      toast.success('Balance updated successfully');
+      
+      setIsEditingBalance(false);
+      fetchTransactions();
+      if (onBalanceUpdate) onBalanceUpdate();
+    } catch (error) {
+      console.error('Error updating balance:', error);
+      toast.error('Failed to update balance');
     } finally {
       setIsSubmitting(false);
     }
@@ -220,23 +348,84 @@ export const BalanceTransactions = ({
     return ['deposit', 'refund', 'bonus'].includes(type);
   };
 
+  // const handleEditBalance = () => {
+  //   const { error: userError } = await supabase
+  //   .from('users')
+  //   .update({
+  //     pending_balance: newBalanceValue
+  //   })
+  //   .eq('id', driverId);
+  // }
+
   const filteredTransactions = transactions;
 
   return (
     <div className="space-y-6 w-full">
       <Card className="w-full">
         <CardHeader className="pb-3">
-          <CardTitle className="text-lg font-medium">Current Balance</CardTitle>
-          <div className="mt-1 text-2xl font-bold">
-            ₹{currentBalance.toLocaleString()}
-          </div>
-          <div className="text-sm text-muted-foreground">
-            {currentBalance < 0 
-              ? "Amount due from driver" 
-              : currentBalance > 0 
-                ? "Amount available to driver" 
-                : "No pending balance"}
-          </div>
+          <CardTitle className="text-lg font-medium flex justify-between items-center">
+            Current Balance
+            {!isEditingBalance && (
+              <Button variant="outline" size="sm" onClick={handleEditBalance}>
+                <Edit className="h-4 w-4 mr-1" /> Edit Balance
+              </Button>
+            )}
+          </CardTitle>
+          
+          {isEditingBalance ? (
+            <div className="space-y-3 mt-2">
+              <div className="flex items-center gap-2">
+                <Label htmlFor="new-balance" className="w-20">New Balance:</Label>
+                <Input 
+                  id="new-balance" 
+                  type="number" 
+                  placeholder="Enter new balance" 
+                  value={newBalance} 
+                  onChange={(e) => setNewBalance(e.target.value)}
+                  className="max-w-xs"
+                />
+              </div>
+              <div className="flex items-start gap-2">
+                <Label htmlFor="balance-reason" className="w-20 pt-2">Reason:</Label>
+                <Input 
+                  id="balance-reason" 
+                  placeholder="Reason for adjustment" 
+                  value={editBalanceReason} 
+                  onChange={(e) => setEditBalanceReason(e.target.value)}
+                />
+              </div>
+              <div className="flex justify-end space-x-2 mt-2">
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={handleCancelEditBalance}
+                  disabled={isSubmitting}
+                >
+                  <X className="h-4 w-4 mr-1" /> Cancel
+                </Button>
+                <Button 
+                  size="sm" 
+                  onClick={handleSaveNewBalance}
+                  disabled={isSubmitting}
+                >
+                  <Save className="h-4 w-4 mr-1" /> {isSubmitting ? 'Saving...' : 'Save'}
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <>
+              <div className="mt-1 text-2xl font-bold">
+                ₹{currentBalance.toLocaleString()}
+              </div>
+              <div className="text-sm text-muted-foreground">
+                {currentBalance < 0 
+                  ? "Amount due from driver" 
+                  : currentBalance > 0 
+                    ? "Amount available to driver" 
+                    : "No pending balance"}
+              </div>
+            </>
+          )}
         </CardHeader>
         <CardContent>
           <Button variant="outline" onClick={() => setIsAdding(!isAdding)} className="w-full text-base">
@@ -334,6 +523,16 @@ export const BalanceTransactions = ({
                       <SelectItem value="bonus">Bonus</SelectItem>
                     </SelectContent>
                   </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="edit-date">Date</Label>
+                  <Input
+                    id="edit-date"
+                    type="date"
+                    value={editDate}
+                    onChange={e => setEditDate(e.target.value)}
+                  />
                 </div>
 
                 <div className="space-y-2 md:col-span-2">

@@ -1,8 +1,9 @@
-
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { ArrowRight, Car, Shield, Clock, Activity } from "lucide-react";
+import AuthForms from "./AuthForms";
+import { Dialog, DialogContent, DialogTrigger } from "./ui/dialog";
 
 const Hero = () => {
   useEffect(() => {
@@ -37,41 +38,49 @@ const Hero = () => {
             <span className="inline-block py-1 px-3 bg-fleet-purple/10 text-fleet-purple rounded-full text-sm font-medium mb-6">
               Fleet Management Reimagined
             </span>
-            <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold leading-tight mb-6">
-              Manage Your Fleet with{" "}
-              <span className="text-gradient">Precision</span> and{" "}
+            <h1 className="text-4xl md:text-5xl lg:text-5xl font-bold leading-tight mb-6">
+              Drive with Confidence,{" "}
+              <span className="text-gradient"> Earn </span> with{" "}
               <span className="text-gradient">Ease</span>
             </h1>
             <p className="text-lg text-gray-600 mb-8 max-w-lg">
-              Streamline your fleet operations, track vehicles in real-time, and
-              optimize driver performance—all from a single, intuitive platform.
+              Stay on top of your trips, track earnings, and manage your
+              schedule all from one powerful platform designed just for drivers.
             </p>
             <div className="flex flex-col sm:flex-row gap-4">
-              <Button className="bg-fleet-purple hover:bg-fleet-purpleDark text-white px-6 py-6 rounded-lg text-lg transition-all transform hover:scale-105">
-                Get Started
-                <ArrowRight className="ml-2 h-5 w-5" />
-              </Button>
+              {/* {showAuth && <AuthForms />} */}
+              <Dialog>
+                <DialogTrigger asChild>
+                  <Button className="bg-fleet-purple hover:bg-fleet-purpleDark text-white px-6 py-6 rounded-lg text-lg transition-all transform hover:scale-105">
+                    Get Started
+                    <ArrowRight className="ml-2 h-5 w-5" />
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="sm:max-w-md p-6">
+                  <AuthForms />
+                </DialogContent>
+              </Dialog>
               <Button
                 variant="outline"
                 className="border-fleet-purple text-fleet-purple hover:bg-fleet-purple/10 px-6 py-6 rounded-lg text-lg"
               >
-                Schedule Demo
+                <a href="tel:+919606393089">Schedule Demo</a>
               </Button>
             </div>
 
             {/* Stats */}
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-8 mt-12">
               <div className="text-center">
-                <p className="text-3xl font-bold text-fleet-purple">500+</p>
-                <p className="text-gray-600 text-sm">Fleet Customers</p>
+                <p className="text-3xl font-bold text-fleet-purple">1,000+ </p>
+                <p className="text-gray-600 text-sm">Drivers Empowered</p>
               </div>
               <div className="text-center">
                 <p className="text-3xl font-bold text-fleet-purple">10k+</p>
-                <p className="text-gray-600 text-sm">Vehicles Managed</p>
+                <p className="text-gray-600 text-sm">Trips Completed</p>
               </div>
               <div className="text-center">
-                <p className="text-3xl font-bold text-fleet-purple">99.9%</p>
-                <p className="text-gray-600 text-sm">Uptime</p>
+                <p className="text-3xl font-bold text-fleet-purple">128k</p>
+                <p className="text-gray-600 text-sm">Total Earnings</p>
               </div>
             </div>
           </div>
@@ -114,7 +123,9 @@ const Hero = () => {
                     </div>
                     <div>
                       <p className="font-medium">Performance Analytics</p>
-                      <p className="text-sm text-gray-500">Efficiency metrics</p>
+                      <p className="text-sm text-gray-500">
+                        Efficiency metrics
+                      </p>
                     </div>
                   </div>
                 </div>

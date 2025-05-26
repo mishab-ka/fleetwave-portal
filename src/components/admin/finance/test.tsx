@@ -1,50 +1,93 @@
-// 2. Update the TransactionsSection component:
+// 1. Add these interfaces at the top
+interface Liability {
+  id: string;
+  name: string;
+  total_amount: number;
+  paid_amount: number;
+}
 
+interface TransactionWithRelations extends Transaction {
+  accounts: Account;
+  categories: Category;
+  liability_id?: string;
+  is_liability_payment?: boolean;
+}
+
+// 2. Update the component state
 const TransactionsSection = () => {
   const [liabilities, setLiabilities] = useState<Liability[]>([]);
   const [selectedLiability, setSelectedLiability] = useState<string>("");
 
-  interface Liability {
-    id: string;
-    name: string;
-    total_amount: number;
-    paid_amount: number;
-  }
-
-  const fetchLiabilities = async () => {
-    const { data, error } = await supabase
-      .from('liabilities')
-      .select('*');
-    if (data) setLiabilities(data);
-  };
-
-  useEffect(() => {
-    fetchLiabilities();
-  }, []);
-
-  // In your form state, add:
+  // Add to your existing state
   const [formData, setFormData] = useState({
     // ... existing fields
     liability_id: "",
     is_liability_payment: false,
   });
 
-  // In handleAddTransaction:
-  const handleAddTransaction = async () => {
-    if (formData.is_liability_payment && !formData.liability_id) {
-      toast.error("Please select a liability to pay");
-      return;
+  // 3. Add liability fetching
+  const fetchLiabilities = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('liabilities')
+        .select('*');
+      
+      if (error) throw error;
+      setLiabilities(data || []);
+    } catch (error) {
+      console.error("Error fetching liabilities:", error);
+      toast.error("Failed to load liabilities");
     }
+  };
 
-    // Handle liability payment
-    if (formData.type === 'expense' && selectedCategory?.type === 'liability') {
-      try {
-        // 1. Update bank account
-        const { data: account } = await supabase
+  useEffect(() => {
+    fetchTransactions();
+    fetchAccounts();
+    fetchCategories();
+    fetchLiabilities(); // Add this line
+  }, []);
+
+  // 4. Update handleAddTransaction
+  const handleAddTransaction = async () => {
+    try {
+      // ... existing validation
+
+      // Check if it's a liability payment
+      const isLiabilityPayment = selectedCategory?.type === "liability" && formData.type === "expense";
+
+      if (isLiabilityPayment && !formData.liability_id) {
+        toast.error("Please select a liability to pay");
+        return;
+      }
+
+      // Handle liability payment
+      if (isLiabilityPayment) {
+        // Get selected liability
+        const { data: liability, error: liabilityError } = await supabase
+          .from('liabilities')
+          .select('*')
+          .eq('id', formData.liability_id)
+          .single();
+
+        if (liabilityError || !liability) {
+          throw new Error("Liability not found");
+        }
+
+        // Check remaining amount
+        const remaining = liability.total_amount - liability.paid_amount;
+        if (formData.amount > remaining) {
+          toast.error(`Payment exceeds remaining amount: ${formatter.format(remaining)}`);
+          return;
+        }
+
+        // Update account balance
+        const { data: account, error: accountError } = await supabase
           .from('accounts')
           .select('balance')
           .eq('id', formData.account_id)
           .single();
+
+        if (accountError) throw accountError;
 
         const newBalance = account.balance - formData.amount;
         await supabase
@@ -52,8 +95,8 @@ const TransactionsSection = () => {
           .update({ balance: newBalance })
           .eq('id', formData.account_id);
 
-        // 2. Create transaction
-        const { data: transaction, error } = await supabase
+        // Create transaction
+        const { error: transactionError } = await supabase
           .from('transactions')
           .insert([{
             description: formData.description,
@@ -66,22 +109,14 @@ const TransactionsSection = () => {
             is_liability_payment: true
           }]);
 
-        // 3. Update liability
-        const { data: liability } = await supabase
-          .from('liabilities')
-          .select('*')
-          .eq('id', formData.liability_id)
-          .single();
+        if (transactionError) throw transactionError;
 
-        const newPaid = Math.min(
-          liability.paid_amount + formData.amount,
-          liability.total_amount
-        );
-
+        // Update liability
+        const newPaidAmount = liability.paid_amount + formData.amount;
         await supabase
           .from('liabilities')
           .update({ 
-            paid_amount: newPaid,
+            paid_amount: newPaidAmount,
             updated_at: new Date().toISOString()
           })
           .eq('id', formData.liability_id);
@@ -90,19 +125,21 @@ const TransactionsSection = () => {
         fetchTransactions();
         fetchAccounts();
         fetchLiabilities();
-        
-      } catch (error) {
-        toast.error("Payment failed");
-        console.error(error);
+        setIsAddDialogOpen(false);
+        resetForm();
+        return;
       }
-      return;
-    }
 
-    // ... rest of your existing code
+      // ... rest of your existing code for non-payment transactions
+
+    } catch (error) {
+      console.error("Error adding transaction:", error);
+      toast.error("Failed to add transaction");
+    }
   };
 
-  // In your form JSX, add liability selector when paying liability:
-  {selectedCategory?.type === 'liability' && formData.type === 'expense' && (
+  // 5. Add liability selector to your form JSX
+  {selectedCategory?.type === "liability" && formData.type === "expense" && (
     <div className="grid grid-cols-4 items-center gap-4">
       <Label className="text-right">Liability</Label>
       <Select

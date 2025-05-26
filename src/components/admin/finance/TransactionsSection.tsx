@@ -39,6 +39,10 @@ import {
   Edit,
   Trash,
   TrendingDown,
+  Search,
+  Filter,
+  X,
+  RotateCcw,
 } from "lucide-react";
 import { formatter } from "@/lib/utils";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -53,6 +57,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import { Checkbox } from "@/components/ui/checkbox";
 
 interface Account {
   id: number;
@@ -83,6 +88,15 @@ interface TransactionWithRelations extends Transaction {
   categories: Category;
 }
 
+// Update the Filters interface
+interface Filters {
+  search: string;
+  type: string;
+  categoryIds: string[]; // Changed from categoryId to categoryIds array
+  startDate: Date | null;
+  endDate: Date | null;
+}
+
 const TransactionsSection = () => {
   const [transactions, setTransactions] = useState<TransactionWithRelations[]>(
     []
@@ -95,7 +109,9 @@ const TransactionsSection = () => {
   const [activeTab, setActiveTab] = useState<string>("all");
   const [selectedTransaction, setSelectedTransaction] =
     useState<TransactionWithRelations | null>(null);
-  const [selectedCategory, setSelectedCategory] = useState<Category | null>(null);
+  const [selectedCategory, setSelectedCategory] = useState<Category | null>(
+    null
+  );
 
   const [formData, setFormData] = useState({
     description: "",
@@ -105,6 +121,17 @@ const TransactionsSection = () => {
     account_id: "",
     category_id: "",
   });
+
+  // Add new state variables for multiple select and filters
+  const [selectedItems, setSelectedItems] = useState<number[]>([]);
+  const [filters, setFilters] = useState<Filters>({
+    search: "",
+    type: "all",
+    categoryIds: [], // Initialize as empty array
+    startDate: null,
+    endDate: null,
+  });
+  const [showFilters, setShowFilters] = useState(false);
 
   const fetchTransactions = async () => {
     try {
@@ -212,128 +239,133 @@ const TransactionsSection = () => {
   };
 
   const handleAddTransaction = async () => {
-  try {
-    if (
-      !formData.description ||
-      !formData.amount ||
-      !formData.date ||
-      !formData.account_id ||
-      !formData.category_id
-    ) {
-      toast.error("Please fill all required fields");
-      return;
-    }
+    try {
+      if (
+        !formData.description ||
+        !formData.amount ||
+        !formData.date ||
+        !formData.account_id ||
+        !formData.category_id
+      ) {
+        toast.error("Please fill all required fields");
+        return;
+      }
 
-    const accountId = formData.account_id;
-    const categoryId = formData.category_id;
+      const accountId = formData.account_id;
+      const categoryId = formData.category_id;
 
-    // Fetch selected category
-    const { data: selectedCategory, error: categoryError } = await supabase
-      .from("categories")
-      .select("type")
-      .eq("id", categoryId)
-      .single();
-
-    if (categoryError || !selectedCategory) {
-      throw new Error("Category not found");
-    }
-
-    // Determine transaction type and amount
-    const isLiability = selectedCategory.type === "liability";
-    const transactionType = isLiability ? "Liability" : formData.type;
-    const transactionAmount = isLiability
-      ? formData.amount
-      : formData.type === "income"
-      ? formData.amount
-      : -formData.amount;
-
-    // Insert transaction
-    const { data: transactionData, error: transactionError } = await supabase
-      .from("transactions")
-      .insert([
-        {
-          description: formData.description,
-          amount: transactionAmount,
-          type: transactionType,
-          date: formData.date.toISOString(),
-          account_id: accountId,
-          category_id: categoryId,
-        },
-      ])
-      .select();
-
-    if (transactionError) throw transactionError;
-
-    // Handle account balance and liabilities
-    if (isLiability) {
-      // Update account balance
-      const { data: accountData, error: accountError } = await supabase
-        .from("accounts")
-        .select("balance")
-        .eq("id", accountId)
+      // Fetch selected category
+      const { data: selectedCategory, error: categoryError } = await supabase
+        .from("categories")
+        .select("type")
+        .eq("id", categoryId)
         .single();
 
-      if (accountError) throw accountError;
+      if (categoryError || !selectedCategory) {
+        throw new Error("Category not found");
+      }
 
-      const newBalance = accountData.balance + formData.amount;
-      await supabase
-        .from("accounts")
-        .update({ balance: newBalance })
-        .eq("id", accountId);
+      // Determine transaction type and amount
+      const isLiability = selectedCategory.type === "liability";
+      const transactionType = isLiability ? "Liability" : formData.type;
+      const transactionAmount = isLiability
+        ? formData.amount
+        : formData.type === "income"
+        ? formData.amount
+        : -formData.amount;
 
-      // Insert into liabilities table
-      const { error: liabilityError } = await supabase
-        .from("liabilities")
+      // Insert transaction
+      const { data: transactionData, error: transactionError } = await supabase
+        .from("transactions")
         .insert([
           {
-            name: formData.description,
-            value: formData.amount,
-            created_at: formData.date.toISOString(),
+            description: formData.description,
+            amount: transactionAmount,
+            type: transactionType,
+            date: formData.date.toISOString(),
+            account_id: accountId,
+            category_id: categoryId,
           },
-        ]);
+        ])
+        .select();
 
-      if (liabilityError) throw liabilityError;
-    } else {
-      // Handle normal transactions
-      const adjustment =
-        formData.type === "income" ? formData.amount : -formData.amount;
+      if (transactionError) throw transactionError;
 
-      const { data: accountData, error: accountError } = await supabase
-        .from("accounts")
-        .select("balance")
-        .eq("id", accountId)
-        .single();
+      // Handle account balance and liabilities
+      if (isLiability) {
+        // Update account balance
+        const { data: accountData, error: accountError } = await supabase
+          .from("accounts")
+          .select("balance")
+          .eq("id", accountId)
+          .single();
 
-      if (!accountError) {
-        const newBalance = accountData.balance + adjustment;
+        if (accountError) throw accountError;
+
+        const newBalance = accountData.balance + formData.amount;
         await supabase
           .from("accounts")
           .update({ balance: newBalance })
           .eq("id", accountId);
-      }
-    }
 
-    toast.success("Transaction added successfully");
-    fetchTransactions();
-    fetchAccounts();
-    setIsAddDialogOpen(false);
-    resetForm();
-  } catch (error) {
-    console.error("Error adding transaction:", error);
-    toast.error("Failed to add transaction");
-  }
-};
+        // Insert into liabilities table
+        const { error: liabilityError } = await supabase
+          .from("liabilities")
+          .insert([
+            {
+              name: formData.description,
+              value: formData.amount,
+              created_at: formData.date.toISOString(),
+            },
+          ]);
+
+        if (liabilityError) throw liabilityError;
+      } else {
+        // Handle normal transactions
+        const adjustment =
+          formData.type === "income" ? formData.amount : -formData.amount;
+
+        const { data: accountData, error: accountError } = await supabase
+          .from("accounts")
+          .select("balance")
+          .eq("id", accountId)
+          .single();
+
+        if (!accountError) {
+          const newBalance = accountData.balance + adjustment;
+          await supabase
+            .from("accounts")
+            .update({ balance: newBalance })
+            .eq("id", accountId);
+        }
+      }
+
+      toast.success("Transaction added successfully");
+      fetchTransactions();
+      fetchAccounts();
+      setIsAddDialogOpen(false);
+      resetForm();
+    } catch (error) {
+      console.error("Error adding transaction:", error);
+      toast.error("Failed to add transaction");
+    }
+  };
 
   const handleEditClick = (transaction: TransactionWithRelations) => {
     setSelectedTransaction(transaction);
-    
+
     // Find the category to check if it's a liability
-    const category = categories.find((cat) => cat.id === transaction.category_id);
+    const category = categories.find(
+      (cat) => cat.id === transaction.category_id
+    );
     setSelectedCategory(category || null);
-    
+
     setFormData({
       description: transaction.description || "",
-      amount: transaction.type === "Liability" ? Math.abs(transaction.amount) : transaction.amount,
+      amount:
+        transaction.type === "Liability"
+          ? Math.abs(transaction.amount)
+          : transaction.amount,
       type: transaction.type === "Liability" ? "income" : transaction.type,
       date: new Date(transaction.date),
       account_id: transaction.account_id.toString(),
@@ -391,27 +423,30 @@ const TransactionsSection = () => {
       }
 
       // Get original category type
-      const { data: originalCategory, error: origCategoryError } = await supabase
-        .from("categories")
-        .select("type")
-        .eq("id", originalTransaction.category_id)
-        .single();
+      const { data: originalCategory, error: origCategoryError } =
+        await supabase
+          .from("categories")
+          .select("type")
+          .eq("id", originalTransaction.category_id)
+          .single();
 
       if (origCategoryError) throw origCategoryError;
 
       // Determine the transaction type based on category
-      const transactionType = selectedCategory.type === "Liability" 
-        ? "Liability"  // Use "Liability" instead of "liability" to match AssetsLiabilitiesSection
-        : formData.type;
+      const transactionType =
+        selectedCategory.type === "Liability"
+          ? "Liability" // Use "Liability" instead of "liability" to match AssetsLiabilitiesSection
+          : formData.type;
 
       // Update the transaction
       const { error: updateError } = await supabase
         .from("transactions")
         .update({
           description: formData.description,
-          amount: selectedCategory.type === "Liability" 
-            ? -Math.abs(formData.amount) // Always negative for liabilities
-            : formData.amount,
+          amount:
+            selectedCategory.type === "Liability"
+              ? -Math.abs(formData.amount) // Always negative for liabilities
+              : formData.amount,
           type: transactionType,
           date: formData.date.toISOString(),
           account_id: accountId,
@@ -426,45 +461,52 @@ const TransactionsSection = () => {
         originalTransaction.account_id !== accountId ||
         originalTransaction.amount !== formData.amount ||
         originalTransaction.type !== transactionType ||
-        (originalCategory?.type !== selectedCategory.type)
+        originalCategory?.type !== selectedCategory.type
       ) {
         // First, revert the original transaction's effect on the original account
         let originalAdjustment = 0;
-        
-        if (originalCategory?.type === "Liability" && originalTransaction.type === "Liability") {
+
+        if (
+          originalCategory?.type === "Liability" &&
+          originalTransaction.type === "Liability"
+        ) {
           if (originalTransaction.type === "income") {
             originalAdjustment = -originalTransaction.amount;
           }
         } else {
-          originalAdjustment = originalTransaction.type === "income" 
-            ? -originalTransaction.amount 
-            : originalTransaction.amount;
+          originalAdjustment =
+            originalTransaction.type === "income"
+              ? -originalTransaction.amount
+              : originalTransaction.amount;
         }
-        
+
         // Then apply the new transaction's effect on the new account
         let newAdjustment = 0;
-        
-        if (selectedCategory.type === "Liability" && formData.type === "income") {
+
+        if (
+          selectedCategory.type === "Liability" &&
+          formData.type === "income"
+        ) {
           // For liability categories, add the amount to the account if it's income
           newAdjustment = formData.amount;
         } else if (selectedCategory.type !== "Liability") {
           // For non-liability categories, apply normal income/expense rules
-          newAdjustment = formData.type === "income" 
-            ? formData.amount 
-            : -formData.amount;
+          newAdjustment =
+            formData.type === "income" ? formData.amount : -formData.amount;
         }
 
         // Update original account if different from new account
         if (originalTransaction.account_id !== accountId) {
-          const { data: origAccountData, error: origAccountError } = await supabase
-            .from("accounts")
-            .select("balance")
-            .eq("id", originalTransaction.account_id)
-            .single();
+          const { data: origAccountData, error: origAccountError } =
+            await supabase
+              .from("accounts")
+              .select("balance")
+              .eq("id", originalTransaction.account_id)
+              .single();
 
           if (!origAccountError && origAccountData) {
             const origNewBalance = origAccountData.balance + originalAdjustment;
-            
+
             const { error: origUpdateError } = await supabase
               .from("accounts")
               .update({ balance: origNewBalance })
@@ -474,15 +516,16 @@ const TransactionsSection = () => {
           }
 
           // Update new account
-          const { data: newAccountData, error: newAccountError } = await supabase
-            .from("accounts")
-            .select("balance")
-            .eq("id", accountId)
-            .single();
+          const { data: newAccountData, error: newAccountError } =
+            await supabase
+              .from("accounts")
+              .select("balance")
+              .eq("id", accountId)
+              .single();
 
           if (!newAccountError && newAccountData) {
             const newBalance = newAccountData.balance + newAdjustment;
-            
+
             const { error: newUpdateError } = await supabase
               .from("accounts")
               .update({ balance: newBalance })
@@ -501,7 +544,7 @@ const TransactionsSection = () => {
           if (!accountFetchError && accountData) {
             const netAdjustment = originalAdjustment + newAdjustment;
             const newBalance = accountData.balance + netAdjustment;
-            
+
             const { error: accountUpdateError } = await supabase
               .from("accounts")
               .update({ balance: newBalance })
@@ -560,9 +603,12 @@ const TransactionsSection = () => {
       const adjustment =
         transaction.type === "income"
           ? -transaction.amount
-          : transaction.amount;
+          : -transaction.amount;
+
+      console.log(transaction.type, transaction.amount, adjustment);
 
       const updatedBalance = currentBalance + adjustment;
+      console.log(currentBalance, updatedBalance);
 
       // Step 3: Update the account balance
       const { error: accountError } = await supabase
@@ -581,22 +627,158 @@ const TransactionsSection = () => {
     }
   };
 
-  const filteredTransactions =
-    activeTab === "all"
-      ? transactions
-      : transactions.filter((t) => t.type.toLowerCase() === activeTab.toLowerCase());
+  // Add function to handle bulk delete
+  const handleBulkDelete = async () => {
+    try {
+      if (selectedItems.length === 0) return;
+
+      // First, fetch all selected transactions to get their details
+      const { data: selectedTransactions, error: fetchError } = await supabase
+        .from("transactions")
+        .select("id, amount, type, account_id")
+        .in("id", selectedItems);
+
+      if (fetchError) throw fetchError;
+
+      // Group transactions by account to calculate total adjustments
+      const accountAdjustments: { [key: string]: number } = {};
+
+      selectedTransactions?.forEach((transaction) => {
+        const accountId = transaction.account_id;
+        const adjustment =
+          transaction.type === "income"
+            ? -transaction.amount // Reverse income
+            : -transaction.amount; // Reverse expense (already negative)
+
+        if (!accountAdjustments[accountId]) {
+          accountAdjustments[accountId] = 0;
+        }
+        accountAdjustments[accountId] += adjustment;
+      });
+
+      // Update each affected account's balance
+      for (const [accountId, adjustment] of Object.entries(
+        accountAdjustments
+      )) {
+        // Get current account balance
+        const { data: accountData, error: accountError } = await supabase
+          .from("accounts")
+          .select("balance")
+          .eq("id", accountId)
+          .single();
+
+        if (accountError) throw accountError;
+
+        const currentBalance = accountData?.balance || 0;
+        const newBalance = currentBalance + adjustment;
+
+        // Update account balance
+        const { error: updateError } = await supabase
+          .from("accounts")
+          .update({ balance: newBalance })
+          .eq("id", accountId);
+
+        if (updateError) throw updateError;
+      }
+
+      // Delete the transactions after updating balances
+      const { error: deleteError } = await supabase
+        .from("transactions")
+        .delete()
+        .in("id", selectedItems);
+
+      if (deleteError) throw deleteError;
+
+      toast.success("Selected transactions deleted successfully");
+      setSelectedItems([]);
+      fetchTransactions();
+      fetchAccounts(); // Refresh accounts to show updated balances
+    } catch (error) {
+      console.error("Error deleting transactions:", error);
+      toast.error("Failed to delete transactions");
+    }
+  };
+
+  // Add function to handle checkbox selection
+  const handleSelect = (id: number) => {
+    setSelectedItems((prev) =>
+      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
+    );
+  };
+
+  // Add function to handle select all
+  const handleSelectAll = () => {
+    if (selectedItems.length === transactions.length) {
+      setSelectedItems([]);
+    } else {
+      setSelectedItems(transactions.map((t) => t.id));
+    }
+  };
+
+  // Update the resetFilters function to be more comprehensive
+  const resetFilters = () => {
+    setFilters({
+      search: "",
+      type: "all",
+      categoryIds: [],
+      startDate: null,
+      endDate: null,
+    });
+    setActiveTab("all"); // Reset the active tab as well
+  };
+
+  // Add a function to get selected categories display text
+  const getSelectedCategoriesText = () => {
+    if (filters.categoryIds.length === 0) return "All Categories";
+    if (filters.categoryIds.length === 1) {
+      const category = categories.find(
+        (c) => c.id.toString() === filters.categoryIds[0]
+      );
+      return category ? category.name : "All Categories";
+    }
+    return `${filters.categoryIds.length} categories selected`;
+  };
+
+  // Update the handleFilterChange function with proper type handling
+  const handleFilterChange = <K extends keyof Filters>(
+    key: K,
+    value: Filters[K]
+  ) => {
+    setFilters((prev) => ({
+      ...prev,
+      [key]: value,
+    }));
+  };
+
+  // Update the filter function
+  const filteredTransactions = transactions.filter((transaction) => {
+    const matchesSearch = transaction.description
+      .toLowerCase()
+      .includes(filters.search.toLowerCase());
+
+    const matchesType =
+      filters.type === "all" || transaction.type === filters.type;
+
+    const matchesCategory =
+      filters.categoryIds.length === 0 || // Show all if no categories selected
+      filters.categoryIds.includes(transaction.category_id.toString());
+
+    const matchesDateRange =
+      (!filters.startDate || new Date(transaction.date) >= filters.startDate) &&
+      (!filters.endDate || new Date(transaction.date) <= filters.endDate);
+
+    return matchesSearch && matchesType && matchesCategory && matchesDateRange;
+  });
 
   const getTransactionTypeDisplay = (transaction) => {
     if (transaction.type === "Liability") {
       return (
-        <span
-          className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800"
-        >
+        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
           Liability
         </span>
       );
     }
-    
+
     return (
       <span
         className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
@@ -621,7 +803,42 @@ const TransactionsSection = () => {
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
-        <h2 className="text-3xl font-bold">Transactions</h2>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            onClick={() => setShowFilters(!showFilters)}
+          >
+            <Filter className="h-4 w-4 mr-2" />
+            Filters
+          </Button>
+          {selectedItems.length > 0 && (
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button variant="destructive">
+                  <Trash className="h-4 w-4 mr-2" />
+                  Delete Selected ({selectedItems.length})
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>
+                    Delete Selected Transactions
+                  </AlertDialogTitle>
+                  <AlertDialogDescription>
+                    Are you sure you want to delete {selectedItems.length}{" "}
+                    selected transactions? This action cannot be undone.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction onClick={handleBulkDelete}>
+                    Delete
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          )}
+        </div>
 
         <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
           <DialogTrigger asChild>
@@ -743,7 +960,7 @@ const TransactionsSection = () => {
                     <SelectItem value="placeholder" disabled>
                       Select a category
                     </SelectItem>
-                    
+
                     {/* Income Categories */}
                     <div className="px-2 py-1.5 text-xs font-medium text-gray-500">
                       Income Categories
@@ -751,11 +968,14 @@ const TransactionsSection = () => {
                     {categories
                       .filter((cat) => cat.type === "income")
                       .map((category) => (
-                        <SelectItem key={category.id} value={category.id.toString()}>
+                        <SelectItem
+                          key={category.id}
+                          value={category.id.toString()}
+                        >
                           {category.name}
                         </SelectItem>
                       ))}
-                      
+
                     {/* Expense Categories */}
                     <div className="px-2 py-1.5 text-xs font-medium text-gray-500">
                       Expense Categories
@@ -763,11 +983,14 @@ const TransactionsSection = () => {
                     {categories
                       .filter((cat) => cat.type === "expense")
                       .map((category) => (
-                        <SelectItem key={category.id} value={category.id.toString()}>
+                        <SelectItem
+                          key={category.id}
+                          value={category.id.toString()}
+                        >
                           {category.name}
                         </SelectItem>
                       ))}
-                      
+
                     {/* Liability Categories */}
                     <div className="px-2 py-1.5 text-xs font-medium text-blue-500">
                       Liability Categories
@@ -775,10 +998,16 @@ const TransactionsSection = () => {
                     {categories
                       .filter((cat) => cat.type === "liability")
                       .map((category) => (
-                        <SelectItem key={category.id} value={category.id.toString()}>
+                        <SelectItem
+                          key={category.id}
+                          value={category.id.toString()}
+                        >
                           <span className="flex items-center">
                             <span className="w-2 h-2 bg-blue-500 rounded-full mr-2"></span>
-                            {category.name} <span className="ml-1 text-xs text-blue-500">(Liability)</span>
+                            {category.name}{" "}
+                            <span className="ml-1 text-xs text-blue-500">
+                              (Liability)
+                            </span>
                           </span>
                         </SelectItem>
                       ))}
@@ -790,9 +1019,10 @@ const TransactionsSection = () => {
               {selectedCategory?.type === "liability" && (
                 <div className="col-span-4 ml-[25%] mr-0 mt-1">
                   <div className="text-sm bg-blue-50 text-blue-700 p-2 rounded-md">
-                    <strong>Note:</strong> This is a liability category. {formData.type === "income" ? 
-                      "The amount will be added to the selected account balance." : 
-                      "This transaction will be recorded as a liability."}
+                    <strong>Note:</strong> This is a liability category.{" "}
+                    {formData.type === "income"
+                      ? "The amount will be added to the selected account balance."
+                      : "This transaction will be recorded as a liability."}
                   </div>
                 </div>
               )}
@@ -929,7 +1159,7 @@ const TransactionsSection = () => {
                     <SelectItem value="placeholder" disabled>
                       Select a category
                     </SelectItem>
-                    
+
                     {/* Income Categories */}
                     <div className="px-2 py-1.5 text-xs font-medium text-gray-500">
                       Income Categories
@@ -937,11 +1167,14 @@ const TransactionsSection = () => {
                     {categories
                       .filter((cat) => cat.type === "income")
                       .map((category) => (
-                        <SelectItem key={category.id} value={category.id.toString()}>
+                        <SelectItem
+                          key={category.id}
+                          value={category.id.toString()}
+                        >
                           {category.name}
                         </SelectItem>
                       ))}
-                      
+
                     {/* Expense Categories */}
                     <div className="px-2 py-1.5 text-xs font-medium text-gray-500">
                       Expense Categories
@@ -949,11 +1182,14 @@ const TransactionsSection = () => {
                     {categories
                       .filter((cat) => cat.type === "expense")
                       .map((category) => (
-                        <SelectItem key={category.id} value={category.id.toString()}>
+                        <SelectItem
+                          key={category.id}
+                          value={category.id.toString()}
+                        >
                           {category.name}
                         </SelectItem>
                       ))}
-                      
+
                     {/* Liability Categories */}
                     <div className="px-2 py-1.5 text-xs font-medium text-blue-500">
                       Liability Categories
@@ -961,10 +1197,16 @@ const TransactionsSection = () => {
                     {categories
                       .filter((cat) => cat.type === "liability")
                       .map((category) => (
-                        <SelectItem key={category.id} value={category.id.toString()}>
+                        <SelectItem
+                          key={category.id}
+                          value={category.id.toString()}
+                        >
                           <span className="flex items-center">
                             <span className="w-2 h-2 bg-blue-500 rounded-full mr-2"></span>
-                            {category.name} <span className="ml-1 text-xs text-blue-500">(Liability)</span>
+                            {category.name}{" "}
+                            <span className="ml-1 text-xs text-blue-500">
+                              (Liability)
+                            </span>
                           </span>
                         </SelectItem>
                       ))}
@@ -976,9 +1218,10 @@ const TransactionsSection = () => {
               {selectedCategory?.type === "liability" && (
                 <div className="col-span-4 ml-[25%] mr-0 mt-1">
                   <div className="text-sm bg-blue-50 text-blue-700 p-2 rounded-md">
-                    <strong>Note:</strong> This is a liability category. {formData.type === "income" ? 
-                      "The amount will be added to the selected account balance." : 
-                      "This transaction will be recorded as a liability."}
+                    <strong>Note:</strong> This is a liability category.{" "}
+                    {formData.type === "income"
+                      ? "The amount will be added to the selected account balance."
+                      : "This transaction will be recorded as a liability."}
                   </div>
                 </div>
               )}
@@ -1002,9 +1245,157 @@ const TransactionsSection = () => {
         </Dialog>
       </div>
 
+      {showFilters && (
+        <Card className="p-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="space-y-2">
+              <Label>Search</Label>
+              <div className="relative">
+                <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search transactions..."
+                  value={filters.search}
+                  onChange={(e) => handleFilterChange("search", e.target.value)}
+                  className="pl-8"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Type</Label>
+              <Select
+                value={filters.type}
+                onValueChange={(value) => handleFilterChange("type", value)}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select type" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All</SelectItem>
+                  <SelectItem value="income">Income</SelectItem>
+                  <SelectItem value="expense">Expense</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Categories</Label>
+              <Select>
+                <SelectTrigger className="w-full">
+                  <div className="flex justify-between items-center">
+                    <span className="truncate">
+                      {getSelectedCategoriesText()}
+                    </span>
+                    {filters.categoryIds.length > 0 && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-4 w-4 p-0 hover:bg-transparent"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setFilters((prev) => ({ ...prev, categoryIds: [] }));
+                        }}
+                      >
+                        <X className="h-3 w-3" />
+                      </Button>
+                    )}
+                  </div>
+                </SelectTrigger>
+                <SelectContent>
+                  <div className="p-2">
+                    <div className="mb-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="w-full"
+                        onClick={() =>
+                          setFilters((prev) => ({ ...prev, categoryIds: [] }))
+                        }
+                      >
+                        Clear Selection
+                      </Button>
+                    </div>
+                    <div className="max-h-[200px] overflow-auto">
+                      <div className="grid grid-cols-1 gap-2">
+                        {/* Group categories by type */}
+                        {["income", "expense", "liability"].map((type) => (
+                          <div key={type} className="space-y-1">
+                            <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground capitalize">
+                              {type} Categories
+                            </div>
+                            {categories
+                              .filter((cat) => cat.type === type)
+                              .map((category) => (
+                                <div
+                                  key={category.id}
+                                  className="flex items-center space-x-2 px-2 py-1.5 hover:bg-accent rounded-md cursor-pointer"
+                                  onClick={() => {
+                                    const categoryId = category.id.toString();
+                                    setFilters((prev) => ({
+                                      ...prev,
+                                      categoryIds: prev.categoryIds.includes(
+                                        categoryId
+                                      )
+                                        ? prev.categoryIds.filter(
+                                            (id) => id !== categoryId
+                                          )
+                                        : [...prev.categoryIds, categoryId],
+                                    }));
+                                  }}
+                                >
+                                  <Checkbox
+                                    checked={filters.categoryIds.includes(
+                                      category.id.toString()
+                                    )}
+                                    className="pointer-events-none"
+                                  />
+                                  <span className="text-sm">
+                                    {category.name}
+                                  </span>
+                                </div>
+                              ))}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Date Range</Label>
+              <div className="flex gap-2">
+                <DatePicker
+                  date={filters.startDate}
+                  onSelect={(date) => handleFilterChange("startDate", date)}
+                  className="w-[150px]"
+                />
+                <DatePicker
+                  date={filters.endDate}
+                  onSelect={(date) => handleFilterChange("endDate", date)}
+                  className="w-[150px]"
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="flex justify-end mt-4 gap-2">
+            <Button
+              variant="outline"
+              onClick={resetFilters}
+              className="flex items-center"
+            >
+              <RotateCcw className="h-4 w-4 mr-2" />
+              Reset All Filters
+            </Button>
+          </div>
+        </Card>
+      )}
+
       <Card>
         <CardHeader>
-          <CardTitle>Transactions List</CardTitle>
+          {/* <CardTitle>Transactions List</CardTitle> */}
           <Tabs
             defaultValue="all"
             className="w-full"
@@ -1023,27 +1414,42 @@ const TransactionsSection = () => {
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead className="w-[30px]">
+                    <Checkbox
+                      checked={
+                        selectedItems.length === filteredTransactions.length &&
+                        filteredTransactions.length > 0
+                      }
+                      onCheckedChange={handleSelectAll}
+                    />
+                  </TableHead>
                   <TableHead>Description</TableHead>
                   <TableHead>Amount</TableHead>
                   <TableHead>Type</TableHead>
                   <TableHead>Date</TableHead>
                   <TableHead>Account</TableHead>
                   <TableHead>Category</TableHead>
-                  <TableHead>Actions</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filteredTransactions.map((transaction) => (
                   <TableRow key={transaction.id}>
+                    <TableCell>
+                      <Checkbox
+                        checked={selectedItems.includes(transaction.id)}
+                        onCheckedChange={() => handleSelect(transaction.id)}
+                      />
+                    </TableCell>
                     <TableCell>{transaction.description}</TableCell>
                     <TableCell>
                       <span
                         className={`flex items-center font-medium ${
                           transaction.type === "expense"
                             ? "text-red-500"
-                            : transaction.type === "Liability" 
-                              ? "text-blue-500"
-                              : "text-green-500"
+                            : transaction.type === "Liability"
+                            ? "text-blue-500"
+                            : "text-green-500"
                         }`}
                       >
                         {transaction.type === "expense" ? (
@@ -1054,7 +1460,7 @@ const TransactionsSection = () => {
                           <ArrowUp className="mr-1 h-4 w-4" />
                         )}
                         {/* Always display amount as positive for Liability */}
-                        {transaction.type === "Liability" 
+                        {transaction.type === "Liability"
                           ? formatter.format(Math.abs(transaction.amount))
                           : formatter.format(transaction.amount)}
                       </span>
@@ -1067,7 +1473,7 @@ const TransactionsSection = () => {
                     </TableCell>
                     <TableCell>{transaction.accounts?.name}</TableCell>
                     <TableCell>{transaction.categories?.name}</TableCell>
-                    <TableCell>
+                    <TableCell className="text-right">
                       <div className="flex space-x-2">
                         <Button
                           variant="ghost"

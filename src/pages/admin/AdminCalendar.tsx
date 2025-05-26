@@ -20,6 +20,7 @@ import {
   getStatusLabel,
   shouldIncludeDriver,
   RentStatus,
+  determineOverdueStatus,
 } from "@/components/admin/calendar/CalendarUtils";
 
 const AdminCalendar = () => {
@@ -215,17 +216,29 @@ const AdminCalendar = () => {
                 }
               } else {
                 const joinDate = driver.joining_date
-                  ? new Date(driver.joining_date)
-                  : null;
+                  ? format(new Date(driver.joining_date), "dd MMM yyyy")
+                  : "Not available";
                 const checkDate = new Date(dateStr);
                 const now = new Date();
 
-                if (!joinDate || checkDate < joinDate) {
+                if (!joinDate || checkDate < new Date(driver.joining_date)) {
                   status = "not_joined";
                   notes = "Driver not yet joined";
                 } else if (checkDate < now) {
-                  status = "overdue";
-                  notes = "No form submitted";
+                  status = determineOverdueStatus(
+                    dateStr,
+                    driver.shift || "unknown",
+                    driver.joining_date,
+                    driver.online,
+                    driver.offline_from_date,
+                    driver.online_from_date
+                  );
+                  notes =
+                    status === "overdue"
+                      ? "Overdue"
+                      : status === "leave"
+                      ? "On leave"
+                      : "Not Paid";
                 }
               }
 
