@@ -168,18 +168,39 @@ const SubmitReport = () => {
     }
   };
 
-  function calculateRent(trips) {
-    if (trips >= 11) {
-      return 485;
+  function calculateRent(trips: number, shift: string = "morning") {
+    // Base rent calculation for 12-hour shift
+    let baseRent = 0;
+    if (trips >= 12) {
+      baseRent = 535;
+    } else if (trips >= 11) {
+      baseRent = 585;
     } else if (trips >= 10) {
-      return 585;
+      baseRent = 635;
     } else if (trips >= 8) {
-      return 665;
+      baseRent = 715;
     } else if (trips >= 5) {
-      return 695;
+      baseRent = 745;
     } else {
-      return 765;
+      baseRent = 795;
     }
+
+    // If it's a 24-hour shift, use different slabs
+    if (shift === "24hr") {
+      if (trips >= 22) {
+        return 970;
+      } else if (trips >= 20) {
+        return 1170;
+      } else if (trips >= 16) {
+        return 1330;
+      } else if (trips > 10) {
+        return 1390;
+      } else {
+        return 1530;
+      }
+    }
+
+    return baseRent;
   }
 
   // Calculate Rent
@@ -187,10 +208,9 @@ const SubmitReport = () => {
     if (!userData) return;
 
     const trips = Number(formData.total_trips);
-    const rent = calculateRent(trips);
+    const rent = calculateRent(trips, userData.shift);
     const tollandEarnings =
       Number(formData.toll) + Number(formData.total_earnings);
-    // const earnings = Number(formData.total_earnings) || 0;
     const cashcollect = Number(formData.total_cashcollect) || 0;
     const amount = tollandEarnings - cashcollect - rent;
 
@@ -244,6 +264,13 @@ const SubmitReport = () => {
       return;
     }
 
+    // Clean and validate vehicle number
+    const vehicleNumber = userData.vehicle_number?.trim().toUpperCase();
+    if (!vehicleNumber) {
+      toast.error("No vehicle assigned to this user.");
+      return;
+    }
+
     setSubmitting(true);
 
     try {
@@ -277,13 +304,43 @@ const SubmitReport = () => {
         rentScreenshotUrl = fileName;
       }
 
-      // Insert the fleet report FIRST
+      // First, verify the vehicle exists
+      const { data: vehicleCheck, error: vehicleCheckError } = await supabase
+        .from("vehicles")
+        .select("vehicle_number, total_trips")
+        .eq("vehicle_number", vehicleNumber)
+        .single();
+
+      if (vehicleCheckError) {
+        console.error("Error checking vehicle:", vehicleCheckError);
+        throw new Error("Failed to verify vehicle existence");
+      }
+
+      if (!vehicleCheck) {
+        console.error("Vehicle not found in database:", vehicleNumber);
+        throw new Error("Vehicle not found in database");
+      }
+
+      // Calculate new total trips
+      const currentVehicleTrips = vehicleCheck.total_trips || 0;
+      const newVehicleTrips =
+        currentVehicleTrips + Number(formData.total_trips);
+
+      console.log("Vehicle Update Debug:", {
+        vehicleNumber,
+        currentTrips: currentVehicleTrips,
+        newTrips: newVehicleTrips,
+        formTrips: formData.total_trips,
+        vehicleExists: !!vehicleCheck,
+      });
+
+      // Insert the fleet report
       const { error: reportError } = await supabase
         .from("fleet_reports")
         .insert({
           user_id: userData.id,
           driver_name: userData.name,
-          vehicle_number: userData.vehicle_number || "Not Assigned",
+          vehicle_number: vehicleNumber,
           total_trips: formData.total_trips,
           total_earnings: formData.total_earnings,
           shift: ["morning", "night"].includes(userData.shift)
@@ -305,31 +362,76 @@ const SubmitReport = () => {
 
       if (reportError) throw reportError;
 
-      // Now safely update totals (after insert success)
+      // Update user totals
       const newTotalEarnings =
         Number(currentEarnings) + Number(formData.total_earnings);
       const newTotalTrips = Number(currentTrips) + Number(formData.total_trips);
 
-      const newVehicleTrips = vehicleTrips + Number(formData.total_trips);
-
+      // Update user data
       const { error: userUpdateError } = await supabase
         .from("users")
         .update({ total_earning: newTotalEarnings, total_trip: newTotalTrips })
         .eq("id", userData.id);
 
-      const { error: vehicleUpdateError } = await supabase
-        .from("vehicles")
-        .update({ total_trips: newVehicleTrips })
-        .eq("vehicle_number", userData.vehicle_number);
-
-      if (userUpdateError || vehicleUpdateError) {
-        console.warn("Partial success:", userUpdateError || vehicleUpdateError);
-        toast.error("Report saved but updating stats failed.");
-        navigate("/profile");
-      } else {
-        toast.success("Daily report submitted successfully!");
-        navigate("/profile");
+      if (userUpdateError) {
+        console.error("Error updating user data:", userUpdateError);
+        throw userUpdateError;
       }
+
+      // Update vehicle trips with explicit error handling
+      try {
+        // First try to update with RLS bypass
+        const { data: updateData, error: vehicleUpdateError } = await supabase
+          .from("vehicles")
+          .update({ total_trips: newVehicleTrips })
+          .eq("vehicle_number", vehicleNumber)
+          .select();
+
+        if (vehicleUpdateError) {
+          console.error("Error updating vehicle data:", vehicleUpdateError);
+
+          // If the first attempt fails, try an alternative approach
+          const { data: altUpdateData, error: altUpdateError } =
+            await supabase.rpc("update_vehicle_trips", {
+              p_vehicle_number: vehicleNumber,
+              p_new_trips: newVehicleTrips,
+            });
+
+          if (altUpdateError) {
+            console.error("Alternative update also failed:", altUpdateError);
+            throw new Error("Failed to update vehicle trips");
+          }
+
+          if (!altUpdateData) {
+            throw new Error("Vehicle update failed - no rows affected");
+          }
+        } else if (!updateData || updateData.length === 0) {
+          console.error("No rows were updated for vehicle:", vehicleNumber);
+          console.error("Vehicle check data:", vehicleCheck);
+
+          // Try the alternative approach if no rows were affected
+          const { data: altUpdateData, error: altUpdateError } =
+            await supabase.rpc("update_vehicle_trips", {
+              p_vehicle_number: vehicleNumber,
+              p_new_trips: newVehicleTrips,
+            });
+
+          if (altUpdateError) {
+            console.error("Alternative update also failed:", altUpdateError);
+            throw new Error("Failed to update vehicle trips");
+          }
+
+          if (!altUpdateData) {
+            throw new Error("Vehicle update failed - no rows affected");
+          }
+        }
+      } catch (updateError) {
+        console.error("Vehicle update error:", updateError);
+        throw new Error("Failed to update vehicle trips");
+      }
+
+      toast.success("Daily report submitted successfully!");
+      navigate("/profile");
     } catch (error) {
       console.error("Error submitting report:", error);
       toast.error("Something went wrong. Please try again.");

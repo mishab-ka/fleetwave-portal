@@ -3,18 +3,7 @@ import { useNavigate } from "react-router-dom";
 import AdminLayout from "@/components/AdminLayout";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import {
-  AreaChart,
-  Area,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  BarChart,
-  Bar,
-  Legend,
-} from "recharts";
+// import { RentAttendanceManager } from "@/components/admin/RentAttendanceManager";
 import {
   Car,
   Users,
@@ -244,6 +233,7 @@ const AdminDashboard = () => {
       <div className="mb-8">
         <Leaderboard />
       </div>
+      {/* <RentAttendanceManager /> */}
     </AdminLayout>
   );
 };

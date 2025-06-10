@@ -247,14 +247,14 @@ export const determineOverdueStatus = (
   if (!isOnline && offlineFromDate) {
     const offlineDate = parseISO(offlineFromDate);
     if (!isBefore(checkDate, offlineDate)) {
-      return "leave";
+      return "offline";
     }
   }
 
   if (isOnline && onlineFromDate) {
     const onlineDate = parseISO(onlineFromDate);
     if (isBefore(checkDate, onlineDate)) {
-      return "leave";
+      return "offline";
     }
   }
 
@@ -265,16 +265,17 @@ export const determineOverdueStatus = (
   console.warn("Shift value received:", shift);
 
   let deadlineTime: Date;
+
   if (shift === "morning") {
     const deadlineDate = new Date(checkDate);
-    deadlineDate.setHours(17, 0, 0, 0);
+    deadlineDate.setHours(16, 30, 0, 0); // ✅ 4:30 PM
     deadlineTime = deadlineDate;
   } else if (shift === "night" || shift === "24hr") {
     const nextDay = addDays(new Date(checkDate), 1);
-    nextDay.setHours(5, 0, 0, 0);
+    nextDay.setHours(4, 30, 0, 0); // ✅ 4:30 AM
     deadlineTime = nextDay;
   } else {
-    throw new Error("Invalid shift type"); // Optional: safer code
+    throw new Error("Invalid shift type");
   }
 
   // If past deadline time and today is after checkDate

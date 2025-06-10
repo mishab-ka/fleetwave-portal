@@ -25,6 +25,11 @@ import AdminVehicleAttendance from "./pages/admin/AdminVehicleAttendance";
 import AdminUberAudit from "./pages/admin/AdminUberAudit";
 import AdminHR from "./pages/admin/AdminHR";
 import ApplyDriver from "./pages/ApplyDriver";
+import HiringCyclesHistory from "./pages/admin/HiringCyclesHistory";
+import HiringCalendar from "./components/HiringCalendar";
+import LeaveApplication from "./pages/LeaveApplication";
+import PartTimeBooking from "./pages/PartTimeBooking";
+import AdminLeaveManagement from "./pages/admin/AdminLeaveManagement";
 
 // Create a new query client instance
 const queryClient = new QueryClient({
@@ -75,7 +80,24 @@ const App = () => (
                 <Route path="/admin/uber-audit" element={<AdminUberAudit />} />{" "}
                 {/* Add the AdminVehicleAudit route */}
                 <Route path="/admin/hr" element={<AdminHR />} />
+                <Route
+                  path="/admin/hr/history"
+                  element={<HiringCyclesHistory />}
+                />
+                <Route path="/admin/hr/calendar" element={<HiringCalendar />} />
+                <Route
+                  path="/admin/leave-management"
+                  element={<AdminLeaveManagement />}
+                />
                 <Route path="/apply-driver" element={<ApplyDriver />} />
+                <Route
+                  path="/leave-application"
+                  element={<LeaveApplication />}
+                />
+                <Route
+                  path="/part-time-booking"
+                  element={<PartTimeBooking />}
+                />
                 {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
                 <Route path="*" element={<NotFound />} />
               </Routes>

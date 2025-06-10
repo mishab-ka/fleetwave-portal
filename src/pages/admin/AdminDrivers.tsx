@@ -44,9 +44,8 @@ import { format } from "date-fns";
 
 const AdminDrivers = () => {
   const [drivers, setDrivers] = useState([]);
-  const [filteredDrivers, setFilteredDrivers] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [selectedDriver, setSelectedDriver] = useState<null>(null);
+  const [selectedDriver, setSelectedDriver] = useState<any>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [showOnlineOnly, setShowOnlineOnly] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -55,16 +54,28 @@ const AdminDrivers = () => {
   const [showFilters, setShowFilters] = useState(false);
   const [isUpdating, setIsUpdating] = useState<string | null>(null);
   const [showLowDeposit, setShowLowDeposit] = useState(false);
+
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize] = useState(20);
+  const [totalCount, setTotalCount] = useState(0);
+  const [totalPages, setTotalPages] = useState(0);
+
+  // Statistics state
+  const [statistics, setStatistics] = useState({
+    total: 0,
+    online: 0,
+    offline: 0,
+    totalDeposit: 0,
+  });
+
   const isMobile = useIsMobile();
 
   useEffect(() => {
     fetchDrivers();
-  }, []);
-
-  useEffect(() => {
-    applyFilters();
+    fetchStatistics();
   }, [
-    drivers,
+    currentPage,
     showOnlineOnly,
     searchQuery,
     shiftFilter,
@@ -72,17 +83,64 @@ const AdminDrivers = () => {
     showLowDeposit,
   ]);
 
+  // Debounce search query to avoid too many API calls
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (currentPage !== 1) {
+        setCurrentPage(1);
+      } else {
+        fetchDrivers();
+      }
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
   const fetchDrivers = async () => {
+    setLoading(true);
     try {
-      const { data, error } = await supabase
+      let query = supabase
         .from("users")
-        .select("*")
+        .select("*", { count: "exact" })
         .order("name");
+
+      // Apply server-side filters
+      if (showOnlineOnly) {
+        query = query.eq("online", true);
+      }
+
+      if (searchQuery.trim() !== "") {
+        const searchTerm = searchQuery.toLowerCase().trim();
+        query = query.or(
+          `name.ilike.%${searchTerm}%,email_id.ilike.%${searchTerm}%,vehicle_number.ilike.%${searchTerm}%,driver_id.ilike.%${searchTerm}%`
+        );
+      }
+
+      if (shiftFilter !== "all") {
+        query = query.eq("shift", shiftFilter);
+      }
+
+      if (verificationFilter !== "all") {
+        const isVerified = verificationFilter === "verified";
+        query = query.eq("is_verified", isVerified);
+      }
+
+      if (showLowDeposit) {
+        query = query.lt("pending_balance", 2500);
+      }
+
+      // Apply pagination
+      const from = (currentPage - 1) * pageSize;
+      const to = from + pageSize - 1;
+      query = query.range(from, to);
+
+      const { data, error, count } = await query;
 
       if (error) throw error;
 
       setDrivers(data || []);
-      setFilteredDrivers(data || []);
+      setTotalCount(count || 0);
+      setTotalPages(Math.ceil((count || 0) / pageSize));
     } catch (error) {
       console.error("Error fetching drivers:", error);
       toast.error("Failed to load drivers data");
@@ -91,38 +149,39 @@ const AdminDrivers = () => {
     }
   };
 
-  const applyFilters = () => {
-    let result = [...drivers];
+  const fetchStatistics = async () => {
+    try {
+      // Get total count
+      const { count: totalCount } = await supabase
+        .from("users")
+        .select("*", { count: "exact", head: true });
 
-    if (showOnlineOnly) {
-      result = result.filter((driver) => driver.online);
+      // Get online count
+      const { count: onlineCount } = await supabase
+        .from("users")
+        .select("*", { count: "exact", head: true })
+        .eq("online", true);
+
+      // Get total deposit
+      const { data: depositData } = await supabase
+        .from("users")
+        .select("pending_balance");
+
+      const totalDeposit =
+        depositData?.reduce(
+          (sum, driver) => sum + (driver.pending_balance || 0),
+          0
+        ) || 0;
+
+      setStatistics({
+        total: totalCount || 0,
+        online: onlineCount || 0,
+        offline: (totalCount || 0) - (onlineCount || 0),
+        totalDeposit,
+      });
+    } catch (error) {
+      console.error("Error fetching statistics:", error);
     }
-
-    if (searchQuery.trim() !== "") {
-      const query = searchQuery.toLowerCase().trim();
-      result = result.filter(
-        (driver) =>
-          driver.name?.toLowerCase().includes(query) ||
-          driver.email_id?.toLowerCase().includes(query) ||
-          driver.vehicle_number?.toLowerCase().includes(query) ||
-          driver.driver_id?.toLowerCase().includes(query)
-      );
-    }
-
-    if (shiftFilter !== "all") {
-      result = result.filter((driver) => driver.shift === shiftFilter);
-    }
-
-    if (verificationFilter !== "all") {
-      const isVerified = verificationFilter === "verified";
-      result = result.filter((driver) => driver.is_verified === isVerified);
-    }
-
-    if (showLowDeposit) {
-      result = result.filter((driver) => (driver.pending_balance || 0) < 2500);
-    }
-
-    setFilteredDrivers(result);
   };
 
   const openDriverDetails = (driver) => {
@@ -163,16 +222,37 @@ const AdminDrivers = () => {
   ) => {
     try {
       setIsUpdating(id);
+
+      const updateData: any = {
+        online: !currentStatus,
+      };
+
+      if (currentStatus) {
+        // Going offline
+        updateData.offline_from_date = new Date().toISOString().split("T")[0];
+      } else {
+        // Going online
+        updateData.online_from_date = new Date().toISOString().split("T")[0];
+        updateData.offline_from_date = null;
+      }
+
       const { error } = await supabase
         .from("users")
-        .update({ online: !currentStatus })
+        .update(updateData)
         .eq("id", id);
 
       if (error) throw error;
 
       setDrivers(
         drivers.map((driver) =>
-          driver.id === id ? { ...driver, online: !currentStatus } : driver
+          driver.id === id
+            ? {
+                ...driver,
+                online: !currentStatus,
+                offline_from_date: updateData.offline_from_date,
+                online_from_date: updateData.online_from_date,
+              }
+            : driver
         )
       );
 
@@ -187,6 +267,7 @@ const AdminDrivers = () => {
 
   const handleOnlineFilterToggle = (checked: boolean) => {
     setShowOnlineOnly(checked);
+    setCurrentPage(1);
   };
 
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -195,14 +276,17 @@ const AdminDrivers = () => {
 
   const handleShiftFilterChange = (value: string) => {
     setShiftFilter(value);
+    setCurrentPage(1);
   };
 
   const handleVerificationFilterChange = (value: string) => {
     setVerificationFilter(value);
+    setCurrentPage(1);
   };
 
   const handleLowDepositToggle = (checked: boolean) => {
     setShowLowDeposit(checked);
+    setCurrentPage(1);
   };
 
   const resetFilters = () => {
@@ -211,70 +295,112 @@ const AdminDrivers = () => {
     setVerificationFilter("all");
     setShowOnlineOnly(false);
     setShowLowDeposit(false);
+    setCurrentPage(1);
   };
 
   const toggleFilters = () => {
     setShowFilters(!showFilters);
   };
 
-  const downloadDriverReport = () => {
-    // Create CSV header
-    const headers = [
-      "Name",
-      "Email",
-      "Phone Number",
-      "Vehicle Number",
-      "Shift",
-      "Status",
-      "Verified",
-      "Total Trips",
-      "Deposit",
-      "Joining Date",
-      "Documents",
-    ].join(",");
+  const downloadDriverReport = async () => {
+    try {
+      // Fetch all drivers with current filters for complete export
+      let query = supabase.from("users").select("*").order("name");
 
-    // Create CSV rows
-    const rows = filteredDrivers.map((driver) => {
-      const documents = [
-        driver.license ? "License" : "",
-        driver.aadhar ? "Aadhar" : "",
-        driver.pan ? "PAN" : "",
-      ]
-        .filter(Boolean)
-        .join("; ");
+      // Apply the same filters as current view
+      if (showOnlineOnly) {
+        query = query.eq("online", true);
+      }
 
-      return [
-        `"${driver.name || ""}"`,
-        `"${driver.email_id || ""}"`,
-        `"${driver.phone_number || ""}"`,
-        `"${driver.vehicle_number || ""}"`,
-        `"${driver.shift || ""}"`,
-        driver.online ? "Online" : "Offline",
-        driver.is_verified ? "Yes" : "No",
-        driver.total_trip || "0",
-        driver.pending_balance || "0",
-        driver.joining_date
-          ? format(new Date(driver.joining_date), "dd MMM yyyy")
-          : "Not available",
-        `"${documents}"`,
+      if (searchQuery.trim() !== "") {
+        const searchTerm = searchQuery.toLowerCase().trim();
+        query = query.or(
+          `name.ilike.%${searchTerm}%,email_id.ilike.%${searchTerm}%,vehicle_number.ilike.%${searchTerm}%,driver_id.ilike.%${searchTerm}%`
+        );
+      }
+
+      if (shiftFilter !== "all") {
+        query = query.eq("shift", shiftFilter);
+      }
+
+      if (verificationFilter !== "all") {
+        const isVerified = verificationFilter === "verified";
+        query = query.eq("is_verified", isVerified);
+      }
+
+      if (showLowDeposit) {
+        query = query.lt("pending_balance", 2500);
+      }
+
+      const { data: allDrivers, error } = await query;
+
+      if (error) throw error;
+
+      // Create CSV header
+      const headers = [
+        "Name",
+        "Email",
+        "Phone Number",
+        "Vehicle Number",
+        "Shift",
+        "Status",
+        "Verified",
+        "Total Trips",
+        "Deposit",
+        "Joining Date",
+        "Documents",
       ].join(",");
-    });
 
-    // Combine header and rows
-    const csvContent = [headers, ...rows].join("\n");
+      // Create CSV rows
+      const rows = (allDrivers || []).map((driver) => {
+        const documents = [
+          driver.license ? "License" : "",
+          driver.aadhar ? "Aadhar" : "",
+          driver.pan ? "PAN" : "",
+        ]
+          .filter(Boolean)
+          .join("; ");
 
-    // Create and trigger download
-    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-    const link = document.createElement("a");
-    const url = URL.createObjectURL(blob);
-    link.setAttribute("href", url);
-    link.setAttribute(
-      "download",
-      `driver_report_${format(new Date(), "yyyy-MM-dd")}.csv`
-    );
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+        return [
+          `"${driver.name || ""}"`,
+          `"${driver.email_id || ""}"`,
+          `"${driver.phone_number || ""}"`,
+          `"${driver.vehicle_number || ""}"`,
+          `"${driver.shift || ""}"`,
+          driver.online ? "Online" : "Offline",
+          driver.is_verified ? "Yes" : "No",
+          driver.total_trip || "0",
+          driver.pending_balance || "0",
+          driver.joining_date
+            ? format(new Date(driver.joining_date), "dd MMM yyyy")
+            : "Not available",
+          `"${documents}"`,
+        ].join(",");
+      });
+
+      // Combine header and rows
+      const csvContent = [headers, ...rows].join("\n");
+
+      // Create and trigger download
+      const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+      const link = document.createElement("a");
+      const url = URL.createObjectURL(blob);
+      link.setAttribute("href", url);
+      link.setAttribute(
+        "download",
+        `driver_report_${format(new Date(), "yyyy-MM-dd")}.csv`
+      );
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+      toast.success(
+        `Downloaded report with ${allDrivers?.length || 0} drivers`
+      );
+    } catch (error) {
+      console.error("Error downloading report:", error);
+      toast.error("Failed to download report");
+    }
   };
 
   const MobileDriverCard = ({ driver }) => (
@@ -394,16 +520,14 @@ const AdminDrivers = () => {
               <span className="text-sm font-medium text-gray-500">
                 Total Drivers
               </span>
-              <span className="text-2xl font-bold">
-                {filteredDrivers.length}
-              </span>
+              <span className="text-2xl font-bold">{statistics.total}</span>
             </div>
             <div className="flex flex-col items-center">
               <span className="text-sm font-medium text-gray-500">
                 Active Drivers
               </span>
               <span className="text-2xl font-bold text-green-500">
-                {filteredDrivers.filter((driver) => driver.online).length}
+                {statistics.online}
               </span>
             </div>
             <div className="flex flex-col items-center">
@@ -411,7 +535,7 @@ const AdminDrivers = () => {
                 Offline Drivers
               </span>
               <span className="text-2xl font-bold text-red-500">
-                {filteredDrivers.filter((driver) => !driver.online).length}
+                {statistics.offline}
               </span>
             </div>
             <div className="flex flex-col items-center">
@@ -419,13 +543,7 @@ const AdminDrivers = () => {
                 Total Deposit
               </span>
               <span className="text-2xl font-bold text-blue-500">
-                ₹
-                {filteredDrivers
-                  .reduce(
-                    (total, driver) => total + (driver.pending_balance || 0),
-                    0
-                  )
-                  .toLocaleString()}
+                ₹{statistics.totalDeposit.toLocaleString()}
               </span>
             </div>
           </div>
@@ -437,12 +555,14 @@ const AdminDrivers = () => {
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
             <div className="flex flex-wrap items-center gap-2">
               <Users className="h-5 w-5 text-muted-foreground" />
-              <span>Total: {drivers.length}</span>
+              <span>
+                Showing: {drivers.length} of {totalCount}
+              </span>
               <span className="text-green-500 text-sm md:text-base md:ml-2">
-                Online: {drivers.filter((d) => d.online).length}
+                Online: {statistics.online}
               </span>
               <span className="text-red-500 text-sm md:text-base md:ml-2">
-                Offline: {drivers.filter((d) => !d.online).length}
+                Offline: {statistics.offline}
               </span>
             </div>
 
@@ -567,12 +687,12 @@ const AdminDrivers = () => {
           ) : (
             <>
               <div className="md:hidden">
-                {filteredDrivers.length === 0 ? (
+                {drivers.length === 0 ? (
                   <p className="text-center py-8">No drivers found</p>
                 ) : (
                   <ScrollArea className="h-[calc(100vh-320px)]">
                     <div className="pr-3">
-                      {filteredDrivers.map((driver) => (
+                      {drivers.map((driver) => (
                         <MobileDriverCard key={driver.id} driver={driver} />
                       ))}
                     </div>
@@ -601,7 +721,7 @@ const AdminDrivers = () => {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {filteredDrivers.length === 0 ? (
+                        {drivers.length === 0 ? (
                           <TableRow>
                             <TableCell
                               colSpan={11}
@@ -611,7 +731,7 @@ const AdminDrivers = () => {
                             </TableCell>
                           </TableRow>
                         ) : (
-                          filteredDrivers.map((driver) => (
+                          drivers.map((driver) => (
                             <TableRow key={driver.id}>
                               <TableCell>
                                 <Avatar className="h-8 w-8">
@@ -747,6 +867,71 @@ const AdminDrivers = () => {
           )}
         </CardContent>
       </Card>
+
+      {/* Pagination Controls */}
+      {totalPages > 1 && (
+        <Card className="mt-4">
+          <CardContent className="p-4">
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+              <div className="text-sm text-muted-foreground">
+                Showing {(currentPage - 1) * pageSize + 1} to{" "}
+                {Math.min(currentPage * pageSize, totalCount)} of {totalCount}{" "}
+                drivers
+              </div>
+
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPage(currentPage - 1)}
+                  disabled={currentPage === 1 || loading}
+                >
+                  Previous
+                </Button>
+
+                <div className="flex items-center gap-1">
+                  {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                    let pageNum;
+                    if (totalPages <= 5) {
+                      pageNum = i + 1;
+                    } else if (currentPage <= 3) {
+                      pageNum = i + 1;
+                    } else if (currentPage >= totalPages - 2) {
+                      pageNum = totalPages - 4 + i;
+                    } else {
+                      pageNum = currentPage - 2 + i;
+                    }
+
+                    return (
+                      <Button
+                        key={pageNum}
+                        variant={
+                          currentPage === pageNum ? "default" : "outline"
+                        }
+                        size="sm"
+                        onClick={() => setCurrentPage(pageNum)}
+                        disabled={loading}
+                        className="w-8 h-8 p-0"
+                      >
+                        {pageNum}
+                      </Button>
+                    );
+                  })}
+                </div>
+
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPage(currentPage + 1)}
+                  disabled={currentPage === totalPages || loading}
+                >
+                  Next
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <DriverDetailsModal
         isOpen={isModalOpen}

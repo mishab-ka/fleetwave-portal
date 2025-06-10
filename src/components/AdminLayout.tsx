@@ -21,6 +21,7 @@ import {
   KeySquare,
   UserPlus,
   DollarSign,
+  CalendarDays,
 } from "lucide-react";
 import { Button } from "./ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "./ui/sheet";
@@ -116,6 +117,11 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children, title }) => {
       label: "HR",
       icon: <UserPlus size={20} />,
       path: "/admin/hr",
+    },
+    {
+      label: "Leave Management",
+      icon: <CalendarDays size={20} />,
+      path: "/admin/leave-management",
     },
     {
       label: "Settings",

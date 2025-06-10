@@ -161,7 +161,9 @@ const AdminCalendar = () => {
       // Get all online drivers
       const { data: onlineDrivers, error: driversError } = await supabase
         .from("users")
-        .select("id, name, vehicle_number, joining_date, shift, online")
+        .select(
+          "id, name, vehicle_number, joining_date, shift, online, offline_from_date, online_from_date"
+        )
         .eq("online", true);
 
       if (driversError) throw driversError;
@@ -237,9 +239,17 @@ const AdminCalendar = () => {
                     status === "overdue"
                       ? "Overdue"
                       : status === "leave"
-                      ? "On leave"
+                      ? "Driver offline on this date"
                       : "Not Paid";
                 }
+
+                // if (
+                //   driver.offline_from_date &&
+                //   driver.offline_from_date === dateStr
+                // ) {
+                //   status = "offline";
+                //   notes = "Driver offline on this date";
+                // }
               }
 
               processedData.push({

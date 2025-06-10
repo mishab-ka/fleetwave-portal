@@ -26,7 +26,7 @@ export default function ApplyDriver() {
 
       if (!cycle) {
         toast.error("No active hiring cycle found");
-        navigate("/");
+        // navigate("/");
         return;
       }
 
@@ -39,7 +39,7 @@ export default function ApplyDriver() {
 
       if ((approvedCount?.length || 0) >= cycle.total_vacancies) {
         toast.error("All positions have been filled");
-        navigate("/");
+        // navigate("/");
         return;
       }
 
@@ -47,7 +47,7 @@ export default function ApplyDriver() {
     } catch (error) {
       console.error("Error fetching hiring cycle:", error);
       toast.error("Failed to load hiring cycle");
-      navigate("/");
+      // navigate("/");
     } finally {
       setLoading(false);
     }
@@ -80,7 +80,7 @@ export default function ApplyDriver() {
 
           <DriverApplicationForm
             hiringCycleId={hiringCycle.id}
-            onSubmitSuccess={() => navigate("/")}
+            onSubmitSuccess={() => navigate("/apply-driver")}
           />
         </div>
       </div>

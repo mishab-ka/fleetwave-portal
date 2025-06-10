@@ -30,6 +30,18 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { RealtimeChannel } from "@supabase/supabase-js";
+import { useNavigate } from "react-router-dom";
+import { History, Trash2 } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 interface RealtimePayload {
   new: {
@@ -57,13 +69,15 @@ export default function AdminHR() {
     useState<ApplicantDetails | null>(null);
   const [showDetailsModal, setShowDetailsModal] = useState(false);
   const [showCalendar, setShowCalendar] = useState(false);
-  const [previousCycles, setPreviousCycles] = useState<HiringCycle[]>([]);
-  const [selectedCycle, setSelectedCycle] = useState<string>("current");
   const [cycleName, setCycleName] = useState("");
+  const navigate = useNavigate();
+  const [applicantToDelete, setApplicantToDelete] = useState<Applicant | null>(
+    null
+  );
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
 
   useEffect(() => {
     fetchCurrentCycle();
-    fetchPreviousCycles();
 
     // Set up real-time subscriptions
     const applicantsChannel = supabase.channel("applicants_changes");
@@ -79,10 +93,8 @@ export default function AdminHR() {
         },
         () => {
           // Only refresh if we're viewing the current cycle
-          if (selectedCycle === "current" && currentCycle) {
+          if (currentCycle) {
             fetchApplicants(currentCycle.id);
-          } else if (selectedCycle !== "current") {
-            fetchApplicants(selectedCycle);
           }
         }
       )
@@ -97,11 +109,8 @@ export default function AdminHR() {
           table: "hiring_cycles",
         },
         () => {
-          // Only refresh cycles list, don't change current view
-          fetchPreviousCycles();
-          if (selectedCycle === "current") {
-            fetchCurrentCycle();
-          }
+          // Only refresh current cycle
+          fetchCurrentCycle();
         }
       )
       .subscribe();
@@ -110,23 +119,7 @@ export default function AdminHR() {
       applicantsChannel.unsubscribe();
       cyclesChannel.unsubscribe();
     };
-  }, [selectedCycle, currentCycle]);
-
-  const fetchPreviousCycles = async () => {
-    try {
-      const { data, error } = await supabase
-        .from("hiring_cycles")
-        .select("*")
-        .eq("archived", true)
-        .order("created_at", { ascending: false });
-
-      if (error) throw error;
-      setPreviousCycles(data || []);
-    } catch (error) {
-      console.error("Error fetching previous cycles:", error);
-      toast.error("Failed to load previous hiring cycles");
-    }
-  };
+  }, [currentCycle]);
 
   const fetchCurrentCycle = async () => {
     try {
@@ -277,37 +270,31 @@ export default function AdminHR() {
     }
   };
 
-  const handleCycleChange = async (cycleId: string) => {
-    setSelectedCycle(cycleId);
-    setLoading(true);
+  const handleDeleteApplicant = async () => {
+    if (!applicantToDelete) return;
 
     try {
-      if (cycleId === "current") {
-        const { data: cycle, error } = await supabase
-          .from("hiring_cycles")
-          .select("*")
-          .eq("is_active", true)
-          .single();
+      const { error } = await supabase
+        .from("applicants")
+        .delete()
+        .eq("id", applicantToDelete.id);
 
-        if (error) throw error;
-        setCurrentCycle(cycle);
-        await fetchApplicants(cycle.id);
-      } else {
-        const { data: cycle, error } = await supabase
-          .from("hiring_cycles")
-          .select("*")
-          .eq("id", cycleId)
-          .single();
+      if (error) throw error;
 
-        if (error) throw error;
-        setCurrentCycle(cycle);
-        await fetchApplicants(cycle.id);
-      }
+      setApplicants(
+        applicants.filter((app) => app.id !== applicantToDelete.id)
+      );
+      updateStats(
+        applicants.filter((app) => app.id !== applicantToDelete.id),
+        currentCycle?.total_vacancies || 0
+      );
+      toast.success("Application deleted successfully");
     } catch (error) {
-      console.error("Error fetching cycle:", error);
-      toast.error("Failed to load hiring cycle");
+      console.error("Error deleting application:", error);
+      toast.error("Failed to delete application");
     } finally {
-      setLoading(false);
+      setShowDeleteDialog(false);
+      setApplicantToDelete(null);
     }
   };
 
@@ -373,80 +360,62 @@ export default function AdminHR() {
         </div>
 
         {/* Controls */}
-        <div className="bg-white p-6 rounded-lg shadow space-y-4">
-          <div className="flex flex-col md:flex-row gap-4">
-            <div className="flex-1 space-y-4">
-              <div>
-                <label className="block text-sm font-medium mb-1">
-                  Number of Vacancies
-                </label>
-                <Input
-                  type="number"
-                  min="1"
-                  value={newVacancies}
-                  onChange={(e) => setNewVacancies(parseInt(e.target.value))}
-                  className="w-full"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">
-                  Cycle Name
-                </label>
-                <Input
-                  type="text"
-                  value={cycleName}
-                  onChange={(e) => setCycleName(e.target.value)}
-                  placeholder="Enter cycle name"
-                  className="w-full"
-                />
-              </div>
+        <div className=" p-6 rounded-lg  space-y-4">
+          <div className="flex flex-wrap md:flex-nowrap gap-4 items-end">
+            <div className="flex flex-col">
+              <label className="text-sm font-medium mb-1">
+                Number of Vacancies
+              </label>
+              <Input
+                type="number"
+                min="1"
+                value={newVacancies}
+                onChange={(e) => setNewVacancies(parseInt(e.target.value))}
+                className="w-48"
+              />
             </div>
-            <div className="flex items-end gap-2">
-              <Button onClick={startNewCycle} className="bg-fleet-purple">
-                Start New Cycle
-              </Button>
-              <Button
-                onClick={() => setShowCalendar(!showCalendar)}
-                variant="outline"
-              >
-                {showCalendar ? "Hide Calendar" : "Show Calendar"}
-              </Button>
+            <div className="flex flex-col">
+              <label className="text-sm font-medium mb-1">Cycle Name</label>
+              <Input
+                type="text"
+                value={cycleName}
+                onChange={(e) => setCycleName(e.target.value)}
+                placeholder="Enter cycle name"
+                className="w-48"
+              />
             </div>
-          </div>
-        </div>
-
-        {/* Previous Cycles Selector */}
-        <div className="bg-white p-6 rounded-lg shadow">
-          <div className="flex items-center gap-4">
-            <Select value={selectedCycle} onValueChange={handleCycleChange}>
-              <SelectTrigger className="w-[200px]">
-                <SelectValue placeholder="Select cycle" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="current">Current Cycle</SelectItem>
-                {previousCycles.map((cycle) => (
-                  <SelectItem key={cycle.id} value={cycle.id}>
-                    {cycle.cycle_name} (
-                    {format(new Date(cycle.created_at), "PPP")})
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <Button onClick={startNewCycle} className="bg-fleet-purple">
+              Start New Cycle
+            </Button>
+            <Button
+              onClick={() => navigate("/admin/hr/calendar")}
+              variant="outline"
+              className="flex items-center gap-2"
+            >
+              Show Calendar
+            </Button>
+            <Button
+              onClick={() => navigate("/admin/hr/history")}
+              variant="outline"
+              className="flex items-center gap-2"
+            >
+              <History className="h-4 w-4" />
+              View History
+            </Button>
           </div>
         </div>
 
         {/* Calendar View */}
-        {showCalendar && (
+        {/* {showCalendar && (
           <div className="bg-white p-6 rounded-lg shadow">
             <HiringCalendar applicants={applicants} />
           </div>
-        )}
+        )} */}
 
         {/* Applications Table */}
-        <div className="bg-white rounded-lg shadow">
-          <div className="p-6">
-            <h2 className="text-lg font-semibold mb-4">Applications</h2>
-            <div className="overflow-x-auto">
+        <div className="bg-white rounded-lg shadow h-[500px] overflow-y-auto">
+          <div className="p-6 ">
+            <div className="  overflow-x-auto ">
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -460,7 +429,7 @@ export default function AdminHR() {
                     <TableHead>Actions</TableHead>
                   </TableRow>
                 </TableHeader>
-                <TableBody>
+                <TableBody className=" overflow-y-auto">
                   {applicants.map((applicant) => (
                     <TableRow key={applicant.id}>
                       <TableCell>{applicant.full_name}</TableCell>
@@ -487,13 +456,27 @@ export default function AdminHR() {
                           : "-"}
                       </TableCell>
                       <TableCell>
-                        <Button
-                          size="sm"
-                          onClick={() => handleViewApplicant(applicant)}
-                          variant="outline"
-                        >
-                          View Details
-                        </Button>
+                        <div className="flex gap-2">
+                          <Button
+                            size="sm"
+                            onClick={() => handleViewApplicant(applicant)}
+                            variant="outline"
+                          >
+                            View Details
+                          </Button>
+                          <Button
+                            size="sm"
+                            onClick={() => {
+                              setApplicantToDelete(applicant);
+                              setShowDeleteDialog(true);
+                            }}
+                            variant="destructive"
+                            className="flex items-center gap-1"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                            Delete
+                          </Button>
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -511,6 +494,25 @@ export default function AdminHR() {
         onStatusChange={handleStatusChange}
         onJoiningDateChange={handleJoiningDateChange}
       />
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Application</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete this application? This action
+              cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDeleteApplicant}>
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </AdminLayout>
   );
 }

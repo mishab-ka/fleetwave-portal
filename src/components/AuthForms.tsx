@@ -93,7 +93,7 @@ const AuthForms = () => {
               id: data.user.id,
               name: data.user.user_metadata?.name || "User",
               email_id: data.user.email,
-              online: true,
+              online: false,
               driver_id: driverId,
               joining_date: today,
               phone_number: data.user.user_metadata?.phone || "0000000000",
@@ -148,7 +148,7 @@ const AuthForms = () => {
             joining_date: today,
             driver_id: driverId,
             phone_number: signupForm.phone || "0000000000",
-            online: true,
+            online: false,
           });
 
           if (profileError) {

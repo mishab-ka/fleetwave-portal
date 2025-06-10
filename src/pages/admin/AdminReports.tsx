@@ -25,6 +25,7 @@ import {
   XCircle,
   Download,
   CalendarIcon,
+  X,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
@@ -81,6 +82,8 @@ const AdminReports = () => {
     "today" | "week" | "custom" | null
   >(null);
   const [customDate, setCustomDate] = useState<Date | null>(null);
+
+  const [statusFilter, setStatusFilter] = useState<string[]>(["all"]);
 
   useEffect(() => {
     fetchReports();
@@ -212,10 +215,6 @@ const AdminReports = () => {
     }
   };
 
-  const [statusFilter, setStatusFilter] = useState<
-    "all" | "pending_verification" | "approved" | "leave" | "rejected"
-  >("all");
-
   const calculateFleetRent = (tripCount: number): number => {
     if (tripCount < 64) return 980;
     if (tripCount >= 64 && tripCount < 80) return 830;
@@ -236,12 +235,8 @@ const AdminReports = () => {
       report.vehicle_number?.toLowerCase().includes(searchQuery.toLowerCase());
 
     const matchesStatus =
-      statusFilter === "all" ||
-      (statusFilter === "pending_verification" &&
-        report.status === "pending_verification") ||
-      (statusFilter === "approved" && report.status === "approved") ||
-      (statusFilter === "leave" && report.status === "leave") ||
-      (statusFilter === "rejected" && report.status === "rejected");
+      statusFilter.includes("all") ||
+      statusFilter.includes(report.status || "pending_verification");
 
     const reportDate = new Date(report.rent_date);
     const today = new Date();
@@ -456,19 +451,22 @@ const AdminReports = () => {
           />
         </div>
 
-        <div className="w-full lg:w-[200px]">
+        <div className="w-full lg:w-[300px]">
           <Select
-            value={statusFilter}
-            onValueChange={(value) =>
-              setStatusFilter(
-                value as
-                  | "all"
-                  | "pending_verification"
-                  | "approved"
-                  | "leave"
-                  | "rejected"
-              )
-            }
+            value={statusFilter[0]}
+            onValueChange={(value) => {
+              if (value === "all") {
+                setStatusFilter(["all"]);
+              } else {
+                setStatusFilter((prev) => {
+                  const newFilter = prev.filter((f) => f !== "all");
+                  if (newFilter.includes(value)) {
+                    return newFilter.filter((f) => f !== value);
+                  }
+                  return [...newFilter, value];
+                });
+              }
+            }}
           >
             <SelectTrigger className="w-full">
               <SelectValue placeholder="Filter by Status" />
@@ -481,6 +479,31 @@ const AdminReports = () => {
               <SelectItem value="leave">Leave</SelectItem>
             </SelectContent>
           </Select>
+          <div className="flex flex-wrap gap-2 mt-2">
+            {statusFilter
+              .filter((status) => status !== "all")
+              .map((status) => (
+                <Badge
+                  key={status}
+                  variant="secondary"
+                  className="flex items-center gap-1"
+                >
+                  {status === "pending_verification"
+                    ? "Pending"
+                    : status.charAt(0).toUpperCase() + status.slice(1)}
+                  <button
+                    onClick={() => {
+                      setStatusFilter((prev) =>
+                        prev.filter((s) => s !== status)
+                      );
+                    }}
+                    className="ml-1 hover:bg-gray-200 rounded-full p-0.5"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </Badge>
+              ))}
+          </div>
         </div>
 
         <div className="flex flex-wrap gap-2">
@@ -886,6 +909,18 @@ const AdminReports = () => {
                   }
                 />
               </div>
+              <div className="space-y-2">
+                <label>Remarks</label>
+                <Input
+                  value={selectedReport?.remarks}
+                  onChange={(e) =>
+                    setSelectedReport((prev) => ({
+                      ...prev!,
+                      remarks: String(e.target.value),
+                    }))
+                  }
+                />
+              </div>
             </div>
 
             <div className="space-y-4">
@@ -960,6 +995,8 @@ const AdminReports = () => {
                         rent_paid_amount: selectedReport?.rent_paid_amount,
                         total_cashcollect: selectedReport?.total_cashcollect,
                         rent_date: selectedReport?.rent_date,
+                        toll: selectedReport?.toll,
+                        remarks: selectedReport?.remarks,
                         status: selectedReport?.status,
                       })
                       .eq("id", selectedReport?.id);

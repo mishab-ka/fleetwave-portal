@@ -83,7 +83,7 @@ export function UberAuditManager() {
   const [audits, setAudits] = useState<UberAudit[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedWeek, setSelectedWeek] = useState(
-    format(endOfWeek(new Date()), "yyyy-MM-dd")
+    format(endOfWeek(new Date(), { weekStartsOn: 1 }), "yyyy-MM-dd")
   );
   const [calendarOpen, setCalendarOpen] = useState(false);
   const [statusFilter, setStatusFilter] = useState<AuditStatus[]>([]);
@@ -411,7 +411,9 @@ export function UberAuditManager() {
       direction === "next"
         ? addWeeks(currentDate, 1)
         : subWeeks(currentDate, 1);
-    setSelectedWeek(format(endOfWeek(newDate), "yyyy-MM-dd"));
+    setSelectedWeek(
+      format(endOfWeek(newDate, { weekStartsOn: 1 }), "yyyy-MM-dd")
+    );
   };
 
   const handleVerifyClick = (audit: UberAudit) => {
@@ -439,8 +441,7 @@ export function UberAuditManager() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-bold">Uber Weekly Audit</h2>
+      {/* <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -492,54 +493,8 @@ export function UberAuditManager() {
               </DropdownMenuCheckboxItem>
             </DropdownMenuContent>
           </DropdownMenu>
-
-          <Button
-            variant="outline"
-            size="icon"
-            onClick={() => navigateWeek("prev")}
-          >
-            <ChevronLeft className="h-4 w-4" />
-          </Button>
-
-          <Popover open={calendarOpen} onOpenChange={setCalendarOpen}>
-            <PopoverTrigger asChild>
-              <Button
-                variant="outline"
-                className={cn(
-                  "w-[240px] justify-start text-left font-normal",
-                  !selectedWeek && "text-muted-foreground"
-                )}
-              >
-                <CalendarIcon className="mr-2 h-4 w-4" />
-                {selectedWeek
-                  ? format(new Date(selectedWeek), "PPP")
-                  : "Pick a date"}
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-auto p-0" align="end">
-              <Calendar
-                mode="single"
-                selected={new Date(selectedWeek)}
-                onSelect={(date) => {
-                  if (date) {
-                    setSelectedWeek(format(endOfWeek(date), "yyyy-MM-dd"));
-                    setCalendarOpen(false);
-                  }
-                }}
-                initialFocus
-              />
-            </PopoverContent>
-          </Popover>
-
-          <Button
-            variant="outline"
-            size="icon"
-            onClick={() => navigateWeek("next")}
-          >
-            <ChevronRight className="h-4 w-4" />
-          </Button>
         </div>
-      </div>
+      </div> */}
 
       {/* Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -640,6 +595,59 @@ export function UberAuditManager() {
               </DropdownMenuCheckboxItem>
             </DropdownMenuContent>
           </DropdownMenu>
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={() => navigateWeek("prev")}
+          >
+            <ChevronLeft className="h-4 w-4" />
+          </Button>
+
+          <Popover open={calendarOpen} onOpenChange={setCalendarOpen}>
+            <PopoverTrigger asChild>
+              <Button
+                variant="outline"
+                className={cn(
+                  "w-[240px] justify-start text-left font-normal",
+                  !selectedWeek && "text-muted-foreground"
+                )}
+              >
+                <CalendarIcon className="mr-2 h-4 w-4" />
+                {selectedWeek
+                  ? `${format(
+                      startOfWeek(new Date(selectedWeek), { weekStartsOn: 1 }),
+                      "MMM dd"
+                    )} - ${format(
+                      endOfWeek(new Date(selectedWeek), { weekStartsOn: 1 }),
+                      "MMM dd"
+                    )}`
+                  : "Pick a date"}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-auto p-0" align="end">
+              <Calendar
+                mode="single"
+                selected={new Date(selectedWeek)}
+                onSelect={(date) => {
+                  if (date) {
+                    setSelectedWeek(
+                      format(endOfWeek(date, { weekStartsOn: 1 }), "yyyy-MM-dd")
+                    );
+                    setCalendarOpen(false);
+                  }
+                }}
+                initialFocus
+              />
+            </PopoverContent>
+          </Popover>
+
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={() => navigateWeek("next")}
+          >
+            <ChevronRight className="h-4 w-4" />
+          </Button>
         </div>
       </div>
 
@@ -659,7 +667,7 @@ export function UberAuditManager() {
         </div>
       ) : (
         <div className="bg-white rounded-xl border shadow-sm overflow-hidden">
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto max-h-[550px] overflow-y-auto">
             <Table>
               <TableHeader>
                 <TableRow className="border-b border-border bg-slate-50">
