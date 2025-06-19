@@ -26,6 +26,8 @@ import {
   Download,
   CalendarIcon,
   X,
+  Share,
+  Share2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
@@ -46,6 +48,7 @@ import {
 
 interface Report {
   id: string;
+  user_id: string;
   driver_name: string;
   vehicle_number: string;
   total_trips: number;
@@ -62,6 +65,7 @@ interface Report {
   status: string | null;
   remarks: string | null;
   toll: number;
+  driver_phone: string;
 }
 
 interface VehicleInfo {
@@ -85,10 +89,46 @@ const AdminReports = () => {
 
   const [statusFilter, setStatusFilter] = useState<string[]>(["all"]);
 
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize] = useState(20);
+  const [totalCount, setTotalCount] = useState(0);
+  const [totalPages, setTotalPages] = useState(0);
+
+  const [driverPhone, setDriverPhone] = useState("");
+
+  // Statistics state - single state that responds to filters
+  const [statistics, setStatistics] = useState({
+    totalEarnings: 0,
+    totalCashCollect: 0,
+    totalRentPaid: 0,
+    tollAmount: 0,
+    totalReports: 0,
+    pendingCount: 0,
+    approvedCount: 0,
+    rejectedCount: 0,
+    leaveCount: 0,
+  });
+
   useEffect(() => {
     fetchReports();
+    fetchStatistics();
     setupRealtimeUpdates();
-  }, []);
+  }, [currentPage, statusFilter, dateFilter, dateRange]);
+
+  // Debounce search query to avoid too many API calls
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (currentPage !== 1) {
+        setCurrentPage(1);
+      } else {
+        fetchReports();
+        fetchStatistics();
+      }
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
 
   useEffect(() => {
     const fetchVehicles = async () => {
@@ -122,22 +162,195 @@ const AdminReports = () => {
   }, []);
 
   const fetchReports = async () => {
+    setLoading(true);
     try {
-      const { data, error } = await supabase
+      let query = supabase
         .from("fleet_reports")
-        .select("*")
+        .select("*", { count: "exact" })
         .order("submission_date", { ascending: false });
+
+      // Apply server-side filters
+      if (searchQuery.trim() !== "") {
+        const searchTerm = searchQuery.toLowerCase().trim();
+        query = query.or(
+          `driver_name.ilike.%${searchTerm}%,vehicle_number.ilike.%${searchTerm}%`
+        );
+      }
+
+      // Status filter
+      if (!statusFilter.includes("all") && statusFilter.length > 0) {
+        if (statusFilter.length === 1) {
+          query = query.eq("status", statusFilter[0]);
+        } else {
+          // Multiple status filters
+          const orConditions = statusFilter
+            .filter((status) => status !== "all") // Extra safety
+            .map((status) => `status.eq.${status}`);
+
+          if (orConditions.length > 0) {
+            const orCondition = orConditions.join(",");
+            query = query.or(orCondition);
+          }
+        }
+      }
+
+      // Date filters
+      if (dateFilter === "today") {
+        const today = new Date();
+        const todayStr = today.toISOString().split("T")[0];
+        query = query.eq("rent_date", todayStr);
+      } else if (dateFilter === "week") {
+        const today = new Date();
+        const startOfWeek = new Date(today);
+        const dayOfWeek = today.getDay();
+        const daysToSubtract = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+        startOfWeek.setDate(today.getDate() - daysToSubtract);
+        startOfWeek.setHours(0, 0, 0, 0);
+
+        const endOfWeek = new Date(startOfWeek);
+        endOfWeek.setDate(startOfWeek.getDate() + 6);
+        endOfWeek.setHours(23, 59, 59, 999);
+
+        query = query
+          .gte("rent_date", startOfWeek.toISOString().split("T")[0])
+          .lte("rent_date", endOfWeek.toISOString().split("T")[0]);
+      } else if (dateFilter === "custom" && dateRange.start && dateRange.end) {
+        query = query
+          .gte("rent_date", dateRange.start.toISOString().split("T")[0])
+          .lte("rent_date", dateRange.end.toISOString().split("T")[0]);
+      }
+
+      // Apply pagination
+      const from = (currentPage - 1) * pageSize;
+      const to = from + pageSize - 1;
+      query = query.range(from, to);
+
+      const { data, error, count } = await query;
 
       if (error) throw error;
 
       if (data) {
         setReports(data as Report[]);
+        setTotalCount(count || 0);
+        setTotalPages(Math.ceil((count || 0) / pageSize));
+        // setDriverPhone(data[0].user_id);
       }
     } catch (error) {
       console.error("Error fetching reports:", error);
       toast.error("Failed to load reports data");
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Single statistics function that responds to filters
+  const fetchStatistics = async () => {
+    try {
+      let query = supabase
+        .from("fleet_reports")
+        .select(
+          "user_id, total_earnings, total_cashcollect, rent_paid_amount, toll, status"
+        );
+
+      // Apply the same filters as reports for statistics
+      if (searchQuery.trim() !== "") {
+        const searchTerm = searchQuery.toLowerCase().trim();
+        query = query.or(
+          `driver_name.ilike.%${searchTerm}%,vehicle_number.ilike.%${searchTerm}%`
+        );
+      }
+
+      if (!statusFilter.includes("all") && statusFilter.length > 0) {
+        if (statusFilter.length === 1) {
+          query = query.eq("status", statusFilter[0]);
+        } else {
+          const orConditions = statusFilter
+            .filter((status) => status !== "all") // Extra safety
+            .map((status) => `status.eq.${status}`);
+
+          if (orConditions.length > 0) {
+            const orCondition = orConditions.join(",");
+            query = query.or(orCondition);
+          }
+        }
+      }
+
+      // Apply date filters
+      if (dateFilter === "today") {
+        const today = new Date();
+        const todayStr = today.toISOString().split("T")[0];
+        query = query.eq("rent_date", todayStr);
+      } else if (dateFilter === "week") {
+        const today = new Date();
+        const startOfWeek = new Date(today);
+        const dayOfWeek = today.getDay();
+        const daysToSubtract = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+        startOfWeek.setDate(today.getDate() - daysToSubtract);
+        startOfWeek.setHours(0, 0, 0, 0);
+
+        const endOfWeek = new Date(startOfWeek);
+        endOfWeek.setDate(startOfWeek.getDate() + 6);
+        endOfWeek.setHours(23, 59, 59, 999);
+
+        query = query
+          .gte("rent_date", startOfWeek.toISOString().split("T")[0])
+          .lte("rent_date", endOfWeek.toISOString().split("T")[0]);
+      } else if (dateFilter === "custom" && dateRange.start && dateRange.end) {
+        query = query
+          .gte("rent_date", dateRange.start.toISOString().split("T")[0])
+          .lte("rent_date", dateRange.end.toISOString().split("T")[0]);
+      }
+
+      const { data, error } = await query;
+
+      if (error) throw error;
+
+      if (data) {
+        const totalEarnings = data.reduce(
+          (sum, report) => sum + (report.total_earnings || 0),
+          0
+        );
+        const totalCashCollect = data.reduce(
+          (sum, report) => sum + (report.total_cashcollect || 0),
+          0
+        );
+        const totalRentPaid = data.reduce(
+          (sum, report) => sum + (report.rent_paid_amount || 0),
+          0
+        );
+        const tollAmount = data.reduce(
+          (sum, report) => sum + (report.toll || 0),
+          0
+        );
+
+        // Count statuses
+        const pendingCount = data.filter(
+          (report) => report.status === "pending_verification"
+        ).length;
+        const approvedCount = data.filter(
+          (report) => report.status === "approved"
+        ).length;
+        const rejectedCount = data.filter(
+          (report) => report.status === "rejected"
+        ).length;
+        const leaveCount = data.filter(
+          (report) => report.status === "leave"
+        ).length;
+
+        setStatistics({
+          totalEarnings,
+          totalCashCollect,
+          totalRentPaid,
+          tollAmount,
+          totalReports: data.length,
+          pendingCount,
+          approvedCount,
+          rejectedCount,
+          leaveCount,
+        });
+      }
+    } catch (error) {
+      console.error("Error fetching statistics:", error);
     }
   };
 
@@ -200,6 +413,8 @@ const AdminReports = () => {
 
   const getStatusBadge = (status: string | null) => {
     switch (status) {
+      case "pending_verification":
+        return <Badge variant="outline">Pending</Badge>;
       case "approved":
         return <Badge variant="success">Approved</Badge>;
       case "rejected":
@@ -211,7 +426,7 @@ const AdminReports = () => {
           </Badge>
         );
       default:
-        return <Badge variant="outline">Pending</Badge>;
+        return <Badge variant="outline">Unknown</Badge>;
     }
   };
 
@@ -229,96 +444,33 @@ const AdminReports = () => {
     0
   );
 
-  const filteredReports = reports.filter((report) => {
-    const matchesSearch =
-      report.driver_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      report.vehicle_number?.toLowerCase().includes(searchQuery.toLowerCase());
-
-    const matchesStatus =
-      statusFilter.includes("all") ||
-      statusFilter.includes(report.status || "pending_verification");
-
-    const reportDate = new Date(report.rent_date);
-    const today = new Date();
-    const startOfWeek = new Date(today);
-
-    const dayOfWeek = today.getDay();
-    const daysToSubtract = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
-    startOfWeek.setDate(today.getDate() - daysToSubtract);
-
-    startOfWeek.setHours(0, 0, 0, 0);
-
-    const endOfWeek = new Date(startOfWeek);
-    endOfWeek.setDate(startOfWeek.getDate() + 6);
-    endOfWeek.setHours(23, 59, 59, 999);
-
-    if (dateFilter === "today") {
-      return (
-        matchesSearch &&
-        matchesStatus &&
-        reportDate.toDateString() === today.toDateString()
-      );
-    } else if (dateFilter === "week") {
-      return (
-        matchesSearch &&
-        matchesStatus &&
-        reportDate >= startOfWeek &&
-        reportDate <= endOfWeek
-      );
-    } else if (dateFilter === "custom" && dateRange.start && dateRange.end) {
-      return (
-        matchesSearch &&
-        matchesStatus &&
-        reportDate >= dateRange.start &&
-        reportDate <= dateRange.end
-      );
-    } else {
-      return matchesSearch && matchesStatus;
-    }
-  });
-
-  const totalEarnings = filteredReports.reduce(
-    (sum, report) => sum + report.total_earnings,
-    0
-  );
-  const totalCashCollect = filteredReports.reduce(
-    (sum, report) => sum + report.total_cashcollect,
-    0
-  );
-  const totalRentPaid = filteredReports.reduce(
-    (sum, report) => sum + report.rent_paid_amount,
-    0
-  );
   function calculateRent(trips) {
-    if (trips >= 11) {
-      return 485;
-    } else if (trips >= 10) {
+    if (trips >= 12) {
+      return 535;
+    } else if (trips >= 11) {
       return 585;
+    } else if (trips >= 10) {
+      return 635;
     } else if (trips >= 8) {
-      return 665;
+      return 715;
     } else if (trips >= 5) {
-      return 695;
+      return 745;
     } else {
-      return 765;
+      return 795;
     }
   }
 
-  const earnings = filteredReports.reduce((total, report) => {
+  // Calculate earnings based on current statistics
+  const earnings = reports.reduce((total, report) => {
     return (
       total + (report.total_trips === 0 ? 0 : calculateRent(report.total_trips))
     );
   }, 0);
 
-  const cashInUber = totalEarnings - totalCashCollect;
-  const cashInHand = totalRentPaid;
-  const TollAmount = filteredReports.reduce((total, report) => {
-    return total + report.toll;
-  }, 0);
-  const totalToll = TollAmount * 7;
+  const cashInUber = statistics.totalEarnings - statistics.totalCashCollect;
+  const cashInHand = statistics.totalRentPaid;
+  const totalToll = statistics.tollAmount * 7;
 
-  console.log(totalToll);
-
-  // const earningsPerRow = 600;
   const verifyRent = async (reportId: string) => {
     const { error } = await supabase
       .from("fleet_reports")
@@ -381,62 +533,133 @@ const AdminReports = () => {
     }
   };
 
-  const handleExportReports = () => {
-    // Create CSV header
-    const headers = [
-      "Date",
-      "Driver Name",
-      "Vehicle Number",
-      "Total Trips",
-      "Total Earnings",
-      "Toll",
-      "Cash Collected",
-      "Rent Paid",
-      "Status",
-    ];
+  const handleExportReports = async () => {
+    try {
+      // Fetch all reports with current filters for complete export
+      let query = supabase
+        .from("fleet_reports")
+        .select("*")
+        .order("submission_date", { ascending: false });
 
-    // Create CSV rows
-    const rows = filteredReports.map((report) => {
-      const date = format(
-        new Date(report.submission_date),
-        "d MMM yyyy, hh:mm a"
-      );
-      const status = report.status || "Pending";
+      // Apply the same filters as current view
+      if (searchQuery.trim() !== "") {
+        const searchTerm = searchQuery.toLowerCase().trim();
+        query = query.or(
+          `driver_name.ilike.%${searchTerm}%,vehicle_number.ilike.%${searchTerm}%`
+        );
+      }
 
-      return [
-        date,
-        report.driver_name,
-        report.vehicle_number,
-        report.total_trips,
-        report.total_earnings,
-        report.toll,
-        report.total_cashcollect,
-        report.rent_paid_amount,
-        status,
+      if (!statusFilter.includes("all") && statusFilter.length > 0) {
+        if (statusFilter.length === 1) {
+          query = query.eq("status", statusFilter[0]);
+        } else {
+          const orConditions = statusFilter
+            .filter((status) => status !== "all") // Extra safety
+            .map((status) => `status.eq.${status}`);
+
+          if (orConditions.length > 0) {
+            const orCondition = orConditions.join(",");
+            query = query.or(orCondition);
+          }
+        }
+      }
+
+      // Apply date filters
+      if (dateFilter === "today") {
+        const today = new Date();
+        const todayStr = today.toISOString().split("T")[0];
+        query = query.eq("rent_date", todayStr);
+      } else if (dateFilter === "week") {
+        const today = new Date();
+        const startOfWeek = new Date(today);
+        const dayOfWeek = today.getDay();
+        const daysToSubtract = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+        startOfWeek.setDate(today.getDate() - daysToSubtract);
+        startOfWeek.setHours(0, 0, 0, 0);
+
+        const endOfWeek = new Date(startOfWeek);
+        endOfWeek.setDate(startOfWeek.getDate() + 6);
+        endOfWeek.setHours(23, 59, 59, 999);
+
+        query = query
+          .gte("rent_date", startOfWeek.toISOString().split("T")[0])
+          .lte("rent_date", endOfWeek.toISOString().split("T")[0]);
+      } else if (dateFilter === "custom" && dateRange.start && dateRange.end) {
+        query = query
+          .gte("rent_date", dateRange.start.toISOString().split("T")[0])
+          .lte("rent_date", dateRange.end.toISOString().split("T")[0]);
+      }
+
+      const { data: allReports, error } = await query;
+
+      if (error) throw error;
+
+      // Create CSV header
+      const headers = [
+        "Date",
+        "Driver Name",
+        "Vehicle Number",
+        "Total Trips",
+        "Total Earnings",
+        "Toll",
+        "Cash Collected",
+        "Rent Paid",
+        "Status",
       ];
-    });
 
-    // Combine header and rows
-    const csvContent = [
-      headers.join(","),
-      ...rows.map((row) => row.join(",")),
-    ].join("\n");
+      // Create CSV rows
+      const rows = (allReports || []).map((report) => {
+        const date = format(
+          new Date(report.submission_date),
+          "d MMM yyyy, hh:mm a"
+        );
+        const status =
+          report.status === "pending_verification"
+            ? "Pending"
+            : report.status || "Unknown";
 
-    // Create blob and download
-    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-    const link = document.createElement("a");
-    const url = URL.createObjectURL(blob);
+        return [
+          date,
+          report.driver_name,
+          report.vehicle_number,
+          report.total_trips,
+          report.total_earnings,
+          report.toll,
+          report.total_cashcollect,
+          report.rent_paid_amount,
+          status,
+        ];
+      });
 
-    link.setAttribute("href", url);
-    link.setAttribute(
-      "download",
-      `reports_${new Date().toISOString().split("T")[0]}.csv`
-    );
-    link.style.visibility = "hidden";
+      // Combine header and rows
+      const csvContent = [
+        headers.join(","),
+        ...rows.map((row) => row.join(",")),
+      ].join("\n");
 
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+      // Create blob and download
+      const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+      const link = document.createElement("a");
+      const url = URL.createObjectURL(blob);
+
+      link.setAttribute("href", url);
+      link.setAttribute(
+        "download",
+        `reports_${new Date().toISOString().split("T")[0]}.csv`
+      );
+      link.style.visibility = "hidden";
+
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+      toast.success(
+        `Downloaded report with ${allReports?.length || 0} reports`
+      );
+    } catch (error) {
+      console.error("Error downloading report:", error);
+      toast.error("Failed to download report");
+    }
   };
 
   return (
@@ -466,6 +689,7 @@ const AdminReports = () => {
                   return [...newFilter, value];
                 });
               }
+              setCurrentPage(1);
             }}
           >
             <SelectTrigger className="w-full">
@@ -496,6 +720,7 @@ const AdminReports = () => {
                       setStatusFilter((prev) =>
                         prev.filter((s) => s !== status)
                       );
+                      setCurrentPage(1);
                     }}
                     className="ml-1 hover:bg-gray-200 rounded-full p-0.5"
                   >
@@ -509,14 +734,20 @@ const AdminReports = () => {
         <div className="flex flex-wrap gap-2">
           <Button
             variant={dateFilter === "today" ? "default" : "outline"}
-            onClick={() => setDateFilter("today")}
+            onClick={() => {
+              setDateFilter("today");
+              setCurrentPage(1);
+            }}
             className="flex-1 sm:flex-none"
           >
             Today
           </Button>
           <Button
             variant={dateFilter === "week" ? "default" : "outline"}
-            onClick={() => setDateFilter("week")}
+            onClick={() => {
+              setDateFilter("week");
+              setCurrentPage(1);
+            }}
             className="flex-1 sm:flex-none"
           >
             This Week
@@ -542,6 +773,7 @@ const AdminReports = () => {
                     start: range?.from,
                     end: range?.to,
                   });
+                  setCurrentPage(1);
                 }}
                 numberOfMonths={2}
               />
@@ -552,6 +784,8 @@ const AdminReports = () => {
             onClick={() => {
               setDateFilter(null);
               setCustomDate(null);
+              setDateRange({});
+              setCurrentPage(1);
             }}
             className="flex-1 sm:flex-none"
           >
@@ -623,7 +857,65 @@ const AdminReports = () => {
               Total Toll Amount
             </div>
             <div className="text-2xl font-bold text-yellow-500">
-              ₹{TollAmount.toLocaleString()}
+              ₹{statistics.tollAmount.toLocaleString()}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Status Indication Cards */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 mb-6">
+        <Card className="bg-gradient-to-br from-gray-50 to-white border-gray-200">
+          <CardContent className="p-4">
+            <div className="text-sm font-medium text-gray-500">
+              Total Reports
+            </div>
+            <div className="text-2xl font-bold text-gray-700">
+              {statistics.totalReports}
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-gradient-to-br from-orange-50 to-white border-orange-200">
+          <CardContent className="p-4">
+            <div className="text-sm font-medium text-orange-600">
+              Pending Reports
+            </div>
+            <div className="text-2xl font-bold text-orange-500">
+              {statistics.pendingCount}
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-gradient-to-br from-green-50 to-white border-green-200">
+          <CardContent className="p-4">
+            <div className="text-sm font-medium text-green-600">
+              Approved Reports
+            </div>
+            <div className="text-2xl font-bold text-green-500">
+              {statistics.approvedCount}
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-gradient-to-br from-red-50 to-white border-red-200">
+          <CardContent className="p-4">
+            <div className="text-sm font-medium text-red-600">
+              Rejected Reports
+            </div>
+            <div className="text-2xl font-bold text-red-500">
+              {statistics.rejectedCount}
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-gradient-to-br from-yellow-50 to-white border-yellow-200">
+          <CardContent className="p-4">
+            <div className="text-sm font-medium text-yellow-600">
+              Leave Reports
+            </div>
+            <div className="text-2xl font-bold text-yellow-500">
+              {statistics.leaveCount}
             </div>
           </CardContent>
         </Card>
@@ -642,7 +934,7 @@ const AdminReports = () => {
                   Recent Reports
                 </h2>
                 <span className="text-sm text-muted-foreground hidden sm:inline-block">
-                  {reports.length} total reports
+                  Showing {reports.length} of {totalCount} reports
                 </span>
               </div>
               <div className="min-w-full overflow-hidden">
@@ -677,14 +969,14 @@ const AdminReports = () => {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {filteredReports.length === 0 ? (
+                      {reports.length === 0 ? (
                         <TableRow>
                           <TableCell colSpan={11} className="text-center py-8">
                             No reports found
                           </TableCell>
                         </TableRow>
                       ) : (
-                        filteredReports.map((report, index) => (
+                        reports.map((report, index) => (
                           <TableRow key={report.id} className="text-sm">
                             <TableCell className="font-medium">
                               {index + 1}
@@ -738,7 +1030,43 @@ const AdminReports = () => {
                                 <Button
                                   variant="ghost"
                                   size="sm"
-                                  className="text-green-600 hidden sm:inline-flex"
+                                  className={`text-blue-600 sm:inline-flex ${
+                                    report.rent_paid_amount > -1
+                                      ? "lg:hidden"
+                                      : "flex"
+                                  }`}
+                                  onClick={async () => {
+                                    const { data, error } = await supabase
+                                      .from("users")
+                                      .select("phone_number")
+                                      .eq("id", report.user_id)
+                                      .single();
+
+                                    if (error || !data?.phone_number) {
+                                      console.error(
+                                        "Failed to get driver phone"
+                                      );
+                                      return;
+                                    }
+
+                                    const driverPhone = data.phone_number;
+
+                                    const message = encodeURIComponent(
+                                      `Refund slip 🧾\nDriver: ${report.driver_name}\nVehicle: ${report.vehicle_number}\nShift: ${report.shift}\nPhone: ${driverPhone}\nRent Date: ${report.rent_date}\nRefund Amount: ${report.rent_paid_amount}`
+                                    );
+
+                                    window.open(
+                                      `https://wa.me/?text=${message}`,
+                                      "_blank"
+                                    );
+                                  }}
+                                >
+                                  <Share2 className="h-4 w-4" />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="text-green-600  sm:inline-flex"
                                   onClick={() =>
                                     updateReportStatus(report.id, "approved")
                                   }
@@ -749,7 +1077,7 @@ const AdminReports = () => {
                                 <Button
                                   variant="ghost"
                                   size="sm"
-                                  className="text-red-600 hidden sm:inline-flex"
+                                  className="text-red-600  sm:inline-flex"
                                   onClick={() =>
                                     updateReportStatus(report.id, "rejected")
                                   }
@@ -780,6 +1108,71 @@ const AdminReports = () => {
           )}
         </CardContent>
       </Card>
+
+      {/* Pagination Controls */}
+      {totalPages > 1 && (
+        <Card className="mt-4">
+          <CardContent className="p-4">
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+              <div className="text-sm text-muted-foreground">
+                Showing {(currentPage - 1) * pageSize + 1} to{" "}
+                {Math.min(currentPage * pageSize, totalCount)} of {totalCount}{" "}
+                reports
+              </div>
+
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPage(currentPage - 1)}
+                  disabled={currentPage === 1 || loading}
+                >
+                  Previous
+                </Button>
+
+                <div className="flex items-center gap-1">
+                  {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                    let pageNum;
+                    if (totalPages <= 5) {
+                      pageNum = i + 1;
+                    } else if (currentPage <= 3) {
+                      pageNum = i + 1;
+                    } else if (currentPage >= totalPages - 2) {
+                      pageNum = totalPages - 4 + i;
+                    } else {
+                      pageNum = currentPage - 2 + i;
+                    }
+
+                    return (
+                      <Button
+                        key={pageNum}
+                        variant={
+                          currentPage === pageNum ? "default" : "outline"
+                        }
+                        size="sm"
+                        onClick={() => setCurrentPage(pageNum)}
+                        disabled={loading}
+                        className="w-8 h-8 p-0"
+                      >
+                        {pageNum}
+                      </Button>
+                    );
+                  })}
+                </div>
+
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPage(currentPage + 1)}
+                  disabled={currentPage === totalPages || loading}
+                >
+                  Next
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
         <DialogContent className="border-border/50 max-w-2xl">

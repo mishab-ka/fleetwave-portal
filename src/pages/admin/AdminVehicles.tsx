@@ -12,7 +12,15 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { PlusCircle, Edit, Car, Search, Save, Trash2 } from "lucide-react";
+import {
+  PlusCircle,
+  Edit,
+  Car,
+  Search,
+  Save,
+  Trash2,
+  History,
+} from "lucide-react";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
@@ -64,7 +72,8 @@ const AdminVehicles = () => {
       const { data, error } = await supabase
         .from("vehicles")
         .select("*")
-        .order("vehicle_number");
+        .order("vehicle_number")
+        .eq("online", true);
 
       if (error) throw error;
       setVehicles(data || []);
@@ -77,68 +86,56 @@ const AdminVehicles = () => {
   };
 
   async function updateZeroTotalTrips(newVehiclenumber: string) {
-    // Get the current total_trips before resetting
-    const { data: currentData, error: fetchError } = await supabase
-      .from("vehicles")
-      .select("total_trips")
-      .eq("vehicle_number", newVehiclenumber)
-      .single();
+    try {
+      // Get the current total_trips before resetting
+      const { data: currentData, error: fetchError } = await supabase
+        .from("vehicles")
+        .select("total_trips")
+        .eq("vehicle_number", newVehiclenumber)
+        .single();
 
-    if (fetchError) {
-      console.error("Error fetching current total_trips:", fetchError.message);
-      return;
-    }
+      if (fetchError) throw fetchError;
 
-    const previousTrips = currentData?.total_trips || 0;
+      const previousTrips = currentData?.total_trips || 0;
+      const now = new Date();
 
-    // Save to daily trip history
-    const { error: dailyHistoryError } = await supabase
-      .from("vehicle_trip_history")
-      .insert({
-        vehicle_number: newVehiclenumber,
-        recorded_at: new Date().toISOString(),
-        total_trips: previousTrips,
-        type: "daily",
-      });
+      // Save daily history
+      const { error: dailyError } = await supabase
+        .from("vehicle_trip_history")
+        .insert({
+          vehicle_number: newVehiclenumber,
+          recorded_at: now.toISOString(),
+          total_trips: previousTrips,
+          type: "daily",
+        });
 
-    if (dailyHistoryError) {
-      console.error(
-        "Error saving daily trip history:",
-        dailyHistoryError.message
-      );
-      return;
-    }
+      if (dailyError) throw dailyError;
 
-    // Save to weekly trip history
-    const startOfWeekDate = startOfWeek(new Date());
-    const { error: weeklyHistoryError } = await supabase
-      .from("vehicle_trip_history")
-      .insert({
-        vehicle_number: newVehiclenumber,
-        recorded_at: startOfWeekDate.toISOString(),
-        total_trips: previousTrips,
-        type: "weekly",
-      });
+      // Save weekly history
+      const { error: weeklyError } = await supabase
+        .from("vehicle_trip_history")
+        .insert({
+          vehicle_number: newVehiclenumber,
+          recorded_at: now.toISOString(),
+          total_trips: previousTrips,
+          type: "weekly",
+        });
 
-    if (weeklyHistoryError) {
-      console.error(
-        "Error saving weekly trip history:",
-        weeklyHistoryError.message
-      );
-      return;
-    }
+      if (weeklyError) throw weeklyError;
 
-    // Reset total_trips to 0
-    const { data, error } = await supabase
-      .from("vehicles")
-      .update({ total_trips: 0 })
-      .eq("vehicle_number", newVehiclenumber);
+      // Reset total_trips to 0
+      const { error: updateError } = await supabase
+        .from("vehicles")
+        .update({ total_trips: 0 })
+        .eq("vehicle_number", newVehiclenumber);
 
-    if (error) {
-      console.error("Error updating total_trips:", error.message);
-    } else {
-      console.log("Updated vehicles:", data);
-      window.location.reload();
+      if (updateError) throw updateError;
+
+      toast.success("Trip count reset successfully");
+      fetchVehicles();
+    } catch (error) {
+      console.error("Error resetting trips:", error);
+      toast.error("Failed to reset trip count");
     }
   }
 
@@ -153,6 +150,10 @@ const AdminVehicles = () => {
         query = query.eq("type", "daily");
       } else if (filterType === "weekly") {
         query = query.eq("type", "weekly");
+      } else if (filterType === "custom" && customStart && customEnd) {
+        query = query
+          .gte("recorded_at", customStart.toISOString())
+          .lte("recorded_at", customEnd.toISOString());
       }
 
       const { data, error } = await query;
@@ -161,12 +162,13 @@ const AdminVehicles = () => {
       setTripHistory(data || []);
     } catch (error) {
       console.error("Error fetching filtered trip history:", error);
+      toast.error("Failed to load trip history");
     }
   };
 
   useEffect(() => {
     fetchFilteredTripHistory();
-  }, [filterType]);
+  }, [filterType, customStart, customEnd]);
 
   const toggleVehicleStatus = async (
     vehicle_number: string,
@@ -331,14 +333,21 @@ const AdminVehicles = () => {
           <Button onClick={handleAddNewVehicle}>
             <PlusCircle className="h-4 w-4 mr-2" /> Add New Vehicle
           </Button>
-          <div className="flex items-center space-x-2">
+          <Button
+            onClick={() =>
+              (window.location.href = "/admin/vehicles/vehicles-inactive")
+            }
+          >
+            <Car className="h-4 w-4 mr-2" /> show vehicles
+          </Button>
+          {/* <div className="flex items-center space-x-2">
             <Switch
               checked={showOnlyActive}
               onCheckedChange={setShowOnlyActive}
             />
             <span>Show Only Active Vehicles</span>
-          </div>
-          <select
+          </div> */}
+          {/* <select
             className="border px-2 py-1 rounded"
             value={filterType}
             onChange={(e) => setFilterType(e.target.value)}
@@ -359,7 +368,7 @@ const AdminVehicles = () => {
                 onChange={(e) => setCustomEnd(new Date(e.target.value))}
               />
             </div>
-          )}
+          )} */}
         </div>
       </div>
 
@@ -505,6 +514,15 @@ const AdminVehicles = () => {
                           <Button
                             variant="ghost"
                             size="sm"
+                            onClick={() => {
+                              window.location.href = `/admin/vehicles/history/${vehicle.vehicle_number}`;
+                            }}
+                          >
+                            <History className="h-4 w-4 mr-1" /> History
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
                             onClick={() =>
                               updateZeroTotalTrips(vehicle.vehicle_number)
                             }
@@ -564,6 +582,7 @@ const AdminVehicles = () => {
                     ? editData.vehicle_number
                     : newVehicleData.vehicle_number
                 }
+                className="uppercase"
                 onChange={(e) =>
                   selectedVehicle
                     ? handleEditChange("vehicle_number", e.target.value)

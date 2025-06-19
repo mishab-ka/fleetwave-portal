@@ -706,7 +706,7 @@ const AdminDrivers = () => {
                     <Table>
                       <TableHeader>
                         <TableRow>
-                          <TableHead className="w-12">Profile</TableHead>
+                          {/* <TableHead className="w-12">Profile</TableHead> */}
                           <TableHead>Name</TableHead>
                           <TableHead>Joining Date</TableHead>
                           <TableHead>Ph No</TableHead>
@@ -733,7 +733,7 @@ const AdminDrivers = () => {
                         ) : (
                           drivers.map((driver) => (
                             <TableRow key={driver.id}>
-                              <TableCell>
+                              {/* <TableCell>
                                 <Avatar className="h-8 w-8">
                                   <AvatarImage
                                     src={driver.profile_photo || undefined}
@@ -742,7 +742,7 @@ const AdminDrivers = () => {
                                     {driver.name?.charAt(0) || "U"}
                                   </AvatarFallback>
                                 </Avatar>
-                              </TableCell>
+                              </TableCell> */}
                               <TableCell className="font-medium">
                                 {driver.name}
                               </TableCell>

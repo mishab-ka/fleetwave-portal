@@ -30,6 +30,8 @@ import HiringCalendar from "./components/HiringCalendar";
 import LeaveApplication from "./pages/LeaveApplication";
 import PartTimeBooking from "./pages/PartTimeBooking";
 import AdminLeaveManagement from "./pages/admin/AdminLeaveManagement";
+import AdminInactiveVehicles from "./pages/admin/AdminInactiveVehicles";
+import DriverPerformance from "./pages/admin/DriverPerformance";
 
 // Create a new query client instance
 const queryClient = new QueryClient({
@@ -97,6 +99,14 @@ const App = () => (
                 <Route
                   path="/part-time-booking"
                   element={<PartTimeBooking />}
+                />
+                <Route
+                  path="/admin/driver-performance"
+                  element={<DriverPerformance />}
+                />
+                <Route
+                  path="/admin/vehicles/vehicles-inactive"
+                  element={<AdminInactiveVehicles />}
                 />
                 {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
                 <Route path="*" element={<NotFound />} />

@@ -22,6 +22,10 @@ import {
   UserPlus,
   DollarSign,
   CalendarDays,
+  ArrowLeft,
+  ChevronDown,
+  ChevronRight,
+  BarChart,
 } from "lucide-react";
 import { Button } from "./ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "./ui/sheet";
@@ -33,12 +37,20 @@ interface AdminLayoutProps {
   title: string;
 }
 
+interface NavItem {
+  label: string;
+  icon: React.ReactNode;
+  path?: string;
+  subItems?: NavItem[];
+}
+
 const AdminLayout: React.FC<AdminLayoutProps> = ({ children, title }) => {
   const { signOut } = useAuth();
   const { isAdmin, loading } = useAdmin();
   const navigate = useNavigate();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(false);
+  const [expandedItems, setExpandedItems] = useState<string[]>([]);
 
   useEffect(() => {
     if (!loading && !isAdmin) {
@@ -65,6 +77,20 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children, title }) => {
     );
   };
 
+  const toggleSubItems = (label: string) => {
+    setExpandedItems((prev) =>
+      prev.includes(label)
+        ? prev.filter((item) => item !== label)
+        : [...prev, label]
+    );
+  };
+
+  const handleNavigation = (path: string, event: React.MouseEvent) => {
+    event.preventDefault();
+    navigate(path);
+    setIsMobileMenuOpen(false);
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -77,41 +103,72 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children, title }) => {
     return null;
   }
 
-  const navItems = [
+  const navItems: NavItem[] = [
     { label: "Dashboard", icon: <LayoutDashboard size={20} />, path: "/admin" },
-    { label: "Drivers", icon: <Users size={20} />, path: "/admin/drivers" },
-    { label: "Vehicles", icon: <Car size={20} />, path: "/admin/vehicles" },
+    {
+      label: "Drivers",
+      icon: <Users size={20} />,
+      path: "/admin/drivers",
+      subItems: [
+        {
+          label: "Driver Management",
+          icon: <Users size={14} />,
+          path: "/admin/drivers",
+        },
+        {
+          label: "Driver Performance",
+          icon: <BarChart size={14} />,
+          path: "/admin/driver-performance",
+        },
+        {
+          label: "Uber Acc Audit",
+          icon: <UserCheck size={14} />,
+          path: "/admin/uber-audit",
+        },
+      ],
+    },
+    {
+      label: "Vehicles",
+      icon: <Car size={20} />,
+      subItems: [
+        {
+          label: "Vehicle Management",
+          icon: <Car size={14} />,
+          path: "/admin/vehicles",
+        },
+        {
+          label: "Vehicle Performance",
+          icon: <BarChart size={14} />,
+          path: "/admin/vehicle-performance",
+        },
+        {
+          label: "Vehicle Attendance",
+          icon: <KeySquare size={14} />,
+          path: "/admin/vehicles-calander",
+        },
+        {
+          label: "Vehicle Audit",
+          icon: <Gauge size={14} />,
+          path: "/admin/AdminVehicleAuditReports",
+        },
+        {
+          label: "Shift Management",
+          icon: <CalendarClock size={14} />,
+          path: "/admin/Shift",
+        },
+      ],
+    },
     {
       label: "Finance",
       icon: <DollarSign size={20} />,
       path: "/admin/finance",
     },
 
-    {
-      label: "Vehicles Audit",
-      icon: <Gauge size={20} />,
-      path: "/admin/AdminVehicleAuditReports",
-    },
-    {
-      label: "Uber Acc Audit",
-      icon: <UserCheck size={20} />,
-      path: "/admin/uber-audit",
-    },
     { label: "Reports", icon: <FileText size={20} />, path: "/admin/reports" },
     {
       label: "Rent Calendar",
       icon: <Calendar size={20} />,
       path: "/admin/calendar",
-    },
-    {
-      label: "Shifts",
-      icon: <CalendarClock size={20} />,
-      path: "/admin/Shift",
-    },
-    {
-      label: "Vehicle Attendance",
-      icon: <KeySquare size={20} />,
-      path: "/admin/vehicles-calander",
     },
     {
       label: "HR",
@@ -133,6 +190,79 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children, title }) => {
   const handleLogout = async () => {
     await signOut();
     navigate("/");
+  };
+
+  const renderNavItem = (item: NavItem, isSubItem = false) => {
+    const isExpanded = expandedItems.includes(item.label);
+    const isActive = window.location.pathname === item.path;
+    const hasSubItems = item.subItems && item.subItems.length > 0;
+
+    return (
+      <li key={item.label}>
+        <button
+          onClick={(e) => {
+            if (hasSubItems) {
+              e.preventDefault();
+              toggleSubItems(item.label);
+            } else if (item.path) {
+              handleNavigation(item.path, e);
+            }
+          }}
+          className={`flex items-center w-full px-4 py-3 text-left transition-colors ${
+            isActive
+              ? "bg-fleet-purple text-white"
+              : "text-black hover:bg-gray-100"
+          } ${isSubItem ? "pl-8" : ""}`}
+          title={isCollapsed ? item.label : undefined}
+        >
+          <span className="mr-3">{item.icon}</span>
+          {!isCollapsed && (
+            <>
+              <span className="flex-1">{item.label}</span>
+              {hasSubItems && (
+                <ChevronDown
+                  className={`h-4 w-4 transition-transform duration-200 ${
+                    isExpanded ? "rotate-180" : ""
+                  }`}
+                />
+              )}
+            </>
+          )}
+        </button>
+        {hasSubItems && (
+          <div
+            className={`${
+              isCollapsed
+                ? "hidden group-hover:block absolute left-full top-0 bg-white shadow-lg rounded-r-md min-w-[200px] z-50"
+                : isExpanded
+                ? "block"
+                : "hidden"
+            }`}
+          >
+            <ul className={`${isCollapsed ? "py-2" : "mt-1"}`}>
+              {item.subItems!.map((subItem) => (
+                <li
+                  key={subItem.label}
+                  className={`${isCollapsed ? "hover:bg-gray-100" : ""}`}
+                >
+                  <button
+                    onClick={(e) => handleNavigation(subItem.path!, e)}
+                    className={`flex items-center text-sm pl-8 w-full px-4 py-3 text-left transition-colors ${
+                      window.location.pathname === subItem.path
+                        ? "bg-fleet-purple  text-white"
+                        : "text-black hover:bg-gray-100"
+                    }`}
+                  >
+                    <span className="mr-3">{subItem.icon}</span>
+                    <span>{subItem.label}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </li>
+    );
   };
 
   const NavContent = () => (
@@ -162,23 +292,9 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children, title }) => {
         <nav className="py-4">
           <ul className="space-y-1">
             {navItems.map((item) => (
-              <li key={item.label}>
-                <button
-                  onClick={() => {
-                    navigate(item.path);
-                    setIsMobileMenuOpen(false);
-                  }}
-                  className={`flex items-center w-full px-4 py-3 text-left transition-colors ${
-                    window.location.pathname === item.path
-                      ? "bg-fleet-purple text-white"
-                      : "text-black hover:bg-gray-100"
-                  }`}
-                  title={isCollapsed ? item.label : undefined}
-                >
-                  <span className="mr-3">{item.icon}</span>
-                  {!isCollapsed && <span>{item.label}</span>}
-                </button>
-              </li>
+              <div key={item.label} className="relative group">
+                {renderNavItem(item)}
+              </div>
             ))}
           </ul>
         </nav>
@@ -232,7 +348,14 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children, title }) => {
       {/* Main content */}
       <div className="flex-1 overflow-x-hidden">
         <header className="bg-white shadow px-6 py-4 md:ml-0 flex items-center sticky top-0 z-10">
-          <h1 className="text-xl md:text-2xl font-bold text-gray-800 ml-12 md:ml-0">
+          <h1 className="text-xl space-y-2 md:text-2xl font-bold text-gray-800 ml-12 md:ml-0">
+            <Button
+              onClick={() => window.history.back()}
+              variant="ghost"
+              className="mr-2"
+            >
+              <ArrowLeft className="" />
+            </Button>
             {title}
           </h1>
         </header>

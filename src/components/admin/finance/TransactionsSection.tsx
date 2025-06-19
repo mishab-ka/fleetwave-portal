@@ -1016,7 +1016,7 @@ const TransactionsSection = () => {
               </div>
 
               {/* Show notification when liability category is selected */}
-              {selectedCategory?.type === "liability" && (
+              {/* {selectedCategory?.type === "liability" && (
                 <div className="col-span-4 ml-[25%] mr-0 mt-1">
                   <div className="text-sm bg-blue-50 text-blue-700 p-2 rounded-md">
                     <strong>Note:</strong> This is a liability category.{" "}
@@ -1025,7 +1025,7 @@ const TransactionsSection = () => {
                       : "This transaction will be recorded as a liability."}
                   </div>
                 </div>
-              )}
+              )} */}
             </div>
 
             <DialogFooter>
@@ -1215,7 +1215,7 @@ const TransactionsSection = () => {
               </div>
 
               {/* Show notification when liability category is selected */}
-              {selectedCategory?.type === "liability" && (
+              {/* {selectedCategory?.type === "liability" && (
                 <div className="col-span-4 ml-[25%] mr-0 mt-1">
                   <div className="text-sm bg-blue-50 text-blue-700 p-2 rounded-md">
                     <strong>Note:</strong> This is a liability category.{" "}
@@ -1224,7 +1224,7 @@ const TransactionsSection = () => {
                       : "This transaction will be recorded as a liability."}
                   </div>
                 </div>
-              )}
+              )} */}
             </div>
 
             <DialogFooter>
@@ -1395,8 +1395,11 @@ const TransactionsSection = () => {
 
       <Card>
         <CardHeader>
-          {/* <CardTitle>Transactions List</CardTitle> */}
-          <Tabs
+          <CardTitle className="border-b border-gray-200 pb-4">
+            Transactions List
+          </CardTitle>
+
+          {/* <Tabs
             defaultValue="all"
             className="w-full"
             onValueChange={setActiveTab}
@@ -1407,10 +1410,10 @@ const TransactionsSection = () => {
               <TabsTrigger value="expense">Expense</TabsTrigger>
               <TabsTrigger value="Liability">Liability</TabsTrigger>
             </TabsList>
-          </Tabs>
+          </Tabs> */}
         </CardHeader>
         <CardContent>
-          <ScrollArea className="h-[400px]">
+          <ScrollArea className="h-[550px]">
             <Table>
               <TableHeader>
                 <TableRow>

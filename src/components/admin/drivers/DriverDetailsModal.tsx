@@ -90,7 +90,7 @@ export const DriverDetailsModal = ({
   const [phone, setPhone] = useState<string>("");
   const [joiningDate, setJoiningDate] = useState<string>("");
   const [driverId2, setDriverId2] = useState<string>("");
-  const [overdueData, setOverdueData] = useState<any>(null);
+  const [rentalDays, setRentalDays] = useState<any>(null);
   const [rentHistory, setRentHistory] = useState<any[]>([]);
   const [isLoadingRent, setIsLoadingRent] = useState(false);
   const isMobile = useIsMobile();
@@ -158,27 +158,19 @@ export const DriverDetailsModal = ({
   const fetchOverdueData = async () => {
     try {
       const { data, error } = await supabase
-        .from("driver_balance_transactions")
+        .from("fleet_reports")
         .select("*")
         .eq("user_id", driverId)
-        .eq("type", "due")
-        .order("created_at", { ascending: false });
+        .eq("status", "approved");
+      // .eq("type", "due")
+      // .order("created_at", { ascending: false });
 
       if (error) throw error;
 
       // Calculate overdue amounts
       const today = new Date();
-      const overdueAmounts =
-        data?.filter((tx) => {
-          const txDate = new Date(tx.created_at);
-          return differenceInDays(today, txDate) > 7; // Consider overdue after 7 days
-        }) || [];
-
-      setOverdueData({
-        totalOverdue: overdueAmounts.reduce((sum, tx) => sum + tx.amount, 0),
-        overdueCount: overdueAmounts.length,
-        lastOverdueDate: overdueAmounts[0]?.created_at,
-      });
+      const rentaldays = data.length;
+      setRentalDays(rentaldays);
     } catch (error) {
       console.error("Error fetching overdue data:", error);
     }
@@ -202,6 +194,23 @@ export const DriverDetailsModal = ({
       setIsLoadingRent(false);
     }
   };
+  function getWorkedDays(joiningDate: string | Date): number {
+    const startDate = new Date(joiningDate);
+    const endDate = new Date(); // Current date
+
+    // Normalize time components to avoid partial day discrepancies
+    startDate.setHours(0, 0, 0, 0);
+    endDate.setHours(0, 0, 0, 0);
+
+    // Calculate the difference in milliseconds
+    const diffInMilliseconds = endDate.getTime() - startDate.getTime();
+
+    // Convert milliseconds to days
+    const millisecondsInADay = 1000 * 60 * 60 * 24;
+    const workedDays = Math.floor(diffInMilliseconds / millisecondsInADay);
+
+    return workedDays;
+  }
 
   const handleOnlineToggle = async () => {
     setIsProcessing(true);
@@ -457,7 +466,7 @@ export const DriverDetailsModal = ({
                     <div className="flex items-center space-x-2">
                       <Calendar className="h-4 w-4 text-muted-foreground" />
                       <span className="text-sm font-medium">Joining Date:</span>
-                      <span className="text-sm">{formattedJoiningDate}</span>
+                      <span className="text-sm">{formattedJoiningDate}, </span>
                     </div>
 
                     <div className="flex items-center space-x-2">
@@ -466,6 +475,13 @@ export const DriverDetailsModal = ({
                       <span className="text-sm">
                         {driver?.vehicle_number || "Not assigned"}
                       </span>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <Car className="h-4 w-4 text-muted-foreground" />
+                      <span className="text-sm font-medium">
+                        Total Rentals:
+                      </span>
+                      <span className="text-sm">{rentalDays} days</span>
                     </div>
                   </div>
 
@@ -581,7 +597,7 @@ export const DriverDetailsModal = ({
                     </div>
                   </div>
 
-                  {overdueData && overdueData.totalOverdue > 0 && (
+                  {/* {overdueData && overdueData.totalOverdue > 0 && (
                     <>
                       <Separator />
                       <div className="space-y-2">
@@ -615,7 +631,7 @@ export const DriverDetailsModal = ({
                         )}
                       </div>
                     </>
-                  )}
+                  )} */}
                 </CardContent>
               </Card>
             </TabsContent>
