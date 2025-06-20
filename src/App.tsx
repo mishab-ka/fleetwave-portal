@@ -10,6 +10,7 @@ import { AuthProvider } from "./context/AuthContext";
 import { AdminProvider } from "./context/AdminContext";
 import Profile from "./pages/Profile";
 import SubmitReport from "./pages/SubmitReport";
+import SubmitReportAutomated from "./pages/SubmitReportAutomated";
 import AdminDashboard from "./pages/admin/AdminDashboard";
 import AdminDrivers from "./pages/admin/AdminDrivers";
 import AdminVehicles from "./pages/admin/AdminVehicles";
@@ -32,6 +33,7 @@ import PartTimeBooking from "./pages/PartTimeBooking";
 import AdminLeaveManagement from "./pages/admin/AdminLeaveManagement";
 import AdminInactiveVehicles from "./pages/admin/AdminInactiveVehicles";
 import DriverPerformance from "./pages/admin/DriverPerformance";
+import VehiclePerformance from "./pages/admin/VehiclePerformance";
 
 // Create a new query client instance
 const queryClient = new QueryClient({
@@ -57,6 +59,10 @@ const App = () => (
                 <Route path="/" element={<Index />} />
                 <Route path="/profile" element={<Profile />} />
                 <Route path="/submit-report" element={<SubmitReport />} />
+                <Route
+                  path="/submit-report-automated"
+                  element={<SubmitReportAutomated />}
+                />
                 {/* Admin Routes */}
                 <Route path="/admin" element={<AdminDashboard />} />
                 <Route path="/admin/drivers" element={<AdminDrivers />} />
@@ -103,6 +109,10 @@ const App = () => (
                 <Route
                   path="/admin/driver-performance"
                   element={<DriverPerformance />}
+                />
+                <Route
+                  path="/admin/vehicle-performance"
+                  element={<VehiclePerformance />}
                 />
                 <Route
                   path="/admin/vehicles/vehicles-inactive"

@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import AdminLayout from "@/components/AdminLayout";
 import { supabase } from "@/integrations/supabase/client";
+import { useAdminSettings } from "@/hooks/useAdminSettings";
 import { format } from "date-fns";
 import {
   Dialog,
@@ -74,7 +75,16 @@ interface VehicleInfo {
   total_trips: number;
 }
 
+// Helper function to format date as YYYY-MM-DD without timezone issues
+const formatDateLocal = (date: Date): string => {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(
+    2,
+    "0"
+  )}-${String(date.getDate()).padStart(2, "0")}`;
+};
+
 const AdminReports = () => {
+  const { calculateFleetRent, calculateCompanyEarnings } = useAdminSettings();
   const [reports, setReports] = useState<Report[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
@@ -201,19 +211,35 @@ const AdminReports = () => {
         query = query.eq("rent_date", todayStr);
       } else if (dateFilter === "week") {
         const today = new Date();
-        const startOfWeek = new Date(today);
-        const dayOfWeek = today.getDay();
-        const daysToSubtract = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
-        startOfWeek.setDate(today.getDate() - daysToSubtract);
-        startOfWeek.setHours(0, 0, 0, 0);
+        const dayOfWeek = today.getDay(); // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
 
-        const endOfWeek = new Date(startOfWeek);
-        endOfWeek.setDate(startOfWeek.getDate() + 6);
-        endOfWeek.setHours(23, 59, 59, 999);
+        // Calculate start of current week (Monday to Sunday) using local dates
+        let daysToGoBack;
+        if (dayOfWeek === 0) {
+          // If today is Sunday, go back 6 days to Monday
+          daysToGoBack = 6;
+        } else {
+          // For Monday to Saturday, go back to Monday
+          daysToGoBack = dayOfWeek - 1;
+        }
 
-        query = query
-          .gte("rent_date", startOfWeek.toISOString().split("T")[0])
-          .lte("rent_date", endOfWeek.toISOString().split("T")[0]);
+        // Calculate Monday of current week
+        const startDate = new Date(
+          today.getFullYear(),
+          today.getMonth(),
+          today.getDate() - daysToGoBack
+        );
+        const endDate = new Date(
+          today.getFullYear(),
+          today.getMonth(),
+          today.getDate() - daysToGoBack + 6
+        );
+
+        // Format as YYYY-MM-DD
+        const startOfWeek = formatDateLocal(startDate);
+        const endOfWeek = formatDateLocal(endDate);
+
+        query = query.gte("rent_date", startOfWeek).lte("rent_date", endOfWeek);
       } else if (dateFilter === "custom" && dateRange.start && dateRange.end) {
         query = query
           .gte("rent_date", dateRange.start.toISOString().split("T")[0])
@@ -282,19 +308,35 @@ const AdminReports = () => {
         query = query.eq("rent_date", todayStr);
       } else if (dateFilter === "week") {
         const today = new Date();
-        const startOfWeek = new Date(today);
-        const dayOfWeek = today.getDay();
-        const daysToSubtract = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
-        startOfWeek.setDate(today.getDate() - daysToSubtract);
-        startOfWeek.setHours(0, 0, 0, 0);
+        const dayOfWeek = today.getDay(); // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
 
-        const endOfWeek = new Date(startOfWeek);
-        endOfWeek.setDate(startOfWeek.getDate() + 6);
-        endOfWeek.setHours(23, 59, 59, 999);
+        // Calculate start of current week (Monday to Sunday) using local dates
+        let daysToGoBack;
+        if (dayOfWeek === 0) {
+          // If today is Sunday, go back 6 days to Monday
+          daysToGoBack = 6;
+        } else {
+          // For Monday to Saturday, go back to Monday
+          daysToGoBack = dayOfWeek - 1;
+        }
 
-        query = query
-          .gte("rent_date", startOfWeek.toISOString().split("T")[0])
-          .lte("rent_date", endOfWeek.toISOString().split("T")[0]);
+        // Calculate Monday of current week
+        const startDate = new Date(
+          today.getFullYear(),
+          today.getMonth(),
+          today.getDate() - daysToGoBack
+        );
+        const endDate = new Date(
+          today.getFullYear(),
+          today.getMonth(),
+          today.getDate() - daysToGoBack + 6
+        );
+
+        // Format as YYYY-MM-DD
+        const startOfWeek = formatDateLocal(startDate);
+        const endOfWeek = formatDateLocal(endDate);
+
+        query = query.gte("rent_date", startOfWeek).lte("rent_date", endOfWeek);
       } else if (dateFilter === "custom" && dateRange.start && dateRange.end) {
         query = query
           .gte("rent_date", dateRange.start.toISOString().split("T")[0])
@@ -430,40 +472,18 @@ const AdminReports = () => {
     }
   };
 
-  const calculateFleetRent = (tripCount: number): number => {
-    if (tripCount < 64) return 980;
-    if (tripCount >= 64 && tripCount < 80) return 830;
-    if (tripCount >= 80 && tripCount < 110) return 740;
-    if (tripCount >= 110 && tripCount < 125) return 560;
-    if (tripCount >= 125 && tripCount < 140) return 410;
-    return 290; // 140 or more trips
-  };
-
   const totalRent = vehicles.reduce(
     (sum, vehicle) => sum + calculateFleetRent(vehicle.total_trips),
     0
   );
 
-  function calculateRent(trips) {
-    if (trips >= 12) {
-      return 535;
-    } else if (trips >= 11) {
-      return 585;
-    } else if (trips >= 10) {
-      return 635;
-    } else if (trips >= 8) {
-      return 715;
-    } else if (trips >= 5) {
-      return 745;
-    } else {
-      return 795;
-    }
-  }
-
   // Calculate earnings based on current statistics
   const earnings = reports.reduce((total, report) => {
     return (
-      total + (report.total_trips === 0 ? 0 : calculateRent(report.total_trips))
+      total +
+      (report.total_trips === 0
+        ? 0
+        : calculateCompanyEarnings(report.total_trips))
     );
   }, 0);
 
@@ -571,19 +591,35 @@ const AdminReports = () => {
         query = query.eq("rent_date", todayStr);
       } else if (dateFilter === "week") {
         const today = new Date();
-        const startOfWeek = new Date(today);
-        const dayOfWeek = today.getDay();
-        const daysToSubtract = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
-        startOfWeek.setDate(today.getDate() - daysToSubtract);
-        startOfWeek.setHours(0, 0, 0, 0);
+        const dayOfWeek = today.getDay(); // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
 
-        const endOfWeek = new Date(startOfWeek);
-        endOfWeek.setDate(startOfWeek.getDate() + 6);
-        endOfWeek.setHours(23, 59, 59, 999);
+        // Calculate start of current week (Monday to Sunday) using local dates
+        let daysToGoBack;
+        if (dayOfWeek === 0) {
+          // If today is Sunday, go back 6 days to Monday
+          daysToGoBack = 6;
+        } else {
+          // For Monday to Saturday, go back to Monday
+          daysToGoBack = dayOfWeek - 1;
+        }
 
-        query = query
-          .gte("rent_date", startOfWeek.toISOString().split("T")[0])
-          .lte("rent_date", endOfWeek.toISOString().split("T")[0]);
+        // Calculate Monday of current week
+        const startDate = new Date(
+          today.getFullYear(),
+          today.getMonth(),
+          today.getDate() - daysToGoBack
+        );
+        const endDate = new Date(
+          today.getFullYear(),
+          today.getMonth(),
+          today.getDate() - daysToGoBack + 6
+        );
+
+        // Format as YYYY-MM-DD
+        const startOfWeek = formatDateLocal(startDate);
+        const endOfWeek = formatDateLocal(endDate);
+
+        query = query.gte("rent_date", startOfWeek).lte("rent_date", endOfWeek);
       } else if (dateFilter === "custom" && dateRange.start && dateRange.end) {
         query = query
           .gte("rent_date", dateRange.start.toISOString().split("T")[0])

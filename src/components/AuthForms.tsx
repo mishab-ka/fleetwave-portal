@@ -102,7 +102,7 @@ const AuthForms = () => {
             // Update online status
             await supabase
               .from("users")
-              .update({ online: true })
+              .update({ online: false })
               .eq("id", data.user.id);
           }
         }

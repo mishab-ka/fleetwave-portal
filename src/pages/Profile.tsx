@@ -1,4 +1,3 @@
-
 import React from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
@@ -11,6 +10,13 @@ import { Leaderboard } from "@/components/Leaderboard";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { FilePlus } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { ChevronDown, Wand2 } from "lucide-react";
 
 const Profile = () => {
   const { isAuthenticated, loading } = useAuth();
@@ -35,21 +41,40 @@ const Profile = () => {
     navigate("/submit-report");
   };
 
+  const handleSubmitReportAutomated = () => {
+    navigate("/submit-report-automated");
+  };
+
   return (
     <div className="min-h-screen bg-white">
       <Navbar />
       <main className="container mx-auto px-4 py-8 max-w-5xl">
         <div className="flex justify-between items-center mb-6">
           <h1 className="text-3xl font-bold text-fleet-purple">Your Profile</h1>
-          <Button 
-            onClick={handleSubmitReport}
-            className="bg-green-600 hover:bg-green-700"
-          >
-            <FilePlus className="mr-2 h-5 w-5" />
-            Submit Daily Report
-          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button className="bg-green-600 hover:bg-green-700">
+                <FilePlus className="mr-2 h-5 w-5" />
+                Submit Daily Report
+                <ChevronDown className="ml-2 h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-56">
+              <DropdownMenuItem onClick={handleSubmitReport}>
+                <FilePlus className="mr-2 h-4 w-4" />
+                Regular Report
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={handleSubmitReportAutomated}>
+                <Wand2 className="mr-2 h-4 w-4" />
+                AI Automated Report
+                <span className="ml-auto text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">
+                  NEW
+                </span>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
-        
+
         <Tabs defaultValue="profile" className="w-full">
           <TabsList className="mb-6 grid w-full grid-cols-3">
             <TabsTrigger value="profile">Profile</TabsTrigger>
@@ -57,11 +82,11 @@ const Profile = () => {
             <TabsTrigger value="history">Payment History</TabsTrigger>
             {/* <TabsTrigger value="leaderboard">Leaderboard</TabsTrigger> */}
           </TabsList>
-          
+
           <TabsContent value="profile">
             <UserProfile />
           </TabsContent>
-          
+
           <TabsContent value="documents">
             <DocumentsSection />
           </TabsContent>
