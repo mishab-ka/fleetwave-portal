@@ -5,12 +5,15 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import Index from "./pages/Index";
+import TeamPage from "./pages/Team";
 import NotFound from "./pages/NotFound";
 import { AuthProvider } from "./context/AuthContext";
 import { AdminProvider } from "./context/AdminContext";
+import { ManagerProvider } from "./context/ManagerContext";
 import Profile from "./pages/Profile";
 import SubmitReport from "./pages/SubmitReport";
 import SubmitReportAutomated from "./pages/SubmitReportAutomated";
+import OCRTestComponent from "./components/OCRTestComponent";
 import AdminDashboard from "./pages/admin/AdminDashboard";
 import AdminDrivers from "./pages/admin/AdminDrivers";
 import AdminVehicles from "./pages/admin/AdminVehicles";
@@ -21,7 +24,6 @@ import AdminFinance from "./pages/admin/AdminFinance"; // Import the AdminFinanc
 import AdminVehicleAudit from "./pages/admin/AdminVehicleAudit"; // Import the AdminVehicleAudit component
 import AdminVehicleAuditReports from "./pages/admin/AdminVehicleAuditReports";
 import AdminShifts from "./pages/admin/AdminShifts";
-import VehicleAttendance from "./pages/admin/VehicleAttendance";
 import AdminVehicleAttendance from "./pages/admin/AdminVehicleAttendance";
 import AdminUberAudit from "./pages/admin/AdminUberAudit";
 import AdminHR from "./pages/admin/AdminHR";
@@ -32,8 +34,17 @@ import LeaveApplication from "./pages/LeaveApplication";
 import PartTimeBooking from "./pages/PartTimeBooking";
 import AdminLeaveManagement from "./pages/admin/AdminLeaveManagement";
 import AdminInactiveVehicles from "./pages/admin/AdminInactiveVehicles";
+import RoomBedManagementPage from "./pages/admin/RoomBedManagement";
+import MonthlyRentDashboardPage from "./pages/admin/MonthlyRentDashboard";
 import DriverPerformance from "./pages/admin/DriverPerformance";
 import VehiclePerformance from "./pages/admin/VehiclePerformance";
+import AdminWhatsApp from "./pages/admin/AdminWhatsApp";
+import PartTimeLeads from "./pages/parttime/PartTimeLeads";
+import AdminPartTimeLeads from "./pages/admin/AdminPartTimeLeads";
+import AdminCashTripBlocking from "./pages/admin/AdminCashTripBlocking";
+import AdminRefundList from "./pages/admin/AdminRefundList";
+import HRMobileView from "./components/HRMobileView";
+import ManagerPortal from "./pages/manager/ManagerPortal";
 
 // Create a new query client instance
 const queryClient = new QueryClient({
@@ -51,78 +62,116 @@ const App = () => (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
         <AdminProvider>
-          <TooltipProvider>
-            <Toaster />
-            <Sonner position="top-right" closeButton richColors />
-            <BrowserRouter>
-              <Routes>
-                <Route path="/" element={<Index />} />
-                <Route path="/profile" element={<Profile />} />
-                <Route path="/submit-report" element={<SubmitReport />} />
-                <Route
-                  path="/submit-report-automated"
-                  element={<SubmitReportAutomated />}
-                />
-                {/* Admin Routes */}
-                <Route path="/admin" element={<AdminDashboard />} />
-                <Route path="/admin/drivers" element={<AdminDrivers />} />
-                <Route path="/admin/vehicles" element={<AdminVehicles />} />
-                <Route path="/admin/reports" element={<AdminReports />} />
-                <Route path="/admin/calendar" element={<AdminCalendar />} />
-                <Route path="/admin/settings" element={<AdminSettings />} />
-                <Route path="/admin/finance" element={<AdminFinance />} />{" "}
-                <Route path="/admin/shift" element={<AdminShifts />} />{" "}
-                <Route
-                  path="/admin/vehicles-calander"
-                  element={<AdminVehicleAttendance />}
-                />{" "}
-                {/* Add the AdminFinance route */}
-                <Route
-                  path="/admin/AdminVehicleAudit"
-                  element={<AdminVehicleAudit />}
-                />{" "}
-                <Route
-                  path="/admin/AdminVehicleAuditReports"
-                  element={<AdminVehicleAuditReports />}
-                />{" "}
-                <Route path="/admin/uber-audit" element={<AdminUberAudit />} />{" "}
-                {/* Add the AdminVehicleAudit route */}
-                <Route path="/admin/hr" element={<AdminHR />} />
-                <Route
-                  path="/admin/hr/history"
-                  element={<HiringCyclesHistory />}
-                />
-                <Route path="/admin/hr/calendar" element={<HiringCalendar />} />
-                <Route
-                  path="/admin/leave-management"
-                  element={<AdminLeaveManagement />}
-                />
-                <Route path="/apply-driver" element={<ApplyDriver />} />
-                <Route
-                  path="/leave-application"
-                  element={<LeaveApplication />}
-                />
-                <Route
-                  path="/part-time-booking"
-                  element={<PartTimeBooking />}
-                />
-                <Route
-                  path="/admin/driver-performance"
-                  element={<DriverPerformance />}
-                />
-                <Route
-                  path="/admin/vehicle-performance"
-                  element={<VehiclePerformance />}
-                />
-                <Route
-                  path="/admin/vehicles/vehicles-inactive"
-                  element={<AdminInactiveVehicles />}
-                />
-                {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-                <Route path="*" element={<NotFound />} />
-              </Routes>
-            </BrowserRouter>
-          </TooltipProvider>
+          <ManagerProvider>
+            <TooltipProvider>
+              <Toaster />
+              <Sonner position="top-right" closeButton richColors />
+              <BrowserRouter>
+                <Routes>
+                  <Route path="/" element={<Index />} />
+                  <Route path="/team" element={<TeamPage />} />
+                  <Route path="/profile" element={<Profile />} />
+                  <Route path="/submit-report" element={<SubmitReport />} />
+                  <Route
+                    path="/submit-report-automated"
+                    element={<SubmitReportAutomated />}
+                  />
+                  <Route path="/ocr-test" element={<OCRTestComponent />} />
+                  {/* Admin Routes */}
+                  <Route path="/admin" element={<AdminDashboard />} />
+                  <Route path="/admin/drivers" element={<AdminDrivers />} />
+                  <Route path="/admin/vehicles" element={<AdminVehicles />} />
+                  <Route path="/admin/reports" element={<AdminReports />} />
+                  <Route path="/admin/calendar" element={<AdminCalendar />} />
+                  <Route path="/admin/settings" element={<AdminSettings />} />
+                  <Route
+                    path="/admin/finance"
+                    element={<AdminFinance />}
+                  />{" "}
+                  <Route path="/admin/shift" element={<AdminShifts />} />{" "}
+                  <Route
+                    path="/admin/vehicles-calander"
+                    element={<AdminVehicleAttendance />}
+                  />{" "}
+                  <Route path="/admin/hr-mobile" element={<HRMobileView />} />{" "}
+                  {/* Manager Portal Route */}
+                  <Route path="/manager" element={<ManagerPortal />} />
+                  {/* Add the AdminFinance route */}
+                  <Route
+                    path="/admin/AdminVehicleAudit"
+                    element={<AdminVehicleAudit />}
+                  />{" "}
+                  <Route
+                    path="/admin/AdminVehicleAuditReports"
+                    element={<AdminVehicleAuditReports />}
+                  />{" "}
+                  <Route
+                    path="/admin/uber-audit"
+                    element={<AdminUberAudit />}
+                  />{" "}
+                  {/* Add the AdminVehicleAudit route */}
+                  <Route path="/admin/hr" element={<AdminHR />} />
+                  <Route
+                    path="/admin/hr/history"
+                    element={<HiringCyclesHistory />}
+                  />
+                  <Route
+                    path="/admin/hr/calendar"
+                    element={<HiringCalendar />}
+                  />
+                  <Route
+                    path="/admin/leave-management"
+                    element={<AdminLeaveManagement />}
+                  />
+                  <Route path="/apply-driver" element={<ApplyDriver />} />
+                  <Route
+                    path="/leave-application"
+                    element={<LeaveApplication />}
+                  />
+                  <Route path="/admin/chat" element={<AdminWhatsApp />} />
+                  <Route
+                    path="/part-time-booking"
+                    element={<PartTimeBooking />}
+                  />
+                  <Route path="/parttime/leads" element={<PartTimeLeads />} />
+                  <Route
+                    path="/admin/parttime-leads"
+                    element={<AdminPartTimeLeads />}
+                  />
+                  <Route
+                    path="/admin/driver-performance"
+                    element={<DriverPerformance />}
+                  />
+                  <Route
+                    path="/admin/vehicle-performance"
+                    element={<VehiclePerformance />}
+                  />
+                  <Route
+                    path="/admin/vehicles/vehicles-inactive"
+                    element={<AdminInactiveVehicles />}
+                  />
+                  <Route
+                    path="/admin/cash-trip-blocking"
+                    element={<AdminCashTripBlocking />}
+                  />
+                  <Route
+                    path="/admin/refund-list"
+                    element={<AdminRefundList />}
+                  />
+                  <Route
+                    path="/admin/room-bed-management"
+                    element={<RoomBedManagementPage />}
+                  />
+                  <Route
+                    path="/admin/monthly-rent-dashboard"
+                    element={<MonthlyRentDashboardPage />}
+                  />
+                  {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+                  <Route path="*" element={<NotFound />} />
+                </Routes>
+              </BrowserRouter>
+            </TooltipProvider>
+          </ManagerProvider>
         </AdminProvider>
       </AuthProvider>
     </QueryClientProvider>
