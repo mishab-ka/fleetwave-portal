@@ -1,16 +1,31 @@
-import React, { useState, useEffect } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Separator } from '@/components/ui/separator';
-import { AlertCircle, ArrowDown, ArrowUp, Plus, Edit, Trash, Save, X } from 'lucide-react';
-import { supabase } from '@/integrations/supabase/client';
-import { toast } from 'sonner';
-import { ScrollArea } from '@/components/ui/scroll-area';
-import { useAuth } from '@/context/AuthContext';
-import { useIsMobile } from '@/hooks/use-mobile';
+import React, { useState, useEffect } from "react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Separator } from "@/components/ui/separator";
+import {
+  AlertCircle,
+  ArrowDown,
+  ArrowUp,
+  Plus,
+  Edit,
+  Trash,
+  Save,
+  X,
+} from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { useAuth } from "@/context/AuthContext";
+import { useIsMobile } from "@/hooks/use-mobile";
 import {
   Table,
   TableBody,
@@ -19,7 +34,17 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { formatter } from "@/lib/utils";
 
 interface BalanceTransactionsProps {
@@ -28,7 +53,7 @@ interface BalanceTransactionsProps {
   onBalanceUpdate?: () => void;
 }
 
-type TransactionType = 'due' | 'deposit' | 'refund' | 'penalty' | 'bonus';
+type TransactionType = "due" | "deposit" | "refund" | "penalty" | "bonus";
 
 interface BalanceTransaction {
   id: string;
@@ -43,23 +68,25 @@ interface BalanceTransaction {
 export const BalanceTransactions = ({
   driverId,
   currentBalance,
-  onBalanceUpdate
+  onBalanceUpdate,
 }: BalanceTransactionsProps) => {
   const { user } = useAuth();
   const isMobile = useIsMobile();
   const [transactions, setTransactions] = useState<BalanceTransaction[]>([]);
   const [loading, setLoading] = useState(false);
-  const [amount, setAmount] = useState<string>('');
-  const [description, setDescription] = useState<string>('');
-  const [transactionType, setTransactionType] = useState<TransactionType>('due');
+  const [amount, setAmount] = useState<string>("");
+  const [description, setDescription] = useState<string>("");
+  const [transactionType, setTransactionType] =
+    useState<TransactionType>("due");
   const [isAdding, setIsAdding] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [selectedTransaction, setSelectedTransaction] = useState<BalanceTransaction | null>(null);
+  const [selectedTransaction, setSelectedTransaction] =
+    useState<BalanceTransaction | null>(null);
   const [isEditing, setIsEditing] = useState<boolean>(false);
   const [isEditingBalance, setIsEditingBalance] = useState<boolean>(false);
-  const [newBalance, setNewBalance] = useState<string>('');
-  const [editBalanceReason, setEditBalanceReason] = useState<string>('');
-  const [editDate, setEditDate] = useState<string>('');
+  const [newBalance, setNewBalance] = useState<string>("");
+  const [editBalanceReason, setEditBalanceReason] = useState<string>("");
+  const [editDate, setEditDate] = useState<string>("");
 
   useEffect(() => {
     if (driverId) {
@@ -76,16 +103,16 @@ export const BalanceTransactions = ({
     try {
       setLoading(true);
       const { data, error } = await supabase
-        .from('driver_balance_transactions')
-        .select('*')
-        .eq('user_id', driverId)
-        .order('created_at', { ascending: false });
+        .from("driver_balance_transactions")
+        .select("*")
+        .eq("user_id", driverId)
+        .order("created_at", { ascending: false });
 
       if (error) throw error;
       setTransactions(data || []);
     } catch (error) {
-      console.error('Error fetching transactions:', error);
-      toast.error('Failed to load transaction history');
+      console.error("Error fetching transactions:", error);
+      toast.error("Failed to load transaction history");
     } finally {
       setLoading(false);
     }
@@ -93,49 +120,51 @@ export const BalanceTransactions = ({
 
   const handleAddTransaction = async () => {
     if (!amount || parseFloat(amount) <= 0 || !transactionType) {
-      toast.error('Please enter a valid amount and select a transaction type');
+      toast.error("Please enter a valid amount and select a transaction type");
       return;
     }
 
     try {
       setIsSubmitting(true);
 
-      const isPositive = ['deposit', 'refund', 'bonus'].includes(transactionType);
+      const isPositive = ["deposit", "refund", "bonus"].includes(
+        transactionType
+      );
       const numericAmount = parseFloat(amount);
       const balanceChange = isPositive ? numericAmount : -numericAmount;
 
       const { error: txError } = await supabase
-        .from('driver_balance_transactions')
+        .from("driver_balance_transactions")
         .insert({
           user_id: driverId,
           amount: numericAmount,
           type: transactionType,
           description: description || undefined,
-          created_by: user?.id
+          created_by: user?.id,
         });
 
       if (txError) throw txError;
 
       const { error: userError } = await supabase
-        .from('users')
+        .from("users")
         .update({
-          pending_balance: currentBalance + balanceChange
+          pending_balance: currentBalance + balanceChange,
         })
-        .eq('id', driverId);
+        .eq("id", driverId);
 
       if (userError) throw userError;
-      
-      toast.success('Transaction added successfully');
 
-      setAmount('');
-      setDescription('');
+      toast.success("Transaction added successfully");
+
+      setAmount("");
+      setDescription("");
       setIsAdding(false);
 
       fetchTransactions();
       if (onBalanceUpdate) onBalanceUpdate();
     } catch (error) {
-      console.error('Error adding transaction:', error);
-      toast.error('Failed to add transaction');
+      console.error("Error adding transaction:", error);
+      toast.error("Failed to add transaction");
     } finally {
       setIsSubmitting(false);
     }
@@ -145,109 +174,125 @@ export const BalanceTransactions = ({
     try {
       // First, get the transaction details to calculate balance adjustment
       const { data: transactionData, error: fetchError } = await supabase
-        .from('driver_balance_transactions')
-        .select('*')
-        .eq('id', transactionId)
+        .from("driver_balance_transactions")
+        .select("*")
+        .eq("id", transactionId)
         .single();
-        
+
       if (fetchError) throw fetchError;
-      
+
       // Calculate the balance adjustment
-      const isPositive = ['deposit', 'refund', 'bonus'].includes(transactionData.type);
-      const amountChange = isPositive ? -transactionData.amount : transactionData.amount;
-      
+      const isPositive = ["deposit", "refund", "bonus"].includes(
+        transactionData.type
+      );
+      const amountChange = isPositive
+        ? -transactionData.amount
+        : transactionData.amount;
+
       // Delete the transaction
       const { error } = await supabase
-        .from('driver_balance_transactions')
+        .from("driver_balance_transactions")
         .delete()
-        .eq('id', transactionId);
+        .eq("id", transactionId);
 
       if (error) throw error;
-      
+
       // Update the user's balance
       const { error: userError } = await supabase
-        .from('users')
+        .from("users")
         .update({
-          pending_balance: currentBalance + amountChange
+          pending_balance: currentBalance + amountChange,
         })
-        .eq('id', driverId);
+        .eq("id", driverId);
 
       if (userError) throw userError;
-      
-      toast.success('Transaction deleted successfully');
+
+      toast.success("Transaction deleted successfully");
       fetchTransactions();
       if (onBalanceUpdate) onBalanceUpdate();
     } catch (error) {
-      console.error('Error deleting transaction:', error);
-      toast.error('Failed to delete transaction');
+      console.error("Error deleting transaction:", error);
+      toast.error("Failed to delete transaction");
     }
   };
 
   const handleEditTransaction = async (transaction: BalanceTransaction) => {
     setAmount(transaction.amount.toString());
-    setDescription(transaction.description || '');
+    setDescription(transaction.description || "");
     setTransactionType(transaction.type);
-    setEditDate(transaction.created_at.split('T')[0]);
+    setEditDate(transaction.created_at.split("T")[0]);
     setSelectedTransaction(transaction);
     setIsAdding(false);
     setIsEditing(true);
   };
 
   const handleUpdateTransaction = async () => {
-    if (!selectedTransaction || !amount || parseFloat(amount) <= 0 || !transactionType || !editDate) {
-      toast.error('Please enter a valid amount, select a transaction type, and provide a date');
+    if (
+      !selectedTransaction ||
+      !amount ||
+      parseFloat(amount) <= 0 ||
+      !transactionType ||
+      !editDate
+    ) {
+      toast.error(
+        "Please enter a valid amount, select a transaction type, and provide a date"
+      );
       return;
     }
 
     try {
       setIsSubmitting(true);
-      
-      const isPositive = ['deposit', 'refund', 'bonus'].includes(transactionType);
+
+      const isPositive = ["deposit", "refund", "bonus"].includes(
+        transactionType
+      );
       const numericAmount = parseFloat(amount);
       const oldAmount = selectedTransaction.amount;
-      const oldIsPositive = ['deposit', 'refund', 'bonus'].includes(selectedTransaction.type);
-      
+      const oldIsPositive = ["deposit", "refund", "bonus"].includes(
+        selectedTransaction.type
+      );
+
       // Calculate the balance difference
       const oldBalanceChange = oldIsPositive ? oldAmount : -oldAmount;
       const newBalanceChange = isPositive ? numericAmount : -numericAmount;
       const balanceDifference = newBalanceChange - oldBalanceChange;
-      
+
       // Update the transaction
       const { error: txError } = await supabase
-        .from('driver_balance_transactions')
+        .from("driver_balance_transactions")
         .update({
           amount: numericAmount,
           type: transactionType,
           description: description || undefined,
-          created_at: editDate
+          created_at: editDate,
         })
-        .eq('id', selectedTransaction.id);
+        .eq("id", selectedTransaction.id);
 
       if (txError) throw txError;
 
       // Update the user's balance
       const { error: userError } = await supabase
-        .from('users')
+        .from("users")
         .update({
-          pending_balance: currentBalance + balanceDifference
+          pending_balance: currentBalance + balanceDifference,
         })
-        .eq('id', driverId);
+        .eq("id", driverId);
 
       if (userError) throw userError;
-      
-      toast.success('Transaction updated successfully');
 
-      setAmount('');
-      setDescription('');
-      setEditDate('');
+      toast.success("Transaction updated successfully");
+
+      setAmount("");
+      setDescription("");
+      setEditDate("");
       setIsEditing(false);
       setSelectedTransaction(null);
 
       fetchTransactions();
       if (onBalanceUpdate) onBalanceUpdate();
     } catch (error) {
-      console.error('Error updating transaction:', error);
-      toast.error('Failed to update transaction');
+      console.error("Error updating transaction:", error);
+      toast.error("Failed to update transaction");
     } finally {
       setIsSubmitting(false);
     }
@@ -256,72 +301,72 @@ export const BalanceTransactions = ({
   const handleEditBalance = () => {
     setIsEditingBalance(true);
     setNewBalance(currentBalance.toString());
-    setEditBalanceReason('');
+    setEditBalanceReason("");
   };
 
   const handleCancelEditBalance = () => {
     setIsEditingBalance(false);
     setNewBalance(currentBalance.toString());
-    setEditBalanceReason('');
+    setEditBalanceReason("");
   };
 
   const handleSaveNewBalance = async () => {
     if (!newBalance || isNaN(parseFloat(newBalance))) {
-      toast.error('Please enter a valid balance amount');
+      toast.error("Please enter a valid balance amount");
       return;
     }
 
     if (!editBalanceReason.trim()) {
-      toast.error('Please provide a reason for the balance adjustment');
+      toast.error("Please provide a reason for the balance adjustment");
       return;
     }
 
     try {
       setIsSubmitting(true);
-      
+
       const oldBalance = currentBalance;
       const newBalanceValue = parseFloat(newBalance);
       const balanceDifference = newBalanceValue - oldBalance;
-      
+
       // Determine transaction type based on the balance change
-      let adjustmentType: TransactionType = 'deposit';
+      let adjustmentType: TransactionType = "deposit";
       if (balanceDifference < 0) {
-        adjustmentType = 'due';
+        adjustmentType = "due";
       } else {
-        adjustmentType = 'deposit';
+        adjustmentType = "deposit";
       }
-      
+
       // Add a transaction record for the manual adjustment
       const { error: txError } = await supabase
-        .from('driver_balance_transactions')
+        .from("driver_balance_transactions")
         .insert({
           user_id: driverId,
           amount: Math.abs(balanceDifference),
           type: adjustmentType,
           description: `Manual balance adjustment: ${editBalanceReason}`,
-          created_by: user?.id
+          created_by: user?.id,
         });
 
       if (txError) throw txError;
 
       // Update the user's balance
       const { error: userError } = await supabase
-        .from('users')
+        .from("users")
         .update({
-          pending_balance: newBalanceValue
+          pending_balance: newBalanceValue,
         })
-        .eq('id', driverId);
+        .eq("id", driverId);
 
       if (userError) throw userError;
-      
-      toast.success('Balance updated successfully');
-      
+
+      toast.success("Balance updated successfully");
+
       setIsEditingBalance(false);
       fetchTransactions();
       if (onBalanceUpdate) onBalanceUpdate();
     } catch (error) {
-      console.error('Error updating balance:', error);
-      toast.error('Failed to update balance');
+      console.error("Error updating balance:", error);
+      toast.error("Failed to update balance");
     } finally {
       setIsSubmitting(false);
     }
@@ -329,23 +374,23 @@ export const BalanceTransactions = ({
 
   const getTransactionLabel = (type: TransactionType) => {
     switch (type) {
-      case 'due':
-        return 'Amount Due';
-      case 'deposit':
-        return 'Deposit Added';
-      case 'refund':
-        return 'Refund Issued';
-      case 'penalty':
-        return 'Penalty';
-      case 'bonus':
-        return 'Bonus';
+      case "due":
+        return "Amount Due";
+      case "deposit":
+        return "Deposit Added";
+      case "refund":
+        return "Refund Issued";
+      case "penalty":
+        return "Penalty";
+      case "bonus":
+        return "Bonus";
       default:
         return type;
     }
   };
 
   const isPositiveTransaction = (type: TransactionType) => {
-    return ['deposit', 'refund', 'bonus'].includes(type);
+    return ["deposit", "refund", "bonus"].includes(type);
   };
 
   // const handleEditBalance = () => {
@@ -371,44 +416,49 @@ export const BalanceTransactions = ({
               </Button>
             )}
           </CardTitle>
-          
+
           {isEditingBalance ? (
             <div className="space-y-3 mt-2">
               <div className="flex items-center gap-2">
-                <Label htmlFor="new-balance" className="w-20">New Balance:</Label>
-                <Input 
-                  id="new-balance" 
-                  type="number" 
-                  placeholder="Enter new balance" 
-                  value={newBalance} 
+                <Label htmlFor="new-balance" className="w-20">
+                  New Balance:
+                </Label>
+                <Input
+                  id="new-balance"
+                  type="number"
+                  placeholder="Enter new balance"
+                  value={newBalance}
                   onChange={(e) => setNewBalance(e.target.value)}
                   className="max-w-xs"
                 />
               </div>
               <div className="flex items-start gap-2">
-                <Label htmlFor="balance-reason" className="w-20 pt-2">Reason:</Label>
-                <Input 
-                  id="balance-reason" 
-                  placeholder="Reason for adjustment" 
-                  value={editBalanceReason} 
+                <Label htmlFor="balance-reason" className="w-20 pt-2">
+                  Reason:
+                </Label>
+                <Input
+                  id="balance-reason"
+                  placeholder="Reason for adjustment"
+                  value={editBalanceReason}
                   onChange={(e) => setEditBalanceReason(e.target.value)}
                 />
               </div>
               <div className="flex justify-end space-x-2 mt-2">
-                <Button 
-                  variant="outline" 
-                  size="sm" 
+                <Button
+                  variant="outline"
+                  size="sm"
                   onClick={handleCancelEditBalance}
                   disabled={isSubmitting}
                 >
                   <X className="h-4 w-4 mr-1" /> Cancel
                 </Button>
-                <Button 
-                  size="sm" 
+                <Button
+                  size="sm"
                   onClick={handleSaveNewBalance}
                   disabled={isSubmitting}
                 >
-                  <Save className="h-4 w-4 mr-1" /> {isSubmitting ? 'Saving...' : 'Save'}
+                  <Save className="h-4 w-4 mr-1" />{" "}
+                  {isSubmitting ? "Saving..." : "Save"}
                 </Button>
               </div>
             </div>
@@ -418,40 +468,46 @@ export const BalanceTransactions = ({
                 ₹{currentBalance.toLocaleString()}
               </div>
               <div className="text-sm text-muted-foreground">
-                {currentBalance < 0 
-                  ? "Amount due from driver" 
-                  : currentBalance > 0 
-                    ? "Amount available to driver" 
-                    : "No pending balance"}
+                {currentBalance < 0
+                  ? "Amount due from driver"
+                  : currentBalance > 0
+                  ? "Amount available to driver"
+                  : "No pending balance"}
               </div>
             </>
           )}
         </CardHeader>
         <CardContent>
-          <Button variant="outline" onClick={() => setIsAdding(!isAdding)} className="w-full text-base">
+          <Button
+            variant="outline"
+            onClick={() => setIsAdding(!isAdding)}
+            className="w-full text-base"
+          >
             <Plus className="mr-2 h-4 w-4" />
             Add Transaction
           </Button>
-          
+
           {isAdding && (
             <div className="mt-4 p-4 border rounded-md space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="amount">Amount</Label>
-                  <Input 
-                    id="amount" 
-                    type="number" 
-                    placeholder="Enter amount" 
-                    value={amount} 
-                    onChange={e => setAmount(e.target.value)} 
+                  <Input
+                    id="amount"
+                    type="number"
+                    placeholder="Enter amount"
+                    value={amount}
+                    onChange={(e) => setAmount(e.target.value)}
                   />
                 </div>
-                
+
                 <div className="space-y-2">
                   <Label htmlFor="type">Transaction Type</Label>
-                  <Select 
-                    value={transactionType} 
-                    onValueChange={value => setTransactionType(value as TransactionType)}
+                  <Select
+                    value={transactionType}
+                    onValueChange={(value) =>
+                      setTransactionType(value as TransactionType)
+                    }
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="Select type" />
@@ -465,27 +521,24 @@ export const BalanceTransactions = ({
                     </SelectContent>
                   </Select>
                 </div>
-                
+
                 <div className="space-y-2 md:col-span-2">
                   <Label htmlFor="description">Description (Optional)</Label>
-                  <Input 
-                    id="description" 
-                    placeholder="Enter description" 
-                    value={description} 
-                    onChange={e => setDescription(e.target.value)} 
+                  <Input
+                    id="description"
+                    placeholder="Enter description"
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
                   />
                 </div>
               </div>
-              
+
               <div className="flex justify-end space-x-2">
                 <Button variant="outline" onClick={() => setIsAdding(false)}>
                   Cancel
                 </Button>
-                <Button 
-                  onClick={handleAddTransaction} 
-                  disabled={isSubmitting}
-                >
-                  {isSubmitting ? 'Adding...' : 'Add Transaction'}
+                <Button onClick={handleAddTransaction} disabled={isSubmitting}>
+                  {isSubmitting ? "Adding..." : "Add Transaction"}
                 </Button>
               </div>
             </div>
@@ -502,7 +555,7 @@ export const BalanceTransactions = ({
                     type="number"
                     placeholder="Enter amount"
                     value={amount}
-                    onChange={e => setAmount(e.target.value)}
+                    onChange={(e) => setAmount(e.target.value)}
                   />
                 </div>
 
@@ -510,7 +563,9 @@ export const BalanceTransactions = ({
                   <Label htmlFor="edit-type">Transaction Type</Label>
                   <Select
                     value={transactionType}
-                    onValueChange={value => setTransactionType(value as TransactionType)}
+                    onValueChange={(value) =>
+                      setTransactionType(value as TransactionType)
+                    }
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="Select type" />
@@ -531,40 +586,50 @@ export const BalanceTransactions = ({
                     id="edit-date"
                     type="date"
                     value={editDate}
-                    onChange={e => setEditDate(e.target.value)}
+                    onChange={(e) => setEditDate(e.target.value)}
                   />
                 </div>
 
                 <div className="space-y-2 md:col-span-2">
-                  <Label htmlFor="edit-description">Description (Optional)</Label>
+                  <Label htmlFor="edit-description">
+                    Description (Optional)
+                  </Label>
                   <Input
                     id="edit-description"
                     placeholder="Enter description"
                     value={description}
-                    onChange={e => setDescription(e.target.value)}
+                    onChange={(e) => setDescription(e.target.value)}
                   />
                 </div>
               </div>
 
               <div className="flex justify-end space-x-2">
-                <Button variant="outline" onClick={() => {setIsEditing(false); setSelectedTransaction(null);}}>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setIsEditing(false);
+                    setSelectedTransaction(null);
+                  }}
+                >
                   Cancel
                 </Button>
                 <Button
                   onClick={handleUpdateTransaction}
                   disabled={isSubmitting}
                 >
-                  {isSubmitting ? 'Updating...' : 'Update Transaction'}
+                  {isSubmitting ? "Updating..." : "Update Transaction"}
                 </Button>
               </div>
             </div>
           )}
         </CardContent>
       </Card>
-      
+
       <Card className="w-full">
         <CardHeader>
-          <CardTitle className="text-lg font-medium">Transaction History</CardTitle>
+          <CardTitle className="text-lg font-medium">
+            Transaction History
+          </CardTitle>
         </CardHeader>
         <CardContent>
           {loading ? (
@@ -593,14 +658,22 @@ export const BalanceTransactions = ({
                       </TableHeader>
                       <TableBody>
                         {filteredTransactions.map((transaction) => {
-                          const isPositiveTransaction = ['deposit', 'refund', 'bonus'].includes(transaction.type);
+                          const isPositiveTransaction = [
+                            "deposit",
+                            "refund",
+                            "bonus",
+                          ].includes(transaction.type);
                           return (
                             <TableRow key={transaction.id}>
                               <TableCell>{transaction.description}</TableCell>
                               <TableCell>
-                                <span className={`flex items-center font-medium ${
-                                  isPositiveTransaction ? 'text-green-500' : 'text-red-500'
-                                }`}>
+                                <span
+                                  className={`flex items-center font-medium ${
+                                    isPositiveTransaction
+                                      ? "text-green-500"
+                                      : "text-red-500"
+                                  }`}
+                                >
                                   {isPositiveTransaction ? (
                                     <ArrowUp className="mr-1 h-4 w-4 text-green-600" />
                                   ) : (
@@ -610,25 +683,33 @@ export const BalanceTransactions = ({
                                 </span>
                               </TableCell>
                               <TableCell>
-                                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                                  isPositiveTransaction 
-                                    ? 'bg-green-100 text-green-800'
-                                    : 'bg-red-100 text-red-800'
-                                }`}>
+                                <span
+                                  className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                                    isPositiveTransaction
+                                      ? "bg-green-100 text-green-800"
+                                      : "bg-red-100 text-red-800"
+                                  }`}
+                                >
                                   {getTransactionLabel(transaction.type)}
                                 </span>
                               </TableCell>
-                              <TableCell>{new Date(transaction.created_at).toLocaleDateString()}</TableCell>
+                              <TableCell>
+                                {new Date(
+                                  transaction.created_at
+                                ).toLocaleDateString()}
+                              </TableCell>
                               <TableCell>
                                 <div className="flex space-x-2">
                                   <Button
                                     variant="ghost"
                                     size="sm"
-                                    onClick={() => handleEditTransaction(transaction)}
+                                    onClick={() =>
+                                      handleEditTransaction(transaction)
+                                    }
                                   >
                                     <Edit className="h-4 w-4" />
                                   </Button>
-                                  
+
                                   <AlertDialog>
                                     <AlertDialogTrigger asChild>
                                       <Button
@@ -641,15 +722,25 @@ export const BalanceTransactions = ({
                                     </AlertDialogTrigger>
                                     <AlertDialogContent>
                                       <AlertDialogHeader>
-                                        <AlertDialogTitle>Delete Transaction?</AlertDialogTitle>
+                                        <AlertDialogTitle>
+                                          Delete Transaction?
+                                        </AlertDialogTitle>
                                         <AlertDialogDescription>
-                                          This action cannot be undone. This will permanently delete the transaction.
+                                          This action cannot be undone. This
+                                          will permanently delete the
+                                          transaction.
                                         </AlertDialogDescription>
                                       </AlertDialogHeader>
                                       <AlertDialogFooter>
-                                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                        <AlertDialogCancel>
+                                          Cancel
+                                        </AlertDialogCancel>
                                         <AlertDialogAction
-                                          onClick={() => handleDeleteTransaction(transaction.id)}
+                                          onClick={() =>
+                                            handleDeleteTransaction(
+                                              transaction.id
+                                            )
+                                          }
                                           className="bg-red-500 hover:bg-red-600"
                                         >
                                           Delete
@@ -673,16 +764,24 @@ export const BalanceTransactions = ({
           <div className="md:hidden w-full">
             <ScrollArea className="h-[300px] w-full">
               {filteredTransactions.map((transaction) => {
-                const isPositiveTransaction = ['deposit', 'refund', 'bonus'].includes(transaction.type);
+                const isPositiveTransaction = [
+                  "deposit",
+                  "refund",
+                  "bonus",
+                ].includes(transaction.type);
                 return (
                   <div
                     key={transaction.id}
                     className="border-b border-gray-200 py-4 space-y-2"
                   >
                     <div className="flex justify-between items-center">
-                      <span className={`flex items-center font-medium ${
-                        isPositiveTransaction ? 'text-green-500' : 'text-red-500'
-                      }`}>
+                      <span
+                        className={`flex items-center font-medium ${
+                          isPositiveTransaction
+                            ? "text-green-500"
+                            : "text-red-500"
+                        }`}
+                      >
                         {isPositiveTransaction ? (
                           <ArrowUp className="mr-1 h-4 w-4 text-green-600" />
                         ) : (
@@ -690,19 +789,23 @@ export const BalanceTransactions = ({
                         )}
                         {formatter.format(transaction.amount)}
                       </span>
-                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                        isPositiveTransaction 
-                          ? 'bg-green-100 text-green-800'
-                          : 'bg-red-100 text-red-800'
-                      }`}>
+                      <span
+                        className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                          isPositiveTransaction
+                            ? "bg-green-100 text-green-800"
+                            : "bg-red-100 text-red-800"
+                        }`}
+                      >
                         {getTransactionLabel(transaction.type)}
                       </span>
                     </div>
-                    
+
                     {transaction.description && (
-                      <p className="text-sm text-gray-600">{transaction.description}</p>
+                      <p className="text-sm text-gray-600">
+                        {transaction.description}
+                      </p>
                     )}
-                    
+
                     <div className="flex justify-between items-center text-sm">
                       <span className="text-gray-500">
                         {new Date(transaction.created_at).toLocaleDateString()}
@@ -715,7 +818,7 @@ export const BalanceTransactions = ({
                         >
                           <Edit className="h-4 w-4" />
                         </Button>
-                        
+
                         <AlertDialog>
                           <AlertDialogTrigger asChild>
                             <Button
@@ -728,15 +831,20 @@ export const BalanceTransactions = ({
                           </AlertDialogTrigger>
                           <AlertDialogContent>
                             <AlertDialogHeader>
-                              <AlertDialogTitle>Delete Transaction?</AlertDialogTitle>
+                              <AlertDialogTitle>
+                                Delete Transaction?
+                              </AlertDialogTitle>
                               <AlertDialogDescription>
-                                This action cannot be undone. This will permanently delete the transaction.
+                                This action cannot be undone. This will
+                                permanently delete the transaction.
                               </AlertDialogDescription>
                             </AlertDialogHeader>
                             <AlertDialogFooter>
                               <AlertDialogCancel>Cancel</AlertDialogCancel>
                               <AlertDialogAction
-                                onClick={() => handleDeleteTransaction(transaction.id)}
+                                onClick={() =>
+                                  handleDeleteTransaction(transaction.id)
+                                }
                                 className="bg-red-500 hover:bg-red-600"
                               >
                                 Delete
@@ -749,7 +857,7 @@ export const BalanceTransactions = ({
                   </div>
                 );
               })}
-              
+
               {filteredTransactions.length === 0 && (
                 <div className="text-center py-8 text-gray-500">
                   No transactions found

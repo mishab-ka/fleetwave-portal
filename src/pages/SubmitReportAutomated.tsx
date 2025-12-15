@@ -9,10 +9,45 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { FileUp, Wand2, Eye, EyeOff } from "lucide-react";
+import {
+  FileUp,
+  Wand2,
+  Eye,
+  EyeOff,
+  X,
+  CheckCircle,
+  AlertCircle,
+  RefreshCw,
+  Camera,
+  Sparkles,
+  Zap,
+  ImageIcon,
+  XCircle,
+  AlertTriangle,
+} from "lucide-react";
 import WeeklyCalendar from "@/components/ui/weeklycalander";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Progress } from "@/components/ui/progress";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+
+import {
+  ExtractedData,
+  ProcessingState,
+  OCRConfig,
+  DEFAULT_OCR_CONFIG,
+  processImageWithTesseract,
+  combineMultipleOCRResults,
+  validateExtractedData,
+  getConfidenceDescription,
+  parseUberScreenshotText,
+} from "@/utils/ocrUtils";
 
 const SubmitReportAutomated = () => {
   const [totalTrips, setTotalTrips] = useState(0);
@@ -23,14 +58,25 @@ const SubmitReportAutomated = () => {
   const [currentTrips, setCurrentTrips] = useState();
   const [submitting, setSubmitting] = useState(false);
   const [userData, setUserData] = useState<any>(null);
-  const [uberScreenshot, setUberScreenshot] = useState<File | null>(null);
+  const [uberScreenshots, setUberScreenshots] = useState<File[]>([]);
   const [rentScreenshot, setRentScreenshot] = useState<File | null>(null);
   const [paymentMessage, setPaymentMessage] = useState("");
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [previewImage, setPreviewImage] = useState<string | null>(null);
-  const [showPreview, setShowPreview] = useState(false);
-  const [extractedData, setExtractedData] = useState<any>(null);
+  const [processingState, setProcessingState] = useState<ProcessingState>({
+    isProcessing: false,
+    progress: 0,
+    status: "",
+  });
+  const [previewImages, setPreviewImages] = useState<string[]>([]);
+  const [showPreviews, setShowPreviews] = useState(false);
+  const [extractedData, setExtractedData] = useState<ExtractedData[]>([]);
   const [isDataVerified, setIsDataVerified] = useState(false);
+  const [ocrConfig, setOcrConfig] = useState<OCRConfig>(DEFAULT_OCR_CONFIG);
+  const [validationResult, setValidationResult] = useState<{
+    isValid: boolean;
+    issues: string[];
+    warnings: string[];
+  } | null>(null);
+  const [ocrAttempts, setOcrAttempts] = useState(0);
 
   const [formData, setFormData] = useState({
     vehicle_number: "",
@@ -106,46 +152,156 @@ const SubmitReportAutomated = () => {
     }
   };
 
-  // OCR Processing Function
-  const processImageWithOCR = async (imageFile: File) => {
-    setIsProcessing(true);
+  // Using enhanced OCR utility functions for comprehensive data extraction
+
+  // Enhanced OCR implementation using utility functions
+  const processImageWithOCR = async (imageFiles: File[]) => {
+    setProcessingState({
+      isProcessing: true,
+      progress: 0,
+      status: "Initializing OCR...",
+    });
 
     try {
-      // Create a preview of the image
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        setPreviewImage(e.target?.result as string);
-      };
-      reader.readAsDataURL(imageFile);
+      // Create previews for all images
+      const previews: string[] = [];
+      for (const file of imageFiles) {
+        const reader = new FileReader();
+        const preview = await new Promise<string>((resolve) => {
+          reader.onload = (e) => resolve(e.target?.result as string);
+          reader.readAsDataURL(file);
+        });
+        previews.push(preview);
+      }
 
-      toast.success("Processing image with AI...");
+      setPreviewImages(previews);
+      setShowPreviews(true);
 
-      // Simulate processing time
-      await new Promise((resolve) => setTimeout(resolve, 3000));
+      // Use the enhanced OCR utility function
+      const extractedResults = await processImageWithTesseract(
+        imageFiles,
+        ocrConfig,
+        (progress, status) => {
+          setProcessingState({
+            isProcessing: true,
+            progress,
+            status,
+          });
+        }
+      );
 
-      // Mock extracted data - in real implementation, this would come from OCR
-      const mockExtractedData = {
-        totalTrips: "12",
-        totalEarnings: "2847.50",
-        confidence: 0.95,
-        processedAt: new Date().toISOString(),
-      };
+      setExtractedData(extractedResults);
 
-      setExtractedData(mockExtractedData);
+      // Combine results from multiple images
+      const bestResult = combineMultipleOCRResults(extractedResults);
 
-      // Auto-fill form fields
-      setFormData((prev) => ({
-        ...prev,
-        total_trips: mockExtractedData.totalTrips,
-        total_earnings: mockExtractedData.totalEarnings,
-      }));
+      // Validate extracted data
+      if (bestResult) {
+        const validation = validateExtractedData(bestResult);
+        setValidationResult(validation);
+      }
 
-      toast.success("Data extracted successfully! Please verify the values.");
+      // Auto-fill ALL form fields with best result
+      if (bestResult) {
+        // Only update fields that have values
+        const updates: any = {};
+        if (bestResult.totalTrips) updates.total_trips = bestResult.totalTrips;
+        if (bestResult.totalEarnings)
+          updates.total_earnings = bestResult.totalEarnings;
+        if (bestResult.toll) updates.toll = bestResult.toll;
+        if (bestResult.cashCollected)
+          updates.total_cashcollect = bestResult.cashCollected;
+
+        setFormData((prev) => ({
+          ...prev,
+          ...updates,
+        }));
+
+        const confidencePercent = Math.round(bestResult.confidence * 100);
+        const confidenceInfo = getConfidenceDescription(bestResult.confidence);
+        const fieldsCount = bestResult.fieldsFound.length;
+        const fieldsText = bestResult.fieldsFound.join(", ");
+
+        console.log("📊 OCR Results:", {
+          confidence: confidencePercent,
+          fieldsFound: bestResult.fieldsFound,
+          extractedData: {
+            trips: bestResult.totalTrips,
+            earnings: bestResult.totalEarnings,
+            toll: bestResult.toll,
+            cash: bestResult.cashCollected,
+          },
+          rawText: bestResult.rawText.substring(0, 500) + "...",
+        });
+
+        // Debug: Show what each image extracted
+        extractedResults.forEach((result, index) => {
+          console.log(`📱 Image ${index + 1} results:`, {
+            trips: result.totalTrips,
+            earnings: result.totalEarnings,
+            toll: result.toll,
+            cash: result.cashCollected,
+            confidence: Math.round(result.confidence * 100) + "%",
+            fieldsFound: result.fieldsFound,
+          });
+        });
+
+        if (bestResult.confidence >= ocrConfig.confidenceThreshold / 100) {
+          toast.success(
+            `🎉 Auto-filled ${fieldsCount} fields (${fieldsText})! Confidence: ${confidencePercent}%`
+          );
+        } else {
+          toast.warning(
+            `⚠️ ${confidenceInfo.description} - Found: ${fieldsText} (${confidencePercent}%). Please verify data carefully.`
+          );
+        }
+
+        // Show what was actually filled
+        const filledFields = Object.keys(updates);
+        if (filledFields.length > 0) {
+          toast.info(`✅ Filled: ${filledFields.join(", ")}`);
+        }
+
+        // Show additional data found
+        if (
+          bestResult.onlineTime ||
+          bestResult.distance ||
+          bestResult.surge ||
+          bestResult.tips
+        ) {
+          const additionalInfo = [];
+          if (bestResult.onlineTime)
+            additionalInfo.push(`${bestResult.onlineTime} hrs online`);
+          if (bestResult.distance)
+            additionalInfo.push(`${bestResult.distance} km driven`);
+          if (bestResult.surge)
+            additionalInfo.push(`₹${bestResult.surge} surge`);
+          if (bestResult.tips) additionalInfo.push(`₹${bestResult.tips} tips`);
+
+          toast.info(`📊 Additional data: ${additionalInfo.join(", ")}`);
+        }
+      } else {
+        console.log("❌ No OCR result obtained");
+        toast.error(
+          "Could not extract reliable data from images. Please check image quality and try again or enter manually."
+        );
+      }
+
+      setProcessingState({
+        isProcessing: false,
+        progress: 100,
+        status: "Processing complete",
+      });
     } catch (error) {
       console.error("OCR processing error:", error);
-      toast.error("Failed to process image. Please enter data manually.");
-    } finally {
-      setIsProcessing(false);
+      toast.error(
+        "Failed to process images. Please try again or enter data manually."
+      );
+      setProcessingState({
+        isProcessing: false,
+        progress: 0,
+        status: "Processing failed",
+      });
     }
   };
 
@@ -180,20 +336,80 @@ const SubmitReportAutomated = () => {
     e: React.ChangeEvent<HTMLInputElement>,
     type: "uber" | "rent"
   ) => {
-    if (e.target.files && e.target.files[0]) {
-      const file = e.target.files[0];
-
+    if (e.target.files) {
       if (type === "uber") {
-        setUberScreenshot(file);
-        // Automatically process the Uber screenshot with OCR
-        await processImageWithOCR(file);
+        const files = Array.from(e.target.files).slice(0, ocrConfig.maxImages); // Limit to maxImages
+        setUberScreenshots(files);
+        setOcrAttempts((prev) => prev + 1);
+
+        if (files.length > 0) {
+          // Automatically process the Uber screenshots with OCR
+          await processImageWithOCR(files);
+        }
       } else {
-        setRentScreenshot(file);
+        setRentScreenshot(e.target.files[0]);
       }
     }
   };
 
+  const removeImage = (index: number) => {
+    const newScreenshots = uberScreenshots.filter((_, i) => i !== index);
+    const newPreviews = previewImages.filter((_, i) => i !== index);
+
+    setUberScreenshots(newScreenshots);
+    setPreviewImages(newPreviews);
+
+    // If no images left, clear extracted data
+    if (newScreenshots.length === 0) {
+      setExtractedData([]);
+      setIsDataVerified(false);
+      setFormData((prev) => ({
+        ...prev,
+        total_trips: "",
+        total_earnings: "",
+      }));
+    }
+  };
+
+  const reprocessImages = async () => {
+    if (uberScreenshots.length > 0) {
+      setExtractedData([]);
+      setIsDataVerified(false);
+      setOcrAttempts((prev) => prev + 1);
+
+      // Try with different OCR settings for better results
+      const enhancedConfig = {
+        ...ocrConfig,
+        tesseractOptions: {
+          ...ocrConfig.tesseractOptions,
+          tessedit_pageseg_mode: ocrAttempts % 2 === 0 ? 6 : 3, // Alternate between modes
+        },
+      };
+
+      setOcrConfig(enhancedConfig);
+      toast.info(
+        `🔄 Reprocessing with enhanced settings (Attempt ${ocrAttempts + 1})`
+      );
+      await processImageWithOCR(uberScreenshots);
+    } else {
+      toast.error("No images to reprocess");
+    }
+  };
+
   const handleVerifyData = () => {
+    if (extractedData.length === 0) {
+      toast.error("No extracted data to verify");
+      return;
+    }
+
+    const bestResult = combineMultipleOCRResults(extractedData);
+    if (
+      bestResult &&
+      bestResult.confidence < ocrConfig.confidenceThreshold / 100
+    ) {
+      toast.warning("Data has low confidence. Are you sure it's correct?");
+    }
+
     setIsDataVerified(true);
     toast.success("Data verified successfully!");
   };
@@ -269,7 +485,7 @@ const SubmitReportAutomated = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!isDataVerified && extractedData) {
+    if (extractedData.length > 0 && !isDataVerified) {
       toast.error("Please verify the extracted data before submitting.");
       return;
     }
@@ -306,21 +522,49 @@ const SubmitReportAutomated = () => {
     setSubmitting(true);
 
     try {
-      let uberScreenshotUrl = null;
+      // Check if a report already exists for this user and rent date
+      const { data: existingReport, error: checkError } = await supabase
+        .from("fleet_reports")
+        .select("id, status, submission_date")
+        .eq("user_id", userData.id)
+        .eq("rent_date", selectedDate)
+        .single();
+
+      if (checkError && checkError.code !== "PGRST116") {
+        // PGRST116 is "not found" error
+        console.error("Error checking existing report:", checkError);
+        throw new Error("Failed to check for existing report");
+      }
+
+      if (existingReport) {
+        toast.error(
+          `A report for ${selectedDate} has already been submitted. You cannot submit multiple reports for the same date.`
+        );
+        setSubmitting(false);
+        return;
+      }
+
+      let uberScreenshotUrls: string[] = [];
       let rentScreenshotUrl = null;
 
-      // Upload screenshots
-      if (uberScreenshot) {
-        const fileName = `${
-          user?.id
-        }/reports/${Date.now()}_uber_screenshot.${uberScreenshot.name
-          .split(".")
-          .pop()}`;
-        const { data: uberData, error: uberError } = await supabase.storage
-          .from("uploads")
-          .upload(fileName, uberScreenshot);
-        if (uberError) throw uberError;
-        uberScreenshotUrl = fileName;
+      // Upload multiple Uber screenshots
+      if (uberScreenshots.length > 0) {
+        const uploadPromises = uberScreenshots.map(
+          async (screenshot, index) => {
+            const fileName = `${
+              user?.id
+            }/reports/${Date.now()}_uber_screenshot_${
+              index + 1
+            }.${screenshot.name.split(".").pop()}`;
+            const { data, error } = await supabase.storage
+              .from("uploads")
+              .upload(fileName, screenshot);
+            if (error) throw error;
+            return fileName;
+          }
+        );
+
+        uberScreenshotUrls = await Promise.all(uploadPromises);
       }
 
       if (rentScreenshot) {
@@ -351,7 +595,13 @@ const SubmitReportAutomated = () => {
       const newVehicleTrips =
         currentVehicleTrips + Number(formData.total_trips);
 
-      // Insert the fleet report with OCR metadata
+      // Get best OCR result for metadata
+      const bestOCRResult =
+        extractedData.length > 0
+          ? combineMultipleOCRResults(extractedData)
+          : null;
+
+      // Insert the fleet report with enhanced OCR metadata
       const reportData = {
         user_id: userData.id,
         driver_name: userData.name,
@@ -370,9 +620,16 @@ const SubmitReportAutomated = () => {
             : Math.abs(Number(formData.rent_paid)),
         status: "pending_verification",
         remarks: formData.remarks,
-        uber_screenshot: uberScreenshotUrl,
+        uber_screenshot: uberScreenshotUrls.join(","), // Store multiple URLs
         payment_screenshot: rentScreenshotUrl,
         submission_date: formattedSubmissionDate,
+        // Enhanced OCR metadata
+        ocr_processed: extractedData.length > 0,
+        ocr_confidence: bestOCRResult?.confidence || null,
+        ocr_raw_text: bestOCRResult?.rawText || null,
+        data_verified: isDataVerified,
+        ocr_attempts: ocrAttempts,
+        images_processed: uberScreenshots.length,
       };
 
       const { error: reportError } = await supabase
@@ -412,7 +669,9 @@ const SubmitReportAutomated = () => {
         }
       }
 
-      toast.success("Daily report submitted successfully!");
+      toast.success(
+        "Daily report submitted successfully with AI processing data!"
+      );
       navigate("/profile");
     } catch (error) {
       console.error("Error submitting report:", error);
@@ -430,6 +689,11 @@ const SubmitReportAutomated = () => {
     );
   }
 
+  const bestResult =
+    extractedData.length > 0 ? combineMultipleOCRResults(extractedData) : null;
+  const hasLowConfidence =
+    bestResult && bestResult.confidence < ocrConfig.confidenceThreshold / 100;
+
   return (
     <div className="min-h-screen bg-white">
       <Navbar />
@@ -437,12 +701,79 @@ const SubmitReportAutomated = () => {
         <div className="flex items-center gap-3 mb-6">
           <Wand2 className="h-8 w-8 text-fleet-purple" />
           <h1 className="text-3xl font-bold text-fleet-purple">
-            Submit Daily Report - Automated
+            Submit Daily Report - AI Automated
           </h1>
           <Badge variant="secondary" className="bg-blue-100 text-blue-800">
-            AI Powered
+            Tesseract OCR
           </Badge>
         </div>
+
+        {/* OCR Settings */}
+        <Card className="mb-6 border-blue-200 bg-blue-50">
+          <CardHeader>
+            <CardTitle className="text-blue-800 flex items-center gap-2">
+              <Camera className="h-5 w-5" />
+              AI Processing Settings
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <Label className="text-sm font-medium text-blue-700">
+                  Confidence Threshold
+                </Label>
+                <Input
+                  type="range"
+                  min="50"
+                  max="95"
+                  value={ocrConfig.confidenceThreshold}
+                  onChange={(e) =>
+                    setOcrConfig((prev) => ({
+                      ...prev,
+                      confidenceThreshold: Number(e.target.value),
+                    }))
+                  }
+                  className="mt-1"
+                />
+                <p className="text-xs text-blue-600 mt-1">
+                  {ocrConfig.confidenceThreshold}% minimum
+                </p>
+              </div>
+              <div>
+                <Label className="text-sm font-medium text-blue-700">
+                  Max Images
+                </Label>
+                <p className="text-lg font-semibold">
+                  {ocrConfig.maxImages} images
+                </p>
+                <p className="text-xs text-blue-600">
+                  Better accuracy with multiple screenshots
+                </p>
+              </div>
+              <div>
+                <Label className="text-sm font-medium text-blue-700">
+                  OCR Attempts
+                </Label>
+                <p className="text-lg font-semibold">{ocrAttempts}</p>
+                {ocrAttempts > 0 && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={reprocessImages}
+                    className="mt-1"
+                    disabled={
+                      processingState.isProcessing ||
+                      uberScreenshots.length === 0
+                    }
+                  >
+                    <RefreshCw className="h-3 w-3 mr-1" />
+                    Reprocess
+                  </Button>
+                )}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
 
         <div className="bg-white shadow-md rounded-lg p-6">
           <form onSubmit={handleSubmit}>
@@ -475,52 +806,280 @@ const SubmitReportAutomated = () => {
               requireSelection={true}
             />
 
-            {/* OCR Processing Section */}
-            {extractedData && (
-              <Card className="mb-6 border-green-200 bg-green-50">
+            {/* Processing Progress */}
+            {processingState.isProcessing && (
+              <Card className="mb-6 border-blue-200 bg-blue-50">
+                <CardContent className="pt-6">
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-medium text-blue-800">
+                        {processingState.status}
+                      </span>
+                      <span className="text-sm text-blue-600">
+                        {Math.round(processingState.progress)}%
+                      </span>
+                    </div>
+                    <Progress
+                      value={processingState.progress}
+                      className="h-2"
+                    />
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* OCR Results */}
+            {extractedData.length > 0 && (
+              <Card
+                className={`mb-6 ${
+                  hasLowConfidence
+                    ? "border-orange-200 bg-orange-50"
+                    : "border-green-200 bg-green-50"
+                }`}
+              >
                 <CardHeader>
-                  <CardTitle className="text-green-800 flex items-center gap-2">
+                  <CardTitle
+                    className={`${
+                      hasLowConfidence ? "text-orange-800" : "text-green-800"
+                    } flex items-center gap-2`}
+                  >
                     <Wand2 className="h-5 w-5" />
-                    Data Extracted from Screenshot
+                    AI Extracted Data
+                    {hasLowConfidence && (
+                      <AlertCircle className="h-5 w-5 text-orange-600" />
+                    )}
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                  {hasLowConfidence && (
+                    <Alert className="mb-4 border-orange-300 bg-orange-100">
+                      <AlertCircle className="h-4 w-4" />
+                      <AlertDescription className="text-orange-800">
+                        Low confidence detected (
+                        {Math.round((bestResult?.confidence || 0) * 100)}%).
+                        Please verify the data carefully or try uploading
+                        clearer screenshots.
+                      </AlertDescription>
+                    </Alert>
+                  )}
+
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
                     <div>
-                      <Label className="text-sm font-medium text-green-700">
+                      <Label
+                        className={`text-sm font-medium ${
+                          hasLowConfidence
+                            ? "text-orange-700"
+                            : "text-green-700"
+                        }`}
+                      >
                         Total Trips
                       </Label>
                       <p className="text-lg font-semibold">
-                        {extractedData.totalTrips}
+                        {bestResult?.totalTrips || "Not found"}
                       </p>
                     </div>
                     <div>
-                      <Label className="text-sm font-medium text-green-700">
+                      <Label
+                        className={`text-sm font-medium ${
+                          hasLowConfidence
+                            ? "text-orange-700"
+                            : "text-green-700"
+                        }`}
+                      >
                         Total Earnings
                       </Label>
                       <p className="text-lg font-semibold">
-                        ₹{extractedData.totalEarnings}
+                        {bestResult?.totalEarnings
+                          ? `₹${bestResult.totalEarnings}`
+                          : "Not found"}
                       </p>
                     </div>
                     <div>
-                      <Label className="text-sm font-medium text-green-700">
-                        Confidence
+                      <Label
+                        className={`text-sm font-medium ${
+                          hasLowConfidence
+                            ? "text-orange-700"
+                            : "text-green-700"
+                        }`}
+                      >
+                        Toll/Fees
                       </Label>
                       <p className="text-lg font-semibold">
-                        {Math.round((extractedData.confidence || 0) * 100)}%
+                        {bestResult?.toll ? `₹${bestResult.toll}` : "Not found"}
+                      </p>
+                    </div>
+                    <div>
+                      <Label
+                        className={`text-sm font-medium ${
+                          hasLowConfidence
+                            ? "text-orange-700"
+                            : "text-green-700"
+                        }`}
+                      >
+                        Cash Collected
+                      </Label>
+                      <p className="text-lg font-semibold">
+                        {bestResult?.cashCollected
+                          ? `₹${bestResult.cashCollected}`
+                          : "Not found"}
                       </p>
                     </div>
                   </div>
+
+                  {/* Additional Fields Row */}
+                  {(bestResult?.onlineTime ||
+                    bestResult?.distance ||
+                    bestResult?.surge ||
+                    bestResult?.tips) && (
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4 p-3 bg-blue-50 rounded-lg border">
+                      <div>
+                        <Label className="text-sm font-medium text-blue-700">
+                          Online Time
+                        </Label>
+                        <p className="text-lg font-semibold">
+                          {bestResult?.onlineTime
+                            ? `${bestResult.onlineTime} hrs`
+                            : "Not found"}
+                        </p>
+                      </div>
+                      <div>
+                        <Label className="text-sm font-medium text-blue-700">
+                          Distance
+                        </Label>
+                        <p className="text-lg font-semibold">
+                          {bestResult?.distance
+                            ? `${bestResult.distance} km`
+                            : "Not found"}
+                        </p>
+                      </div>
+                      <div>
+                        <Label className="text-sm font-medium text-blue-700">
+                          Surge/Bonus
+                        </Label>
+                        <p className="text-lg font-semibold">
+                          {bestResult?.surge
+                            ? `₹${bestResult.surge}`
+                            : "Not found"}
+                        </p>
+                      </div>
+                      <div>
+                        <Label className="text-sm font-medium text-blue-700">
+                          Tips
+                        </Label>
+                        <p className="text-lg font-semibold">
+                          {bestResult?.tips
+                            ? `₹${bestResult.tips}`
+                            : "Not found"}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Summary Row */}
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-4">
+                    <div>
+                      <Label
+                        className={`text-sm font-medium ${
+                          hasLowConfidence
+                            ? "text-orange-700"
+                            : "text-green-700"
+                        }`}
+                      >
+                        Confidence
+                      </Label>
+                      <p className="text-lg font-semibold">
+                        {Math.round((bestResult?.confidence || 0) * 100)}%
+                      </p>
+                    </div>
+                    <div>
+                      <Label
+                        className={`text-sm font-medium ${
+                          hasLowConfidence
+                            ? "text-orange-700"
+                            : "text-green-700"
+                        }`}
+                      >
+                        Fields Found
+                      </Label>
+                      <p className="text-lg font-semibold">
+                        {bestResult?.fieldsFound?.length || 0} fields
+                      </p>
+                    </div>
+                    <div>
+                      <Label
+                        className={`text-sm font-medium ${
+                          hasLowConfidence
+                            ? "text-orange-700"
+                            : "text-green-700"
+                        }`}
+                      >
+                        Images Processed
+                      </Label>
+                      <p className="text-lg font-semibold">
+                        {extractedData.length}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Data Validation */}
+                  {validationResult && (
+                    <div className="space-y-2 mt-4 p-4 bg-gray-50 rounded-lg border">
+                      <Label className="text-sm font-medium">
+                        🔍 Data Validation Results
+                      </Label>
+                      {validationResult.isValid ? (
+                        <div className="flex items-center space-x-2 text-green-600">
+                          <CheckCircle className="h-4 w-4" />
+                          <span className="text-sm">
+                            All critical data looks good!
+                          </span>
+                        </div>
+                      ) : (
+                        <div className="space-y-1">
+                          {validationResult.issues.map((issue, index) => (
+                            <div
+                              key={index}
+                              className="flex items-center space-x-2 text-red-600"
+                            >
+                              <XCircle className="h-4 w-4" />
+                              <span className="text-sm">{issue}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Show warnings */}
+                      {validationResult.warnings &&
+                        validationResult.warnings.length > 0 && (
+                          <div className="space-y-1 mt-2">
+                            {validationResult.warnings.map((warning, index) => (
+                              <div
+                                key={index}
+                                className="flex items-center space-x-2 text-orange-600"
+                              >
+                                <AlertTriangle className="h-4 w-4" />
+                                <span className="text-sm">{warning}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                    </div>
+                  )}
 
                   {!isDataVerified && (
                     <div className="flex items-center gap-2">
                       <Button
                         type="button"
                         onClick={handleVerifyData}
-                        className="bg-green-600 hover:bg-green-700"
+                        className={
+                          hasLowConfidence
+                            ? "bg-orange-600 hover:bg-orange-700"
+                            : "bg-green-600 hover:bg-green-700"
+                        }
                         size="sm"
                       >
-                        ✓ Verify Data
+                        <CheckCircle className="h-4 w-4 mr-1" />
+                        Verify Data
                       </Button>
                       <span className="text-sm text-orange-600">
                         Please verify the extracted data before submitting
@@ -530,42 +1089,72 @@ const SubmitReportAutomated = () => {
 
                   {isDataVerified && (
                     <Badge className="bg-green-600 text-white">
-                      ✓ Data Verified
+                      <CheckCircle className="h-3 w-3 mr-1" />
+                      Data Verified
                     </Badge>
                   )}
                 </CardContent>
               </Card>
             )}
 
-            {/* Image Preview */}
-            {previewImage && (
+            {/* Image Previews */}
+            {previewImages.length > 0 && (
               <Card className="mb-6">
                 <CardHeader>
                   <CardTitle className="flex items-center justify-between">
-                    <span>Uploaded Screenshot</span>
+                    <span>Uploaded Screenshots ({previewImages.length})</span>
                     <Button
                       type="button"
                       variant="outline"
                       size="sm"
-                      onClick={() => setShowPreview(!showPreview)}
+                      onClick={() => setShowPreviews(!showPreviews)}
                     >
-                      {showPreview ? (
+                      {showPreviews ? (
                         <EyeOff className="h-4 w-4" />
                       ) : (
                         <Eye className="h-4 w-4" />
                       )}
-                      {showPreview ? "Hide" : "Show"}
+                      {showPreviews ? "Hide" : "Show"}
                     </Button>
                   </CardTitle>
                 </CardHeader>
-                {showPreview && (
+                {showPreviews && (
                   <CardContent>
-                    <img
-                      src={previewImage}
-                      alt="Uber Screenshot"
-                      className="max-w-full h-auto rounded-lg border"
-                      style={{ maxHeight: "400px" }}
-                    />
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                      {previewImages.map((preview, index) => (
+                        <div key={index} className="relative">
+                          <img
+                            src={preview}
+                            alt={`Uber Screenshot ${index + 1}`}
+                            className="w-full h-48 object-cover rounded-lg border"
+                          />
+                          <Button
+                            type="button"
+                            variant="destructive"
+                            size="sm"
+                            className="absolute top-2 right-2"
+                            onClick={() => removeImage(index)}
+                          >
+                            <X className="h-3 w-3" />
+                          </Button>
+                          {extractedData[index] && (
+                            <Badge
+                              className={`absolute bottom-2 left-2 ${
+                                extractedData[index].confidence >=
+                                ocrConfig.confidenceThreshold / 100
+                                  ? "bg-green-600"
+                                  : "bg-orange-600"
+                              } text-white`}
+                            >
+                              {Math.round(
+                                extractedData[index].confidence * 100
+                              )}
+                              %
+                            </Badge>
+                          )}
+                        </div>
+                      ))}
+                    </div>
                   </CardContent>
                 )}
               </Card>
@@ -584,10 +1173,12 @@ const SubmitReportAutomated = () => {
                   onChange={handleInputChange}
                   required
                   className={
-                    extractedData ? "border-green-300 bg-green-50" : ""
+                    extractedData.length > 0
+                      ? "border-green-300 bg-green-50"
+                      : ""
                   }
                 />
-                {extractedData && (
+                {extractedData.length > 0 && (
                   <p className="text-sm text-green-600 mt-1">
                     ✓ Auto-filled from screenshot
                   </p>
@@ -605,10 +1196,12 @@ const SubmitReportAutomated = () => {
                   onChange={handleInputChange}
                   required
                   className={
-                    extractedData ? "border-green-300 bg-green-50" : ""
+                    extractedData.length > 0
+                      ? "border-green-300 bg-green-50"
+                      : ""
                   }
                 />
-                {extractedData && (
+                {extractedData.length > 0 && (
                   <p className="text-sm text-green-600 mt-1">
                     ✓ Auto-filled from screenshot
                   </p>
@@ -665,10 +1258,12 @@ const SubmitReportAutomated = () => {
             {/* File Uploads */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
               <div>
-                <Label htmlFor="uber_screenshot">Uber Screenshot</Label>
+                <Label htmlFor="uber_screenshot">
+                  Uber Screenshots (Max {ocrConfig.maxImages})
+                </Label>
                 <div className="mt-1 flex items-center">
                   <label className="w-full flex items-center justify-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 cursor-pointer">
-                    {isProcessing ? (
+                    {processingState.isProcessing ? (
                       <>
                         <div className="animate-spin rounded-full h-5 w-5 border-t-2 border-b-2 border-blue-500 mr-2"></div>
                         Processing with AI...
@@ -676,12 +1271,13 @@ const SubmitReportAutomated = () => {
                     ) : (
                       <>
                         <FileUp className="mr-2 h-5 w-5 text-gray-400" />
-                        {uberScreenshot ? (
+                        {uberScreenshots.length > 0 ? (
                           <span className="text-green-600">
-                            ✓ {uberScreenshot.name}
+                            ✓ {uberScreenshots.length} image
+                            {uberScreenshots.length > 1 ? "s" : ""} selected
                           </span>
                         ) : (
-                          "Upload Uber Screenshot (AI will extract data)"
+                          "Upload Uber Screenshots (AI will extract data)"
                         )}
                       </>
                     )}
@@ -689,16 +1285,18 @@ const SubmitReportAutomated = () => {
                       id="uber_screenshot"
                       name="uber_screenshot"
                       type="file"
+                      multiple
                       required
                       accept="image/*"
                       onChange={(e) => handleFileChange(e, "uber")}
                       className="sr-only"
-                      disabled={isProcessing}
+                      disabled={processingState.isProcessing}
                     />
                   </label>
                 </div>
                 <p className="text-xs text-gray-500 mt-1">
-                  AI will automatically extract trip and earnings data
+                  Upload multiple screenshots for better accuracy. AI will
+                  automatically extract trip and earnings data.
                 </p>
               </div>
 
@@ -741,7 +1339,7 @@ const SubmitReportAutomated = () => {
                 type="button"
                 variant="outline"
                 onClick={() => navigate("/profile")}
-                disabled={submitting || isProcessing}
+                disabled={submitting || processingState.isProcessing}
               >
                 Cancel
               </Button>
@@ -749,8 +1347,8 @@ const SubmitReportAutomated = () => {
                 type="submit"
                 disabled={
                   submitting ||
-                  isProcessing ||
-                  (extractedData && !isDataVerified)
+                  processingState.isProcessing ||
+                  (extractedData.length > 0 && !isDataVerified)
                 }
                 className="bg-fleet-purple hover:bg-fleet-purple/90"
               >

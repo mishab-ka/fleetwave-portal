@@ -101,6 +101,7 @@ export const CalendarHeader = ({
             <SelectItem value="morning">Morning</SelectItem>
             <SelectItem value="night">Night</SelectItem>
             <SelectItem value="24hr">24 Hours</SelectItem>
+            <SelectItem value="none">No Shift</SelectItem>
           </SelectContent>
         </Select>
       )}

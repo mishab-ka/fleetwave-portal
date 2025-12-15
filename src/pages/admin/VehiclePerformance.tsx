@@ -36,12 +36,16 @@ import {
   Activity,
   Settings,
   History,
+  ChevronLeft,
+  ChevronRight,
+  Download,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
   format,
   startOfWeek,
   endOfWeek,
+  addDays,
   subDays,
   startOfDay,
   endOfDay,
@@ -62,6 +66,7 @@ interface VehiclePerformance {
   rent_slab: string;
   performance_status: "profit" | "loss" | "break_even";
   working_days_multiplier: number;
+  approved_report_count?: number;
   id?: string;
   date?: string;
   // Detailed adjustments
@@ -76,6 +81,9 @@ interface VehiclePerformance {
   transaction_income?: number;
   transaction_expense?: number;
   transaction_net?: number;
+  // Actual rent from vehicle settings
+  actual_rent?: number;
+  uses_actual_rent?: boolean;
 }
 
 interface AdjustmentCategory {
@@ -97,31 +105,33 @@ const VehiclePerformance = () => {
     loading: settingsLoading,
     fleetRentSlabs,
     companyEarningsSlabs,
+    vehiclePerformanceRentalIncome,
   } = useAdminSettings();
 
   const { getTransactionSummary } = useVehicleTransactions();
 
   // Debug: Log settings data
-  console.log("Settings loaded:", {
-    settingsLoading,
-    hasFleetRentFunction: !!calculateFleetRent,
-    hasEarningsFunction: !!calculateCompanyEarnings,
-    fleetRentSlabsCount: fleetRentSlabs?.length || 0,
-    companyEarningsSlabsCount: companyEarningsSlabs?.length || 0,
-    fleetRentSlabs,
-    companyEarningsSlabs,
-  });
+  // console.log("Settings loaded:", {
+  //   settingsLoading,
+  //   hasFleetRentFunction: !!calculateFleetRent,
+  //   hasEarningsFunction: !!calculateCompanyEarnings,
+  //   fleetRentSlabsCount: fleetRentSlabs?.length || 0,
+  //   companyEarningsSlabsCount: companyEarningsSlabs?.length || 0,
+  //   fleetRentSlabs,
+  //   companyEarningsSlabs,
+  // });
 
   const [vehicles, setVehicles] = useState<VehiclePerformance[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
-  const [filterType, setFilterType] = useState("week");
-  const [customStart, setCustomStart] = useState<Date | null>(null);
-  const [customEnd, setCustomEnd] = useState<Date | null>(null);
+  const [weekOffset, setWeekOffset] = useState(0);
   const [activeTab, setActiveTab] = useState("profit");
   const [editingVehicle, setEditingVehicle] = useState<string | null>(null);
   const [tempWorkingDays, setTempWorkingDays] = useState(1);
   const [savingWorkingDays, setSavingWorkingDays] = useState(false);
+  const [vehicleActualRents, setVehicleActualRents] = useState<
+    Map<string, number>
+  >(new Map());
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isIncomeExpenseOpen, setIsIncomeExpenseOpen] = useState(false);
   const [tempIncome, setTempIncome] = useState(0);
@@ -148,16 +158,43 @@ const VehiclePerformance = () => {
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [statistics, setStatistics] = useState({
     totalVehicles: 0,
+    lossableVehicles: 0,
     profitableVehicles: 0,
     totalProfit: 0,
-    totalLoss: 0,
+    netProfitLoss: 0,
+    averageProfitPerCar: 0,
     totalTrips: 0,
     totalEarnings: 0,
     totalRent: 0,
   });
 
-  // Fallback functions in case settings haven't loaded
-  const fallbackCalculateFleetRent = (tripCount: number): number => {
+  // Use settings functions if available, otherwise fallback
+  const getFleetRent = (tripCount: number): number => {
+    if (calculateFleetRent) {
+      return calculateFleetRent(tripCount);
+    }
+
+    // Fallback to settings data if available
+    if (fleetRentSlabs && fleetRentSlabs.length > 0) {
+      // Find the appropriate slab based on trip count
+      const applicableSlab = fleetRentSlabs.find((slab) => {
+        const minTrips = slab.min_trips || 0;
+        const maxTrips = slab.max_trips || Infinity;
+        return tripCount >= minTrips && tripCount <= maxTrips;
+      });
+
+      if (applicableSlab) {
+        return applicableSlab.amount || 0;
+      }
+
+      // If no slab found, use the highest amount as default
+      const maxAmount = Math.max(
+        ...fleetRentSlabs.map((slab) => slab.amount || 0)
+      );
+      return maxAmount;
+    }
+
+    // Final fallback to hardcoded values
     if (tripCount < 64) return 980;
     if (tripCount >= 64 && tripCount < 80) return 830;
     if (tripCount >= 80 && tripCount < 110) return 740;
@@ -166,55 +203,83 @@ const VehiclePerformance = () => {
     return 290; // 140 or more trips
   };
 
-  const fallbackCalculateCompanyEarnings = (trips: number): number => {
-    if (trips >= 12) {
-      return 535;
-    } else if (trips >= 11) {
-      return 585;
-    } else if (trips >= 10) {
-      return 635;
-    } else if (trips >= 8) {
-      return 715;
-    } else if (trips >= 5) {
-      return 745;
-    } else {
-      return 795;
-    }
-  };
-
-  // Use settings functions if available, otherwise fallback
-  const getFleetRent = (tripCount: number): number => {
-    return calculateFleetRent
-      ? calculateFleetRent(tripCount)
-      : fallbackCalculateFleetRent(tripCount);
-  };
-
   const getCompanyEarnings = (tripCount: number): number => {
     try {
+      // If Vehicle Performance Rental Income is set, use it instead of slabs
+      if (vehiclePerformanceRentalIncome > 0) {
+        return vehiclePerformanceRentalIncome;
+      }
+
       // Check if settings function is available
       if (calculateCompanyEarnings) {
         const result = calculateCompanyEarnings(tripCount);
-        console.log(`Settings-based earnings for ${tripCount} trips:`, result);
         if (result > 0) {
           return result;
-        } else {
-          console.warn(
-            `Settings returned 0 for ${tripCount} trips, using fallback`
-          );
-          return fallbackCalculateCompanyEarnings(tripCount);
         }
-      } else {
-        console.log(`Using fallback earnings for ${tripCount} trips`);
-        return fallbackCalculateCompanyEarnings(tripCount);
       }
+
+      // Fallback to settings data if available
+      if (companyEarningsSlabs && companyEarningsSlabs.length > 0) {
+        // Find the appropriate slab based on trip count
+        const applicableSlab = companyEarningsSlabs.find((slab) => {
+          const minTrips = slab.min_trips || 0;
+          const maxTrips = slab.max_trips || Infinity;
+          return tripCount >= minTrips && tripCount <= maxTrips;
+        });
+
+        if (applicableSlab) {
+          return applicableSlab.amount || 0;
+        }
+
+        // If no slab found, use the highest amount as default
+        const maxAmount = Math.max(
+          ...companyEarningsSlabs.map((slab) => slab.amount || 0)
+        );
+        return maxAmount;
+      }
+
+      // Final fallback to hardcoded values
+      // if (tripCount >= 12) return 535;
+      // if (tripCount >= 11) return 585;
+      // if (tripCount >= 10) return 635;
+      // if (tripCount >= 8) return 715;
+      // if (tripCount >= 5) return 745;
+      return 700;
     } catch (error) {
-      console.error("Error calculating company earnings:", error);
-      return fallbackCalculateCompanyEarnings(tripCount);
+      console.error("Error calculating company earnings: 700", error);
+      // Final fallback to hardcoded values
+      // if (tripCount >= 12) return 535;
+      // if (tripCount >= 11) return 585;
+      // if (tripCount >= 10) return 635;
+      // if (tripCount >= 8) return 715;
+      // if (tripCount >= 5) return 745;
+      return 700;
     }
   };
 
   const getRentSlab = (tripCount: number): string => {
     const amount = getFleetRent(tripCount);
+
+    // Use settings data if available
+    if (fleetRentSlabs && fleetRentSlabs.length > 0) {
+      const applicableSlab = fleetRentSlabs.find((slab) => {
+        const minTrips = slab.min_trips || 0;
+        const maxTrips = slab.max_trips || Infinity;
+        return tripCount >= minTrips && tripCount <= maxTrips;
+      });
+
+      if (applicableSlab) {
+        const minTrips = applicableSlab.min_trips || 0;
+        const maxTrips = applicableSlab.max_trips;
+        if (maxTrips && maxTrips !== Infinity) {
+          return `${minTrips}-${maxTrips} trips (₹${amount})`;
+        } else {
+          return `${minTrips}+ trips (₹${amount})`;
+        }
+      }
+    }
+
+    // Fallback to hardcoded ranges
     if (tripCount < 64) return `< 64 trips (₹${amount})`;
     if (tripCount >= 64 && tripCount < 80) return `64-79 trips (₹${amount})`;
     if (tripCount >= 80 && tripCount < 110) return `80-109 trips (₹${amount})`;
@@ -230,7 +295,7 @@ const VehiclePerformance = () => {
     if (!settingsLoading) {
       fetchVehiclePerformance();
     }
-  }, [filterType, customStart, customEnd, activeTab, settingsLoading]);
+  }, [weekOffset, activeTab, settingsLoading]);
 
   const fetchVehiclePerformance = async () => {
     try {
@@ -242,35 +307,50 @@ const VehiclePerformance = () => {
       } else {
         console.log("Settings functions are available");
       }
-      let startDate: Date;
-      let endDate: Date = new Date();
 
-      // Set date range based on filter type
-      switch (filterType) {
-        case "daily":
-          const today = new Date();
-          startDate = startOfDay(today);
-          endDate = endOfDay(today);
-          break;
-        case "week":
-          startDate = startOfWeek(new Date(), { weekStartsOn: 2 });
-          endDate = endOfWeek(new Date(), { weekStartsOn: 1 });
-          break;
-        case "month":
-          startDate = subDays(new Date(), 30);
-          break;
-        case "custom":
-          if (!customStart || !customEnd) {
-            toast.error("Please select both start and end dates");
-            return;
+      // Fetch actual rent data from vehicles table (if column exists)
+      try {
+        const { data: vehiclesData, error: vehiclesError } = await supabase
+          .from("vehicles")
+          .select("vehicle_number, actual_rent")
+          .eq("online", true);
+
+        if (vehiclesError) {
+          // Column doesn't exist - ignore and continue with calculated rent
+          if (vehiclesError.code === "42703") {
+            console.log("actual_rent column not found, using calculated rent");
+          } else {
+            console.error(
+              "Error fetching vehicle actual rents:",
+              vehiclesError
+            );
           }
-          startDate = customStart;
-          endDate = customEnd;
-          break;
-        default:
-          startDate = startOfWeek(new Date(), { weekStartsOn: 2 });
-          endDate = endOfWeek(new Date(), { weekStartsOn: 1 });
+        } else if (vehiclesData) {
+          const rentsMap = new Map<string, number>();
+          vehiclesData.forEach((v) => {
+            if (v.actual_rent && v.actual_rent > 0) {
+              rentsMap.set(v.vehicle_number, v.actual_rent);
+            }
+          });
+          setVehicleActualRents(rentsMap);
+          console.log(`Loaded actual rent for ${rentsMap.size} vehicles`);
+        }
+      } catch (error: any) {
+        // Handle any unexpected errors gracefully
+        if (error?.code === "42703") {
+          console.log("actual_rent column not found, using calculated rent");
+        } else {
+          console.error("Error fetching vehicle actual rents:", error);
+        }
       }
+
+      // Calculate week dates based on weekOffset (similar to VehicleAttendanceCalendar)
+      const currentDate = new Date();
+      const weekStart = startOfWeek(addDays(currentDate, weekOffset * 7), {
+        weekStartsOn: 2, // Monday start (1 = Monday, 0 = Sunday)
+      });
+      const startDate = weekStart;
+      const endDate = addDays(weekStart, 6); // End of week (Sunday)
 
       console.log("Date range:", {
         startDate: startDate.toISOString().split("T")[0],
@@ -358,16 +438,9 @@ const VehiclePerformance = () => {
       let query = supabase
         .from("fleet_reports")
         .select("*")
-        .eq("status", "approved");
-
-      if (filterType === "daily") {
-        const todayString = new Date().toISOString().split("T")[0];
-        query = query.eq("rent_date", todayString);
-      } else {
-        query = query
-          .gte("rent_date", startDate.toISOString().split("T")[0])
-          .lte("rent_date", endDate.toISOString().split("T")[0]);
-      }
+        .eq("status", "approved")
+        .gte("rent_date", startDate.toISOString().split("T")[0])
+        .lte("rent_date", endDate.toISOString().split("T")[0]);
 
       const { data: reports, error: reportsError } = await query;
 
@@ -378,15 +451,22 @@ const VehiclePerformance = () => {
 
       // Group by vehicle number and aggregate data
       const vehicleStats = new Map<string, VehiclePerformance>();
+      const vehicleWorkingDates = new Map<string, Set<string>>(); // Track unique dates per vehicle
+      const vehicleApprovedReportCount = new Map<string, number>(); // Track approved report count per vehicle
 
       reports?.forEach((report) => {
+        // Only process approved reports for rental income calculation
+        if (report.status !== "approved") {
+          return;
+        }
+
         const vehicleNumber = report.vehicle_number;
         if (!vehicleNumber) return;
 
+        // Initialize vehicle stats if not exists
         if (!vehicleStats.has(vehicleNumber)) {
           // Use saved working days if available, otherwise use default
-          const workingDaysMultiplier =
-            savedWorkingDaysMap.get(vehicleNumber) || getDefaultWorkingDays();
+          const workingDaysMultiplier = getDefaultWorkingDays();
 
           vehicleStats.set(vehicleNumber, {
             vehicle_number: vehicleNumber,
@@ -410,25 +490,59 @@ const VehiclePerformance = () => {
             room_rent: 0,
             other_expenses: 0,
           });
+
+          // Initialize working dates tracker
+          vehicleWorkingDates.set(vehicleNumber, new Set<string>());
+          // Initialize approved report count
+          vehicleApprovedReportCount.set(vehicleNumber, 0);
         }
 
         const stats = vehicleStats.get(vehicleNumber)!;
+        const workingDates = vehicleWorkingDates.get(vehicleNumber)!;
+
         stats.total_trips += report.total_trips || 0;
 
+        // Count approved reports for this vehicle
+        const currentCount = vehicleApprovedReportCount.get(vehicleNumber) || 0;
+        vehicleApprovedReportCount.set(vehicleNumber, currentCount + 1);
+
         // Calculate earnings for this specific report/day based on its trip count
-        const dailyEarnings = getCompanyEarnings(report.total_trips || 0);
-        stats.total_earnings += dailyEarnings;
+        // Only calculate rental income from approved reports
+        // If vehiclePerformanceRentalIncome is set, count reports but don't accumulate yet (will be calculated per vehicle later)
+        if (vehiclePerformanceRentalIncome > 0) {
+          // Don't accumulate - total_earnings will be calculated as vehiclePerformanceRentalIncome * approved_report_count
+        } else {
+          const dailyEarnings = getCompanyEarnings(report.total_trips || 0);
+          stats.total_earnings += dailyEarnings;
+        }
 
-        // Store daily rent separately - we'll calculate total rent later with working_days_multiplier
-        // For now, just track the trips to calculate rent later
+        // // Debug log for daily calculations
+        // console.log(
+        //   `${vehicleNumber} - Date: ${report.rent_date}, Trips: ${report.total_trips}, Daily Earnings: ${dailyEarnings}`
+        // );
 
-        // Debug log for daily calculations
-        console.log(
-          `${vehicleNumber} - Date: ${report.rent_date}, Trips: ${report.total_trips}, Daily Earnings: ${dailyEarnings}`
-        );
+        // Track unique working dates (each date counts as 1 working day regardless of number of reports)
+        if (report.status === "approved" && report.rent_date) {
+          workingDates.add(report.rent_date);
+        }
+      });
 
-        if (report.status === "approved") {
-          stats.worked_days += 1;
+      // Update worked_days based on approved report count (1 report = 0.5 days)
+      vehicleApprovedReportCount.forEach((reportCount, vehicleNumber) => {
+        const stats = vehicleStats.get(vehicleNumber);
+        if (stats) {
+          // Calculate working days: 1 report = 0.5 days, 2 reports = 1 day
+          const calculatedWorkingDays = reportCount / 2;
+          stats.worked_days = calculatedWorkingDays;
+          // Use calculated working days or saved multiplier if available
+          const savedWorkingDays = savedWorkingDaysMap.get(vehicleNumber);
+          stats.working_days_multiplier =
+            savedWorkingDays || calculatedWorkingDays;
+
+          // Debug log to verify working days calculation
+          console.log(
+            `${vehicleNumber} - Approved reports: ${reportCount} = ${calculatedWorkingDays} working days (${reportCount} reports ÷ 2)`
+          );
         }
       });
 
@@ -441,25 +555,59 @@ const VehiclePerformance = () => {
               ? vehicle.total_trips / vehicle.worked_days
               : 0;
 
-          // Total earnings are already calculated during aggregation (sum of daily earnings)
-          // No need to recalculate here
+          // Store approved report count for display
+          const approvedReportCount =
+            vehicleApprovedReportCount.get(vehicle.vehicle_number) || 0;
+          vehicle.approved_report_count = approvedReportCount;
 
-          // Debug logging for earnings calculation
-          console.log(`Vehicle ${vehicle.vehicle_number}:`, {
-            total_trips: vehicle.total_trips,
-            worked_days: vehicle.worked_days,
-            avgTripsPerDay: avgTripsPerDay,
-            total_earnings: vehicle.total_earnings,
-          });
+          // If vehiclePerformanceRentalIncome is set, multiply by number of approved reports
+          // Each approved report = 1 × Vehicle Performance Rental Income amount
+          // Otherwise total earnings are already calculated during aggregation (sum of daily earnings)
+          if (vehiclePerformanceRentalIncome > 0) {
+            vehicle.total_earnings =
+              vehiclePerformanceRentalIncome * approvedReportCount;
+          }
 
-          // Calculate total rent: Daily rent based on total trips * working_days_multiplier
-          const dailyRent = getFleetRent(vehicle.total_trips);
-          vehicle.total_rent = dailyRent * vehicle.working_days_multiplier;
+          // // Debug logging for earnings calculation
+          // console.log(`Vehicle ${vehicle.vehicle_number}:`, {
+          //   total_trips: vehicle.total_trips,
+          //   worked_days: vehicle.worked_days,
+          //   avgTripsPerDay: avgTripsPerDay,
+          //   total_earnings: vehicle.total_earnings,
+          // });
+
+          // const otherExpence = 200 * vehicle.working_days_multiplier;
+          // console.log(`Other Expence: ${otherExpence}`);
+
+          // Calculate total rent: Use actual_rent if available, otherwise calculate based on trips
+          const actualRent = vehicleActualRents.get(vehicle.vehicle_number);
+          let totalRent = 0;
+          let usesActualRent = false;
+
+          if (actualRent && actualRent > 0) {
+            // Use fixed actual rent (weekly rent)
+            totalRent = actualRent;
+            usesActualRent = true;
+            console.log(
+              `${vehicle.vehicle_number} - Using actual rent: ₹${actualRent}`
+            );
+          } else {
+            // Calculate based on trips * working days
+            const dailyRent = getFleetRent(vehicle.total_trips);
+            totalRent = dailyRent * vehicle.working_days_multiplier;
+            console.log(
+              `${vehicle.vehicle_number} - Calculated rent: ₹${dailyRent} × ${vehicle.working_days_multiplier} days = ₹${totalRent}`
+            );
+          }
+
+          vehicle.total_rent = totalRent;
+          vehicle.actual_rent = actualRent;
+          vehicle.uses_actual_rent = usesActualRent;
 
           // Debug logging for rent calculation
-          console.log(
-            `${vehicle.vehicle_number} - Total Trips: ${vehicle.total_trips}, Daily Rent: ${dailyRent}, Working Days: ${vehicle.working_days_multiplier}, Total Rent: ${vehicle.total_rent}`
-          );
+          // console.log(
+          //   `${vehicle.vehicle_number} - Total Trips: ${vehicle.total_trips}, Daily Rent: ${dailyRent}, Working Days: ${vehicle.working_days_multiplier}, Total Rent: ${vehicle.total_rent}`
+          // );
 
           // Calculate global adjustments from current state (prioritizes unsaved changes)
           const currentCategories =
@@ -525,7 +673,12 @@ const VehiclePerformance = () => {
           }
 
           // Set rent slab and performance status
-          vehicle.rent_slab = getRentSlab(vehicle.total_trips);
+          if (usesActualRent) {
+            vehicle.rent_slab = `Fixed Rent (₹${totalRent.toLocaleString()})`;
+          } else {
+            vehicle.rent_slab = getRentSlab(vehicle.total_trips);
+          }
+
           vehicle.performance_status =
             vehicle.profit_loss > 0
               ? "profit"
@@ -556,17 +709,31 @@ const VehiclePerformance = () => {
 
       // Calculate statistics
       const totalVehicles = vehicleArray.length;
+      const lossableVehicles = vehicleArray.filter(
+        (v) => v.profit_loss < 0
+      ).length;
       const profitableVehicles = vehicleArray.filter(
         (v) => v.profit_loss > 0
       ).length;
       const totalProfit = vehicleArray
         .filter((v) => v.profit_loss > 0)
         .reduce((sum, v) => sum + v.profit_loss, 0);
-      const totalLoss = Math.abs(
-        vehicleArray
-          .filter((v) => v.profit_loss < 0)
-          .reduce((sum, v) => sum + v.profit_loss, 0)
+
+      // Calculate net profit/loss (total of all vehicles - can be negative)
+      const netProfitLoss = vehicleArray.reduce(
+        (sum, v) => sum + v.profit_loss,
+        0
       );
+
+      const { data: onlineVehicles } = await supabase
+        .from("vehicles")
+        .select("*")
+        .eq("online", true);
+
+      // Calculate average profit per car
+      const averageProfitPerCar =
+        onlineVehicles.length > 0 ? netProfitLoss / onlineVehicles.length : 0;
+
       const totalTrips = vehicleArray.reduce(
         (sum, v) => sum + v.total_trips,
         0
@@ -580,9 +747,11 @@ const VehiclePerformance = () => {
 
       setStatistics({
         totalVehicles,
+        lossableVehicles,
         profitableVehicles,
         totalProfit,
-        totalLoss,
+        netProfitLoss,
+        averageProfitPerCar,
         totalTrips,
         totalEarnings,
         totalRent,
@@ -640,15 +809,19 @@ const VehiclePerformance = () => {
     );
   };
 
-  // Calculate days from start of week (Tuesday) to today
+  // Calculate working days multiplier based on current week progress
+  // Each unique date with at least 1 report = 1 working day
   const getDefaultWorkingDays = () => {
     const today = new Date();
-    const weekStart = startOfWeek(new Date(), { weekStartsOn: 1 }); // Tuesday start
+    const weekStart = startOfWeek(new Date(), { weekStartsOn: 1 }); // Monday start
     const daysDifference =
       Math.floor(
         (today.getTime() - weekStart.getTime()) / (1000 * 60 * 60 * 24)
       ) + 1;
-    return Math.max(1, daysDifference); // Ensure at least 1 day
+
+    // Each day that has passed in the week can be a working day
+    // Maximum working days = number of days elapsed in the week
+    return Math.max(1, Math.min(daysDifference, 7)); // Between 1 and 7 days
   };
 
   const openVehicleSettings = (vehicleNumber: string, currentDays: number) => {
@@ -1087,31 +1260,13 @@ const VehiclePerformance = () => {
   };
 
   const getCurrentDateRange = () => {
-    let startDate: Date;
-    let endDate: Date = new Date();
-
-    switch (filterType) {
-      case "daily":
-        const today = new Date();
-        startDate = startOfDay(today);
-        endDate = endOfDay(today);
-        break;
-      case "week":
-        startDate = startOfWeek(new Date(), { weekStartsOn: 2 });
-        endDate = endOfWeek(new Date(), { weekStartsOn: 1 });
-        break;
-      case "month":
-        startDate = subDays(new Date(), 30);
-        break;
-      case "custom":
-        if (!customStart || !customEnd) return null;
-        startDate = customStart;
-        endDate = customEnd;
-        break;
-      default:
-        startDate = startOfWeek(new Date(), { weekStartsOn: 2 });
-        endDate = endOfWeek(new Date(), { weekStartsOn: 1 });
-    }
+    // Calculate week dates based on weekOffset (same as in fetchVehiclePerformance)
+    const currentDate = new Date();
+    const weekStart = startOfWeek(addDays(currentDate, weekOffset * 7), {
+      weekStartsOn: 1, // Monday start
+    });
+    const startDate = weekStart;
+    const endDate = addDays(weekStart, 6); // End of week (Sunday)
 
     return {
       startDate: startDate.toISOString().split("T")[0],
@@ -1213,6 +1368,140 @@ const VehiclePerformance = () => {
     }
   };
 
+  const exportVehiclePerformance = () => {
+    try {
+      // Get current date range for filename
+      const dateRange = getCurrentDateRange();
+      const dateRangeText = dateRange
+        ? `${dateRange.startDate}_to_${dateRange.endDate}`
+        : format(new Date(), "yyyy-MM-dd");
+
+      // Create CSV header
+      const headers = [
+        "Vehicle Number",
+        "Total Trips",
+        "Total Earnings (₹)",
+        "Total Rent (₹)",
+        "Additional Income (₹)",
+        "Expenses (₹)",
+        "Transaction Income (₹)",
+        "Transaction Expense (₹)",
+        "Profit/Loss (₹)",
+        "Worked Days",
+        "Working Days Multiplier",
+        "Average Trips/Day",
+        "Average Earnings/Day",
+        "Rent Slab",
+        "Performance Status",
+        "Other Income (₹)",
+        "Bonus Income (₹)",
+        "Fuel Expense (₹)",
+        "Maintenance Expense (₹)",
+        "Room Rent (₹)",
+        "Other Expenses (₹)",
+      ].join(",");
+
+      // Create CSV rows
+      const rows = filteredVehicles.map((vehicle) => {
+        return [
+          `"${vehicle.vehicle_number}"`,
+          vehicle.total_trips,
+          vehicle.total_earnings,
+          vehicle.total_rent,
+          vehicle.additional_income || 0,
+          vehicle.expenses || 0,
+          vehicle.transaction_income || 0,
+          vehicle.transaction_expense || 0,
+          vehicle.profit_loss,
+          vehicle.worked_days,
+          vehicle.working_days_multiplier,
+          vehicle.avg_trips_per_day.toFixed(2),
+          vehicle.avg_earnings_per_day.toFixed(2),
+          `"${vehicle.rent_slab}"`,
+          `"${vehicle.performance_status.toUpperCase()}"`,
+          vehicle.other_income || 0,
+          vehicle.bonus_income || 0,
+          vehicle.fuel_expense || 0,
+          vehicle.maintenance_expense || 0,
+          vehicle.room_rent || 0,
+          vehicle.other_expenses || 0,
+        ].join(",");
+      });
+
+      // Add summary statistics row
+      const summaryRow = [
+        "SUMMARY",
+        statistics.totalTrips,
+        statistics.totalEarnings,
+        statistics.totalRent,
+        filteredVehicles.reduce(
+          (sum, v) => sum + (v.additional_income || 0),
+          0
+        ),
+        filteredVehicles.reduce((sum, v) => sum + (v.expenses || 0), 0),
+        filteredVehicles.reduce(
+          (sum, v) => sum + (v.transaction_income || 0),
+          0
+        ),
+        filteredVehicles.reduce(
+          (sum, v) => sum + (v.transaction_expense || 0),
+          0
+        ),
+        statistics.netProfitLoss,
+        filteredVehicles.reduce((sum, v) => sum + v.worked_days, 0),
+        filteredVehicles.reduce((sum, v) => sum + v.working_days_multiplier, 0),
+        (
+          statistics.totalTrips /
+          Math.max(
+            1,
+            filteredVehicles.reduce((sum, v) => sum + v.worked_days, 0)
+          )
+        ).toFixed(2),
+        (
+          statistics.totalEarnings /
+          Math.max(
+            1,
+            filteredVehicles.reduce((sum, v) => sum + v.worked_days, 0)
+          )
+        ).toFixed(2),
+        "N/A",
+        "N/A",
+        filteredVehicles.reduce((sum, v) => sum + (v.other_income || 0), 0),
+        filteredVehicles.reduce((sum, v) => sum + (v.bonus_income || 0), 0),
+        filteredVehicles.reduce((sum, v) => sum + (v.fuel_expense || 0), 0),
+        filteredVehicles.reduce(
+          (sum, v) => sum + (v.maintenance_expense || 0),
+          0
+        ),
+        filteredVehicles.reduce((sum, v) => sum + (v.room_rent || 0), 0),
+        filteredVehicles.reduce((sum, v) => sum + (v.other_expenses || 0), 0),
+      ].join(",");
+
+      // Combine header, rows, and summary
+      const csvContent = [headers, ...rows, "", summaryRow].join("\n");
+
+      // Create and trigger download
+      const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+      const link = document.createElement("a");
+      const url = URL.createObjectURL(blob);
+      link.setAttribute("href", url);
+      link.setAttribute(
+        "download",
+        `vehicle_performance_${activeTab}_${dateRangeText}.csv`
+      );
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+      toast.success(
+        `Exported ${filteredVehicles.length} vehicles to CSV (${activeTab} tab)`
+      );
+    } catch (error) {
+      console.error("Error exporting vehicle performance:", error);
+      toast.error("Failed to export data");
+    }
+  };
+
   return (
     <AdminLayout title="Vehicle Performance">
       <div className="space-y-6">
@@ -1240,30 +1529,50 @@ const VehiclePerformance = () => {
               </Badge>
             )}
           </Button>
-          <select
-            className="border px-3 py-2 rounded-md text-sm"
-            value={filterType}
-            onChange={(e) => setFilterType(e.target.value)}
+          <Button
+            onClick={exportVehiclePerformance}
+            variant="outline"
+            className="flex items-center gap-2"
+            disabled={loading || filteredVehicles.length === 0}
           >
-            <option value="daily">Today</option>
-            <option value="week">This Week</option>
-            <option value="month">Last 30 Days</option>
-            <option value="custom">Custom Range</option>
-          </select>
-          {filterType === "custom" && (
-            <div className="flex gap-2">
-              <input
-                type="date"
-                onChange={(e) => setCustomStart(new Date(e.target.value))}
-                className="border px-2 py-1 rounded text-sm"
-              />
-              <input
-                type="date"
-                onChange={(e) => setCustomEnd(new Date(e.target.value))}
-                className="border px-2 py-1 rounded text-sm"
-              />
-            </div>
-          )}
+            <Download className="h-4 w-4" />
+            Export CSV
+          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={() => setWeekOffset(weekOffset - 1)}
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={() => setWeekOffset(weekOffset + 1)}
+            >
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+            <Button variant="outline" onClick={() => setWeekOffset(0)}>
+              This Week
+            </Button>
+          </div>
+          <div className="text-sm text-muted-foreground border-1 text-center p-2 bg-gray-50 rounded-lg">
+            {(() => {
+              const currentDate = new Date();
+              const weekStart = startOfWeek(
+                addDays(currentDate, weekOffset * 7),
+                {
+                  weekStartsOn: 1,
+                }
+              );
+              const weekEnd = addDays(weekStart, 6);
+              return `${format(weekStart, "MMM dd")} - ${format(
+                weekEnd,
+                "MMM dd, yyyy"
+              )}`;
+            })()}
+          </div>
         </div>
         {/* Working Days Info
         <div className="mb-4">
@@ -1272,14 +1581,12 @@ const VehiclePerformance = () => {
             days (from Tuesday to today)
           </div>
         </div> */}
-
         {/* Global Adjustment Button */}
         {/* <div className="flex justify-between items-center">
           <div>
             
           </div>
         </div> */}
-
         {/* Adjustment Status Info */}
         {/* {adjustmentCategories.length > 0 && (
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
@@ -1295,7 +1602,6 @@ const VehiclePerformance = () => {
             </div>
           </div>
         )} */}
-
         {/* Global Save Button */}
         {hasUnsavedChanges && (
           <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
@@ -1318,12 +1624,11 @@ const VehiclePerformance = () => {
             </div>
           </div>
         )}
-
         {/* Statistics Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-7 gap-4">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium">
+              <CardTitle className="text-xs font-medium">
                 Total Vehicles
               </CardTitle>
               <Car className="h-4 w-4 text-muted-foreground" />
@@ -1336,7 +1641,7 @@ const VehiclePerformance = () => {
           </Card>
           <Card>
             <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium">
+              <CardTitle className="text-xs font-medium">
                 Profitable Vehicles
               </CardTitle>
               <TrendingUp className="h-4 w-4 text-green-600" />
@@ -1349,25 +1654,90 @@ const VehiclePerformance = () => {
           </Card>
           <Card>
             <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium">
-                Total Profit
+              <CardTitle className="text-xs font-medium">
+                Lossable Vehicles
               </CardTitle>
-              <DollarSign className="h-4 w-4 text-green-600" />
+              <TrendingDown className="h-4 w-4 text-red-600" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-green-600">
-                ₹{statistics.totalProfit.toLocaleString()}
+              <div className="text-2xl font-bold text-red-600">
+                {statistics.lossableVehicles}
               </div>
             </CardContent>
           </Card>
           <Card>
             <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium">Total Loss</CardTitle>
+              <CardTitle className="text-xs font-medium">
+                Weekly Fleet Earnings
+              </CardTitle>
+              <TrendingUp className="h-4 w-4 text-green-600" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-green-600">
+                {statistics.totalEarnings}
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
+              <CardTitle className="text-xs font-medium">
+                Weekly Fleet Expenses
+              </CardTitle>
               <TrendingDown className="h-4 w-4 text-red-600" />
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold text-red-600">
-                ₹{statistics.totalLoss.toLocaleString()}
+                {statistics.totalRent}
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
+              <CardTitle className="text-xs font-medium">
+                Total Profit/Loss
+              </CardTitle>
+              {statistics.netProfitLoss >= 0 ? (
+                <TrendingUp className="h-4 w-4 text-green-600" />
+              ) : (
+                <TrendingDown className="h-4 w-4 text-red-600" />
+              )}
+            </CardHeader>
+            <CardContent>
+              <div
+                className={`text-2xl font-bold ${
+                  statistics.netProfitLoss >= 0
+                    ? "text-green-600"
+                    : "text-red-600"
+                }`}
+              >
+                {statistics.netProfitLoss >= 0 ? "₹" : "-₹"}
+                {Math.abs(statistics.netProfitLoss).toLocaleString()}
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
+              <CardTitle className="text-xs font-medium">
+                Average Profit per Car
+              </CardTitle>
+              {statistics.averageProfitPerCar >= 0 ? (
+                <DollarSign className="h-4 w-4 text-green-600" />
+              ) : (
+                <DollarSign className="h-4 w-4 text-red-600" />
+              )}
+            </CardHeader>
+            <CardContent>
+              <div
+                className={`text-2xl font-bold ${
+                  statistics.averageProfitPerCar >= 0
+                    ? "text-green-600"
+                    : "text-red-600"
+                }`}
+              >
+                {statistics.averageProfitPerCar >= 0 ? "₹" : "-₹"}
+                {Math.round(
+                  Math.abs(statistics.averageProfitPerCar)
+                ).toLocaleString()}
               </div>
             </CardContent>
           </Card>
@@ -1385,7 +1755,19 @@ const VehiclePerformance = () => {
           <TabsContent value="profit" className="mt-4">
             <Card>
               <CardHeader>
-                <CardTitle>Most Profitable Vehicles</CardTitle>
+                <div className="flex items-center justify-between">
+                  <CardTitle>Most Profitable Vehicles</CardTitle>
+                  <Button
+                    onClick={exportVehiclePerformance}
+                    variant="outline"
+                    size="sm"
+                    className="flex items-center gap-2"
+                    disabled={loading || filteredVehicles.length === 0}
+                  >
+                    <Download className="h-4 w-4" />
+                    Export
+                  </Button>
+                </div>
               </CardHeader>
               <CardContent>
                 {loading || settingsLoading ? (
@@ -1404,11 +1786,11 @@ const VehiclePerformance = () => {
                         <TableRow className="">
                           <TableHead>ID</TableHead>
                           <TableHead>Vehicle Number</TableHead>
-                          <TableHead>Total Trips</TableHead>
-                          <TableHead>Total Earnings</TableHead>
-                          <TableHead>Total Rent</TableHead>
-                          <TableHead>Income</TableHead>
-                          <TableHead>Expense</TableHead>
+                          <TableHead>Trips</TableHead>
+                          <TableHead>Rental Income</TableHead>
+                          <TableHead>Fleet Rent</TableHead>
+                          <TableHead>Penality Income</TableHead>
+                          <TableHead>Other Expense</TableHead>
                           <TableHead>Profit/Loss</TableHead>
                           {/* <TableHead>Worked Days</TableHead> */}
                           <TableHead>Working Days</TableHead>
@@ -1478,12 +1860,29 @@ const VehiclePerformance = () => {
                               </TableCell>
                               {/* <TableCell>{vehicle.worked_days}</TableCell> */}
                               <TableCell>
-                                <span className="font-medium text-blue-600">
-                                  {vehicle.working_days_multiplier}
-                                </span>
+                                <div className="flex flex-col">
+                                  <span className="font-medium text-blue-600">
+                                    {vehicle.working_days_multiplier % 1 === 0
+                                      ? vehicle.working_days_multiplier
+                                      : vehicle.working_days_multiplier.toFixed(
+                                          1
+                                        )}{" "}
+                                    days
+                                  </span>
+                                  <span className="text-xs text-gray-500">
+                                    {vehicle.approved_report_count || 0} reports
+                                  </span>
+                                </div>
                               </TableCell>
                               <TableCell className="text-sm">
-                                {vehicle.rent_slab}
+                                <div className="flex flex-col gap-1">
+                                  {vehicle.rent_slab}
+                                  {vehicle.uses_actual_rent && (
+                                    <Badge className="bg-blue-100 text-blue-700 text-xs w-fit">
+                                      Fixed Weekly Rent
+                                    </Badge>
+                                  )}
+                                </div>
                               </TableCell>
                               <TableCell>
                                 <Badge
@@ -1500,7 +1899,7 @@ const VehiclePerformance = () => {
                               </TableCell>
                               <TableCell className="space-x-1">
                                 <div className="flex flex-col gap-1">
-                                  <div className="flex flex-row gap-1">
+                                  <div className="flex gap-1 items-center">
                                     <Button
                                       size="sm"
                                       variant="outline"
@@ -1547,7 +1946,19 @@ const VehiclePerformance = () => {
           <TabsContent value="loss" className="mt-4">
             <Card>
               <CardHeader>
-                <CardTitle>Vehicles with Highest Loss</CardTitle>
+                <div className="flex items-center justify-between">
+                  <CardTitle>Vehicles with Highest Loss</CardTitle>
+                  <Button
+                    onClick={exportVehiclePerformance}
+                    variant="outline"
+                    size="sm"
+                    className="flex items-center gap-2"
+                    disabled={loading || filteredVehicles.length === 0}
+                  >
+                    <Download className="h-4 w-4" />
+                    Export
+                  </Button>
+                </div>
               </CardHeader>
               <CardContent>
                 {loading ? (
@@ -1606,14 +2017,14 @@ const VehiclePerformance = () => {
                                       (vehicle.transaction_income || 0)
                                     ).toLocaleString()}
                                   </span>
-                                  {vehicle.transaction_income &&
+                                  {/* {vehicle.transaction_income &&
                                     vehicle.transaction_income > 0 && (
                                       <span className="text-xs text-green-500">
                                         (hist: ₹
                                         {vehicle.transaction_income.toLocaleString()}
                                         )
                                       </span>
-                                    )}
+                                    )} */}
                                 </div>
                               </TableCell>
                               <TableCell>
@@ -1625,14 +2036,14 @@ const VehiclePerformance = () => {
                                       (vehicle.transaction_expense || 0)
                                     ).toLocaleString()}
                                   </span>
-                                  {vehicle.transaction_expense &&
+                                  {/* {vehicle.transaction_expense &&
                                     vehicle.transaction_expense > 0 && (
                                       <span className="text-xs text-red-500">
                                         (hist: ₹
                                         {vehicle.transaction_expense.toLocaleString()}
                                         )
                                       </span>
-                                    )}
+                                    )} */}
                                 </div>
                               </TableCell>
                               <TableCell>
@@ -1650,9 +2061,19 @@ const VehiclePerformance = () => {
                               </TableCell>
                               {/* <TableCell>{vehicle.worked_days}</TableCell> */}
                               <TableCell>
-                                <span className="font-medium text-blue-600">
-                                  {vehicle.working_days_multiplier}
-                                </span>
+                                <div className="flex flex-col">
+                                  <span className="font-medium text-blue-600">
+                                    {vehicle.working_days_multiplier % 1 === 0
+                                      ? vehicle.working_days_multiplier
+                                      : vehicle.working_days_multiplier.toFixed(
+                                          1
+                                        )}{" "}
+                                    days
+                                  </span>
+                                  <span className="text-xs text-gray-500">
+                                    {vehicle.approved_report_count || 0} reports
+                                  </span>
+                                </div>
                               </TableCell>
                               <TableCell className="text-sm">
                                 {vehicle.rent_slab}
@@ -1671,7 +2092,7 @@ const VehiclePerformance = () => {
                                 </Badge>
                               </TableCell>
                               <TableCell>
-                                <div className="flex flex-col gap-1">
+                                <div className="flex  gap-1">
                                   <Button
                                     size="sm"
                                     variant="outline"
@@ -1686,7 +2107,7 @@ const VehiclePerformance = () => {
                                     <Settings className="h-3 w-3" />
                                     Edit
                                   </Button>
-                                  <Button
+                                  {/* <Button
                                     size="sm"
                                     variant="default"
                                     onClick={() =>
@@ -1700,7 +2121,7 @@ const VehiclePerformance = () => {
                                   >
                                     <DollarSign className="h-3 w-3" />
                                     I/E
-                                  </Button>
+                                  </Button> */}
                                 </div>
                               </TableCell>
                             </TableRow>
@@ -1718,7 +2139,19 @@ const VehiclePerformance = () => {
           <TabsContent value="trips" className="mt-4">
             <Card>
               <CardHeader>
-                <CardTitle>Vehicles with Most Trips</CardTitle>
+                <div className="flex items-center justify-between">
+                  <CardTitle>Vehicles with Most Trips</CardTitle>
+                  <Button
+                    onClick={exportVehiclePerformance}
+                    variant="outline"
+                    size="sm"
+                    className="flex items-center gap-2"
+                    disabled={loading || filteredVehicles.length === 0}
+                  >
+                    <Download className="h-4 w-4" />
+                    Export
+                  </Button>
+                </div>
               </CardHeader>
               <CardContent>
                 {loading ? (
@@ -1780,14 +2213,14 @@ const VehiclePerformance = () => {
                                       (vehicle.transaction_income || 0)
                                     ).toLocaleString()}
                                   </span>
-                                  {vehicle.transaction_income &&
+                                  {/* {vehicle.transaction_income &&
                                     vehicle.transaction_income > 0 && (
                                       <span className="text-xs text-green-500">
                                         (hist: ₹
                                         {vehicle.transaction_income.toLocaleString()}
                                         )
                                       </span>
-                                    )}
+                                    )} */}
                                 </div>
                               </TableCell>
                               <TableCell>
@@ -1799,14 +2232,14 @@ const VehiclePerformance = () => {
                                       (vehicle.transaction_expense || 0)
                                     ).toLocaleString()}
                                   </span>
-                                  {vehicle.transaction_expense &&
+                                  {/* {vehicle.transaction_expense &&
                                     vehicle.transaction_expense > 0 && (
                                       <span className="text-xs text-red-500">
                                         (hist: ₹
                                         {vehicle.transaction_expense.toLocaleString()}
                                         )
                                       </span>
-                                    )}
+                                    )} */}
                                 </div>
                               </TableCell>
                               <TableCell>
@@ -1824,9 +2257,19 @@ const VehiclePerformance = () => {
                               </TableCell>
                               {/* <TableCell>{vehicle.worked_days}</TableCell> */}
                               <TableCell>
-                                <span className="font-medium text-blue-600">
-                                  {vehicle.working_days_multiplier}
-                                </span>
+                                <div className="flex flex-col">
+                                  <span className="font-medium text-blue-600">
+                                    {vehicle.working_days_multiplier % 1 === 0
+                                      ? vehicle.working_days_multiplier
+                                      : vehicle.working_days_multiplier.toFixed(
+                                          1
+                                        )}{" "}
+                                    days
+                                  </span>
+                                  <span className="text-xs text-gray-500">
+                                    {vehicle.approved_report_count || 0} reports
+                                  </span>
+                                </div>
                               </TableCell>
                               <TableCell>
                                 {vehicle.avg_trips_per_day.toFixed(1)}
@@ -1845,7 +2288,7 @@ const VehiclePerformance = () => {
                                 </Badge>
                               </TableCell>
                               <TableCell>
-                                <div className="flex flex-col gap-1">
+                                <div className="flex  gap-1">
                                   <Button
                                     size="sm"
                                     variant="outline"
@@ -1860,7 +2303,7 @@ const VehiclePerformance = () => {
                                     <Settings className="h-3 w-3" />
                                     Edit
                                   </Button>
-                                  <Button
+                                  {/* <Button
                                     size="sm"
                                     variant="default"
                                     onClick={() =>
@@ -1874,7 +2317,7 @@ const VehiclePerformance = () => {
                                   >
                                     <DollarSign className="h-3 w-3" />
                                     I/E
-                                  </Button>
+                                  </Button> */}
                                 </div>
                               </TableCell>
                             </TableRow>
@@ -1892,7 +2335,19 @@ const VehiclePerformance = () => {
           <TabsContent value="earnings" className="mt-4">
             <Card>
               <CardHeader>
-                <CardTitle>Vehicles with Highest Earnings</CardTitle>
+                <div className="flex items-center justify-between">
+                  <CardTitle>Vehicles with Highest Earnings</CardTitle>
+                  <Button
+                    onClick={exportVehiclePerformance}
+                    variant="outline"
+                    size="sm"
+                    className="flex items-center gap-2"
+                    disabled={loading || filteredVehicles.length === 0}
+                  >
+                    <Download className="h-4 w-4" />
+                    Export
+                  </Button>
+                </div>
               </CardHeader>
               <CardContent>
                 {loading ? (
@@ -1952,14 +2407,14 @@ const VehiclePerformance = () => {
                                       (vehicle.transaction_income || 0)
                                     ).toLocaleString()}
                                   </span>
-                                  {vehicle.transaction_income &&
+                                  {/* {vehicle.transaction_income &&
                                     vehicle.transaction_income > 0 && (
                                       <span className="text-xs text-green-500">
                                         (hist: ₹
                                         {vehicle.transaction_income.toLocaleString()}
                                         )
                                       </span>
-                                    )}
+                                    )} */}
                                 </div>
                               </TableCell>
                               <TableCell>
@@ -1971,14 +2426,14 @@ const VehiclePerformance = () => {
                                       (vehicle.transaction_expense || 0)
                                     ).toLocaleString()}
                                   </span>
-                                  {vehicle.transaction_expense &&
+                                  {/* {vehicle.transaction_expense &&
                                     vehicle.transaction_expense > 0 && (
                                       <span className="text-xs text-red-500">
                                         (hist: ₹
                                         {vehicle.transaction_expense.toLocaleString()}
                                         )
                                       </span>
-                                    )}
+                                    )} */}
                                 </div>
                               </TableCell>
                               <TableCell>
@@ -1996,9 +2451,19 @@ const VehiclePerformance = () => {
                               </TableCell>
                               {/* <TableCell>{vehicle.worked_days}</TableCell> */}
                               <TableCell>
-                                <span className="font-medium text-blue-600">
-                                  {vehicle.working_days_multiplier}
-                                </span>
+                                <div className="flex flex-col">
+                                  <span className="font-medium text-blue-600">
+                                    {vehicle.working_days_multiplier % 1 === 0
+                                      ? vehicle.working_days_multiplier
+                                      : vehicle.working_days_multiplier.toFixed(
+                                          1
+                                        )}{" "}
+                                    days
+                                  </span>
+                                  <span className="text-xs text-gray-500">
+                                    {vehicle.approved_report_count || 0} reports
+                                  </span>
+                                </div>
                               </TableCell>
                               <TableCell>
                                 ₹{vehicle.avg_earnings_per_day.toFixed(0)}
@@ -2032,7 +2497,7 @@ const VehiclePerformance = () => {
                                     <Settings className="h-3 w-3" />
                                     Edit
                                   </Button>
-                                  <Button
+                                  {/* <Button
                                     size="sm"
                                     variant="default"
                                     onClick={() =>
@@ -2046,7 +2511,7 @@ const VehiclePerformance = () => {
                                   >
                                     <DollarSign className="h-3 w-3" />
                                     I/E
-                                  </Button>
+                                  </Button> */}
                                 </div>
                               </TableCell>
                             </TableRow>
@@ -2067,6 +2532,11 @@ const VehiclePerformance = () => {
               <DialogTitle>Adjust Working Days</DialogTitle>
               <DialogDescription>
                 Adjust working days multiplier for vehicle: {editingVehicle}
+                <br />
+                <span className="text-xs text-muted-foreground">
+                  Note: Each unique date with reports = 1 working day
+                  (regardless of number of reports per day)
+                </span>
               </DialogDescription>
             </DialogHeader>
             <div className="grid gap-4 py-4">
@@ -2084,9 +2554,17 @@ const VehiclePerformance = () => {
                   className="col-span-3"
                 />
               </div>
-              <div className="text-sm text-muted-foreground">
-                Formula: Daily Rent (based on total trips) × {tempWorkingDays}{" "}
-                days = Total Rent
+              <div className="text-sm text-muted-foreground space-y-1">
+                <div>
+                  Formula: Daily Rent (based on total trips) × {tempWorkingDays}{" "}
+                  days = Total Rent
+                </div>
+                <div className="text-xs">
+                  Working Days Calculation: Unique Working Dates ={" "}
+                  {tempWorkingDays} days
+                  <br />
+                  (Each date with at least 1 report counts as 1 working day)
+                </div>
               </div>
             </div>
             <DialogFooter>
@@ -2156,7 +2634,6 @@ const VehiclePerformance = () => {
             </DialogFooter>
           </DialogContent>
         </Dialog>
-
         {/* Income/Expense Dialog */}
         <Dialog
           open={isIncomeExpenseOpen}
@@ -2269,7 +2746,6 @@ const VehiclePerformance = () => {
             </DialogFooter>
           </DialogContent>
         </Dialog>
-
         {/* Global Adjustment Dialog */}
         <Dialog
           open={isAdjustmentDialogOpen}
@@ -2552,7 +3028,6 @@ const VehiclePerformance = () => {
             </DialogFooter>
           </DialogContent>
         </Dialog>
-
         {/* Vehicle Transaction History Dialog */}
         <VehicleTransactionHistory
           open={isTransactionHistoryOpen}

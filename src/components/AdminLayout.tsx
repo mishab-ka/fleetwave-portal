@@ -18,6 +18,7 @@ import {
   UserCheck,
   Calendar1,
   CalendarClock,
+  Home,
   KeySquare,
   UserPlus,
   DollarSign,
@@ -26,6 +27,11 @@ import {
   ChevronDown,
   ChevronRight,
   BarChart,
+  MessageCircle,
+  Ban,
+  ArrowUpRight,
+  Bed,
+  TrendingUp,
 } from "lucide-react";
 import { Button } from "./ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "./ui/sheet";
@@ -51,6 +57,7 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children, title }) => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [expandedItems, setExpandedItems] = useState<string[]>([]);
+  const [isHovered, setIsHovered] = useState(false);
 
   useEffect(() => {
     if (!loading && !isAdmin) {
@@ -125,6 +132,16 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children, title }) => {
           icon: <UserCheck size={14} />,
           path: "/admin/uber-audit",
         },
+        {
+          label: "Cash Trip Blocking",
+          icon: <Ban size={14} />,
+          path: "/admin/cash-trip-blocking",
+        },
+        {
+          label: "Refund List",
+          icon: <ArrowUpRight size={14} />,
+          path: "/admin/refund-list",
+        },
       ],
     },
     {
@@ -163,6 +180,22 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children, title }) => {
       icon: <DollarSign size={20} />,
       path: "/admin/finance",
     },
+    {
+      label: "Accommodation",
+      icon: <Home size={20} />,
+      subItems: [
+        {
+          label: "Room & Bed Management",
+          icon: <Bed size={14} />,
+          path: "/admin/room-bed-management",
+        },
+        {
+          label: "Monthly Rent Dashboard",
+          icon: <TrendingUp size={14} />,
+          path: "/admin/monthly-rent-dashboard",
+        },
+      ],
+    },
 
     { label: "Reports", icon: <FileText size={20} />, path: "/admin/reports" },
     {
@@ -184,6 +217,11 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children, title }) => {
       label: "Settings",
       icon: <Settings size={20} />,
       path: "/admin/settings",
+    },
+    {
+      label: "WhatsApp",
+      icon: <MessageCircle size={20} />,
+      path: "/admin/chat",
     },
   ];
 
@@ -213,10 +251,10 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children, title }) => {
               ? "bg-fleet-purple text-white"
               : "text-black hover:bg-gray-100"
           } ${isSubItem ? "pl-8" : ""}`}
-          title={isCollapsed ? item.label : undefined}
+          title={isCollapsed && !isHovered ? item.label : undefined}
         >
           <span className="mr-3">{item.icon}</span>
-          {!isCollapsed && (
+          {(!isCollapsed || isHovered) && (
             <>
               <span className="flex-1">{item.label}</span>
               {hasSubItems && (
@@ -232,7 +270,7 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children, title }) => {
         {hasSubItems && (
           <div
             className={`${
-              isCollapsed
+              isCollapsed && !isHovered
                 ? "hidden group-hover:block absolute left-full top-0 bg-white shadow-lg rounded-r-md min-w-[200px] z-50"
                 : isExpanded
                 ? "block"
@@ -265,12 +303,18 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children, title }) => {
     );
   };
 
-  const NavContent = () => (
+  const NavContent = ({
+    isHovered,
+    isCollapsed,
+  }: {
+    isHovered: boolean;
+    isCollapsed: boolean;
+  }) => (
     <div className="flex flex-col h-full">
       <div className="p-4 border-b flex justify-between items-center">
         <h2
           className={`text-xl font-bold text-fleet-purple ${
-            isCollapsed ? "hidden" : "block"
+            isCollapsed && !isHovered ? "hidden" : "block"
           }`}
         >
           Admin Portal
@@ -303,12 +347,15 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children, title }) => {
         <Button
           variant="outline"
           className={`w-full flex items-center justify-center ${
-            isCollapsed ? "p-2" : ""
+            isCollapsed && !isHovered ? "p-2" : ""
           }`}
           onClick={handleLogout}
         >
-          <LogOut size={18} className={isCollapsed ? "" : "mr-2"} />
-          {!isCollapsed && "Logout"}
+          <LogOut
+            size={18}
+            className={isCollapsed && !isHovered ? "" : "mr-2"}
+          />
+          {(!isCollapsed || isHovered) && "Logout"}
         </Button>
       </div>
     </div>
@@ -319,11 +366,13 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children, title }) => {
       {/* Desktop Sidebar */}
       <div
         className={`hidden md:block bg-white shadow-lg flex-shrink-0 transition-all duration-300 ease-in-out ${
-          isCollapsed ? "w-16" : "w-64"
+          isCollapsed && !isHovered ? "w-16" : "w-64"
         }`}
+        onMouseEnter={() => setIsHovered(true)}
+        onMouseLeave={() => setIsHovered(false)}
       >
         <div className="h-screen sticky top-0">
-          <NavContent />
+          <NavContent isHovered={isHovered} isCollapsed={isCollapsed} />
         </div>
       </div>
 
@@ -340,7 +389,7 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children, title }) => {
             </Button>
           </SheetTrigger>
           <SheetContent side="left" className="p-0 bg-white w-64">
-            <NavContent />
+            <NavContent isHovered={false} isCollapsed={false} />
           </SheetContent>
         </Sheet>
       </div>

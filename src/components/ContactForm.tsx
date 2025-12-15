@@ -167,8 +167,10 @@ const ContactForm = () => {
                   </div>
                   <div>
                     <h4 className="font-semibold">Office</h4>
-                    <p className="text-gray-600">madiwala, Bangalore,</p>
-                    <p className="text-gray-600">Karnataka, 560029</p>
+                    <p className="text-gray-600">unnamed road, Bagaluru </p>
+                    <p className="text-gray-600">
+                      Bagaluru - 562149, Karnataka, India
+                    </p>
                   </div>
                 </div>
               </div>

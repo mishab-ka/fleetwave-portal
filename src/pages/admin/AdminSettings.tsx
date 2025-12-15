@@ -33,32 +33,43 @@ const AdminSettings = () => {
     loading,
     fleetRentSlabs,
     companyEarningsSlabs,
+    companyEarningsSlabs24hr,
     companyInfo,
     notificationPreferences,
     systemConfig,
+    penaltyDivisionSettings,
+    vehiclePerformanceRentalIncome,
     updateFleetRentSlabs,
     updateCompanyEarningsSlabs,
+    updateCompanyEarningsSlabs24hr,
     updateCompanyInfo,
     updateNotificationPreferences,
     updateSystemConfig,
+    updatePenaltyDivisionSettings,
+    updateVehiclePerformanceRentalIncome,
   } = useAdminSettings();
 
   const [editingFleetSlab, setEditingFleetSlab] =
     useState<FleetRentSlab | null>(null);
   const [editingEarningsSlab, setEditingEarningsSlab] =
     useState<CompanyEarningsSlab | null>(null);
+  const [editingEarningsSlab24hr, setEditingEarningsSlab24hr] =
+    useState<CompanyEarningsSlab | null>(null);
   const [tempCompanyInfo, setTempCompanyInfo] = useState(companyInfo);
   const [tempNotificationPrefs, setTempNotificationPrefs] = useState(
     notificationPreferences
   );
   const [tempSystemConfig, setTempSystemConfig] = useState(systemConfig);
+  const [tempVehiclePerformanceRentalIncome, setTempVehiclePerformanceRentalIncome] =
+    useState<number>(vehiclePerformanceRentalIncome);
 
   // Update temp states when data loads
   React.useEffect(() => {
     setTempCompanyInfo(companyInfo);
     setTempNotificationPrefs(notificationPreferences);
     setTempSystemConfig(systemConfig);
-  }, [companyInfo, notificationPreferences, systemConfig]);
+    setTempVehiclePerformanceRentalIncome(vehiclePerformanceRentalIncome);
+  }, [companyInfo, notificationPreferences, systemConfig, vehiclePerformanceRentalIncome]);
 
   const handleAddFleetSlab = () => {
     setEditingFleetSlab({ min_trips: 0, max_trips: null, amount: 0 });
@@ -124,6 +135,38 @@ const AdminSettings = () => {
     updateCompanyEarningsSlabs(updatedSlabs);
   };
 
+  const handleAddEarningsSlab24hr = () => {
+    setEditingEarningsSlab24hr({ min_trips: 0, max_trips: null, amount: 0 });
+  };
+
+  const handleSaveEarningsSlab24hr = () => {
+    if (!editingEarningsSlab24hr) return;
+
+    const updatedSlabs = [...companyEarningsSlabs24hr];
+    const existingIndex = updatedSlabs.findIndex(
+      (slab) => slab.min_trips === editingEarningsSlab24hr.min_trips
+    );
+
+    if (existingIndex >= 0) {
+      updatedSlabs[existingIndex] = editingEarningsSlab24hr;
+    } else {
+      updatedSlabs.push(editingEarningsSlab24hr);
+    }
+
+    // Sort by min_trips
+    updatedSlabs.sort((a, b) => a.min_trips - b.min_trips);
+
+    updateCompanyEarningsSlabs24hr(updatedSlabs);
+    setEditingEarningsSlab24hr(null);
+  };
+
+  const handleDeleteEarningsSlab24hr = (minTrips: number) => {
+    const updatedSlabs = companyEarningsSlabs24hr.filter(
+      (slab) => slab.min_trips !== minTrips
+    );
+    updateCompanyEarningsSlabs24hr(updatedSlabs);
+  };
+
   if (loading) {
     return (
       <AdminLayout title="Settings">
@@ -141,6 +184,7 @@ const AdminSettings = () => {
           <TabsTrigger value="general">General</TabsTrigger>
           <TabsTrigger value="fleet-expenses">Fleet Expenses</TabsTrigger>
           <TabsTrigger value="company-earnings">Company Earnings</TabsTrigger>
+          <TabsTrigger value="penalty-division">Penalty Division</TabsTrigger>
           <TabsTrigger value="notifications">Notifications</TabsTrigger>
           <TabsTrigger value="system">System</TabsTrigger>
         </TabsList>
@@ -334,128 +378,400 @@ const AdminSettings = () => {
         </TabsContent>
 
         <TabsContent value="company-earnings">
+          <div className="space-y-6">
+            {/* Regular Shift Earnings */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Regular Shift Earnings Slabs</CardTitle>
+                <CardDescription>
+                  Configure company earnings for morning/night shifts based on
+                  trip count.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  <Button onClick={handleAddEarningsSlab} className="mb-4">
+                    <Plus className="w-4 h-4 mr-2" />
+                    Add Slab
+                  </Button>
+
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Min Trips</TableHead>
+                        <TableHead>Max Trips</TableHead>
+                        <TableHead>Amount (₹)</TableHead>
+                        <TableHead>Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {companyEarningsSlabs.map((slab, index) => (
+                        <TableRow key={index}>
+                          <TableCell>{slab.min_trips}</TableCell>
+                          <TableCell>
+                            {slab.max_trips === null ? (
+                              <Badge variant="secondary">No Limit</Badge>
+                            ) : (
+                              slab.max_trips
+                            )}
+                          </TableCell>
+                          <TableCell>₹{slab.amount}</TableCell>
+                          <TableCell>
+                            <div className="flex space-x-2">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setEditingEarningsSlab(slab)}
+                              >
+                                <Edit2 className="w-4 h-4" />
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() =>
+                                  handleDeleteEarningsSlab(slab.min_trips)
+                                }
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+
+                  {editingEarningsSlab && (
+                    <Card className="mt-4">
+                      <CardHeader>
+                        <CardTitle>Edit Regular Shift Earnings Slab</CardTitle>
+                      </CardHeader>
+                      <CardContent className="space-y-4">
+                        <div className="grid grid-cols-3 gap-4">
+                          <div>
+                            <Label>Min Trips</Label>
+                            <Input
+                              type="number"
+                              value={editingEarningsSlab.min_trips}
+                              onChange={(e) =>
+                                setEditingEarningsSlab({
+                                  ...editingEarningsSlab,
+                                  min_trips: parseInt(e.target.value) || 0,
+                                })
+                              }
+                            />
+                          </div>
+                          <div>
+                            <Label>Max Trips</Label>
+                            <Input
+                              type="number"
+                              value={editingEarningsSlab.max_trips || ""}
+                              onChange={(e) =>
+                                setEditingEarningsSlab({
+                                  ...editingEarningsSlab,
+                                  max_trips: e.target.value
+                                    ? parseInt(e.target.value)
+                                    : null,
+                                })
+                              }
+                              placeholder="Leave empty for no limit"
+                            />
+                          </div>
+                          <div>
+                            <Label>Amount (₹)</Label>
+                            <Input
+                              type="number"
+                              value={editingEarningsSlab.amount}
+                              onChange={(e) =>
+                                setEditingEarningsSlab({
+                                  ...editingEarningsSlab,
+                                  amount: parseInt(e.target.value) || 0,
+                                })
+                              }
+                            />
+                          </div>
+                        </div>
+                        <div className="flex space-x-2">
+                          <Button onClick={handleSaveEarningsSlab}>Save</Button>
+                          <Button
+                            variant="outline"
+                            onClick={() => setEditingEarningsSlab(null)}
+                          >
+                            Cancel
+                          </Button>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Vehicle Performance Rental Income */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Vehicle Performance Rental Income</CardTitle>
+                <CardDescription>
+                  Set a fixed rental income amount that will be displayed in the
+                  Vehicle Performance tab for all vehicles.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="vehicle-performance-rental-income">
+                    Rental Income Amount (₹)
+                  </Label>
+                  <Input
+                    id="vehicle-performance-rental-income"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={tempVehiclePerformanceRentalIncome}
+                    onChange={(e) =>
+                      setTempVehiclePerformanceRentalIncome(
+                        parseFloat(e.target.value) || 0
+                      )
+                    }
+                    placeholder="Enter rental income amount"
+                  />
+                  <p className="text-sm text-muted-foreground">
+                    This amount will be used as the "Rental Income" value for
+                    all vehicles in the Vehicle Performance tab.
+                  </p>
+                </div>
+                <Button
+                  onClick={() =>
+                    updateVehiclePerformanceRentalIncome(
+                      tempVehiclePerformanceRentalIncome
+                    )
+                  }
+                >
+                  Save Rental Income
+                </Button>
+              </CardContent>
+            </Card>
+
+            {/* 24-Hour Shift Earnings */}
+            <Card>
+              <CardHeader>
+                <CardTitle>24-Hour Shift Earnings Slabs</CardTitle>
+                <CardDescription>
+                  Configure company earnings for 24-hour shifts based on trip
+                  count.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  <Button onClick={handleAddEarningsSlab24hr} className="mb-4">
+                    <Plus className="w-4 h-4 mr-2" />
+                    Add Slab
+                  </Button>
+
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Min Trips</TableHead>
+                        <TableHead>Max Trips</TableHead>
+                        <TableHead>Amount (₹)</TableHead>
+                        <TableHead>Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {companyEarningsSlabs24hr.map((slab, index) => (
+                        <TableRow key={index}>
+                          <TableCell>{slab.min_trips}</TableCell>
+                          <TableCell>
+                            {slab.max_trips === null ? (
+                              <Badge variant="secondary">No Limit</Badge>
+                            ) : (
+                              slab.max_trips
+                            )}
+                          </TableCell>
+                          <TableCell>₹{slab.amount}</TableCell>
+                          <TableCell>
+                            <div className="flex space-x-2">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setEditingEarningsSlab24hr(slab)}
+                              >
+                                <Edit2 className="w-4 h-4" />
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() =>
+                                  handleDeleteEarningsSlab24hr(slab.min_trips)
+                                }
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+
+                  {editingEarningsSlab24hr && (
+                    <Card className="mt-4">
+                      <CardHeader>
+                        <CardTitle>Edit 24-Hour Shift Earnings Slab</CardTitle>
+                      </CardHeader>
+                      <CardContent className="space-y-4">
+                        <div className="grid grid-cols-3 gap-4">
+                          <div>
+                            <Label>Min Trips</Label>
+                            <Input
+                              type="number"
+                              value={editingEarningsSlab24hr.min_trips}
+                              onChange={(e) =>
+                                setEditingEarningsSlab24hr({
+                                  ...editingEarningsSlab24hr,
+                                  min_trips: parseInt(e.target.value) || 0,
+                                })
+                              }
+                            />
+                          </div>
+                          <div>
+                            <Label>Max Trips</Label>
+                            <Input
+                              type="number"
+                              value={editingEarningsSlab24hr.max_trips || ""}
+                              onChange={(e) =>
+                                setEditingEarningsSlab24hr({
+                                  ...editingEarningsSlab24hr,
+                                  max_trips: e.target.value
+                                    ? parseInt(e.target.value)
+                                    : null,
+                                })
+                              }
+                              placeholder="Leave empty for no limit"
+                            />
+                          </div>
+                          <div>
+                            <Label>Amount (₹)</Label>
+                            <Input
+                              type="number"
+                              value={editingEarningsSlab24hr.amount}
+                              onChange={(e) =>
+                                setEditingEarningsSlab24hr({
+                                  ...editingEarningsSlab24hr,
+                                  amount: parseInt(e.target.value) || 0,
+                                })
+                              }
+                            />
+                          </div>
+                        </div>
+                        <div className="flex space-x-2">
+                          <Button onClick={handleSaveEarningsSlab24hr}>
+                            Save
+                          </Button>
+                          <Button
+                            variant="outline"
+                            onClick={() => setEditingEarningsSlab24hr(null)}
+                          >
+                            Cancel
+                          </Button>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="penalty-division">
           <Card>
             <CardHeader>
-              <CardTitle>Company Earnings Slabs</CardTitle>
+              <CardTitle>Penalty Division Settings</CardTitle>
               <CardDescription>
-                Configure company earnings based on trip count.
+                Configure how penalties are divided and applied to drivers.
               </CardDescription>
             </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                <Button onClick={handleAddEarningsSlab} className="mb-4">
-                  <Plus className="w-4 h-4 mr-2" />
-                  Add Slab
-                </Button>
+            <CardContent className="space-y-6">
+              <div className="space-y-2">
+                <Label htmlFor="division-days">Division Period (Days)</Label>
+                <Input
+                  id="division-days"
+                  type="number"
+                  min="1"
+                  max="365"
+                  value={penaltyDivisionSettings.division_days}
+                  onChange={(e) =>
+                    updatePenaltyDivisionSettings({
+                      ...penaltyDivisionSettings,
+                      division_days: parseInt(e.target.value) || 7,
+                    })
+                  }
+                />
+                <p className="text-sm text-muted-foreground">
+                  Number of days over which penalties will be divided. For
+                  example, if set to 7, a ₹700 penalty will be divided into ₹100
+                  per day.
+                </p>
+              </div>
 
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Min Trips</TableHead>
-                      <TableHead>Max Trips</TableHead>
-                      <TableHead>Amount (₹)</TableHead>
-                      <TableHead>Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {companyEarningsSlabs.map((slab, index) => (
-                      <TableRow key={index}>
-                        <TableCell>{slab.min_trips}</TableCell>
-                        <TableCell>
-                          {slab.max_trips === null ? (
-                            <Badge variant="secondary">No Limit</Badge>
-                          ) : (
-                            slab.max_trips
-                          )}
-                        </TableCell>
-                        <TableCell>₹{slab.amount}</TableCell>
-                        <TableCell>
-                          <div className="flex space-x-2">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => setEditingEarningsSlab(slab)}
-                            >
-                              <Edit2 className="w-4 h-4" />
-                            </Button>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() =>
-                                handleDeleteEarningsSlab(slab.min_trips)
-                              }
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </Button>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+              <div className="flex items-center justify-between">
+                <div className="space-y-0.5">
+                  <Label htmlFor="penalty-enabled">
+                    Enable Penalty Division
+                  </Label>
+                  <div className="text-sm text-muted-foreground">
+                    Enable automatic penalty division for all drivers
+                  </div>
+                </div>
+                <Switch
+                  id="penalty-enabled"
+                  checked={penaltyDivisionSettings.enabled}
+                  onCheckedChange={(checked) =>
+                    updatePenaltyDivisionSettings({
+                      ...penaltyDivisionSettings,
+                      enabled: checked,
+                    })
+                  }
+                />
+              </div>
 
-                {editingEarningsSlab && (
-                  <Card className="mt-4">
-                    <CardHeader>
-                      <CardTitle>Edit Company Earnings Slab</CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                      <div className="grid grid-cols-3 gap-4">
-                        <div>
-                          <Label>Min Trips</Label>
-                          <Input
-                            type="number"
-                            value={editingEarningsSlab.min_trips}
-                            onChange={(e) =>
-                              setEditingEarningsSlab({
-                                ...editingEarningsSlab,
-                                min_trips: parseInt(e.target.value) || 0,
-                              })
-                            }
-                          />
-                        </div>
-                        <div>
-                          <Label>Max Trips</Label>
-                          <Input
-                            type="number"
-                            value={editingEarningsSlab.max_trips || ""}
-                            onChange={(e) =>
-                              setEditingEarningsSlab({
-                                ...editingEarningsSlab,
-                                max_trips: e.target.value
-                                  ? parseInt(e.target.value)
-                                  : null,
-                              })
-                            }
-                            placeholder="Leave empty for no limit"
-                          />
-                        </div>
-                        <div>
-                          <Label>Amount (₹)</Label>
-                          <Input
-                            type="number"
-                            value={editingEarningsSlab.amount}
-                            onChange={(e) =>
-                              setEditingEarningsSlab({
-                                ...editingEarningsSlab,
-                                amount: parseInt(e.target.value) || 0,
-                              })
-                            }
-                          />
-                        </div>
-                      </div>
-                      <div className="flex space-x-2">
-                        <Button onClick={handleSaveEarningsSlab}>Save</Button>
-                        <Button
-                          variant="outline"
-                          onClick={() => setEditingEarningsSlab(null)}
-                        >
-                          Cancel
-                        </Button>
-                      </div>
-                    </CardContent>
-                  </Card>
-                )}
+              <div className="flex items-center justify-between">
+                <div className="space-y-0.5">
+                  <Label htmlFor="auto-apply">Auto-apply to Reports</Label>
+                  <div className="text-sm text-muted-foreground">
+                    Automatically add daily penalty amount to submit reports
+                  </div>
+                </div>
+                <Switch
+                  id="auto-apply"
+                  checked={penaltyDivisionSettings.auto_apply}
+                  onCheckedChange={(checked) =>
+                    updatePenaltyDivisionSettings({
+                      ...penaltyDivisionSettings,
+                      auto_apply: checked,
+                    })
+                  }
+                />
+              </div>
+
+              <div className="p-4 bg-blue-50 border border-blue-200 rounded-md">
+                <h4 className="font-semibold text-blue-800 mb-2">
+                  How it works:
+                </h4>
+                <ul className="text-sm text-blue-700 space-y-1">
+                  <li>
+                    • When a penalty is added, it's divided by the division
+                    period
+                  </li>
+                  <li>• Daily penalty amount is automatically calculated</li>
+                  <li>
+                    • This amount is added to the rent payable in submit reports
+                  </li>
+                  <li>
+                    • Penalties are automatically marked as paid when fully
+                    recovered
+                  </li>
+                </ul>
               </div>
             </CardContent>
           </Card>
@@ -569,25 +885,6 @@ const AdminSettings = () => {
                 <p className="text-sm text-muted-foreground">
                   This is your API key. Keep it secure.
                 </p>
-              </div>
-
-              <div className="flex items-center justify-between">
-                <div className="space-y-0.5">
-                  <Label htmlFor="dark-mode">Dark Mode</Label>
-                  <div className="text-sm text-muted-foreground">
-                    Enable dark mode for the application
-                  </div>
-                </div>
-                <Switch
-                  id="dark-mode"
-                  checked={tempSystemConfig.dark_mode}
-                  onCheckedChange={(checked) =>
-                    setTempSystemConfig({
-                      ...tempSystemConfig,
-                      dark_mode: checked,
-                    })
-                  }
-                />
               </div>
 
               <div className="flex items-center justify-between">

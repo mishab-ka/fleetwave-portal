@@ -9,19 +9,23 @@ import { Upload, FileCheck, FileX, RefreshCw, X } from "lucide-react";
 import { Tables } from "@/integrations/supabase/types";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
+import { Separator } from "@/components/ui/separator";
+
+type DocumentSide = "front" | "back";
 
 type DocumentType =
   | "profile_photo"
   | "license"
   | "aadhar"
   | "pan"
+  | "bank"
   | "uber_profile";
 
 interface DocumentItem {
   type: DocumentType;
   title: string;
   description: string;
-  fieldName: keyof Tables<"users">;
+  hasSides?: boolean; // true for documents that have front/back
   icon: React.ReactNode;
 }
 
@@ -29,42 +33,46 @@ const DocumentsSection = () => {
   const { user } = useAuth();
   const [profileData, setProfileData] = useState<Tables<"users"> | null>(null);
   const [loading, setLoading] = useState(true);
-  const [uploadLoading, setUploadLoading] = useState<DocumentType | null>(null);
+  const [uploadLoading, setUploadLoading] = useState<{
+    type: DocumentType;
+    side?: DocumentSide;
+  } | null>(null);
 
   const documentItems: DocumentItem[] = [
     {
       type: "profile_photo",
       title: "Profile Photo",
       description: "Upload a clear passport-size photo",
-      fieldName: "profile_photo",
+      hasSides: false,
       icon: <Upload className="h-5 w-5" />,
     },
     {
       type: "license",
       title: "Driving License",
       description: "Upload both sides of your driving license",
-      fieldName: "license",
+      hasSides: true,
       icon: <Upload className="h-5 w-5" />,
     },
     {
       type: "aadhar",
       title: "Aadhar Card",
-      description: "Upload your Aadhar card",
-      fieldName: "aadhar",
+      description: "Upload both sides of your Aadhar card",
+      hasSides: true,
       icon: <Upload className="h-5 w-5" />,
     },
     {
       type: "pan",
       title: "PAN Card",
-      description: "Upload your PAN card",
-      fieldName: "pan",
+      description: "Upload both sides of your PAN card",
+      hasSides: true,
       icon: <Upload className="h-5 w-5" />,
     },
+
     {
       type: "uber_profile",
       title: "Uber Profile",
       description: "Upload your Uber driver profile screenshot",
-      fieldName: "uber_profile",
+      hasSides: false,
       icon: <Upload className="h-5 w-5" />,
     },
   ];
@@ -94,9 +102,20 @@ const DocumentsSection = () => {
     fetchUserProfile();
   }, [user]);
 
+  const getFieldName = (
+    docType: DocumentType,
+    side?: DocumentSide
+  ): keyof Tables<"users"> => {
+    if (side) {
+      return `${docType}_${side}` as keyof Tables<"users">;
+    }
+    return docType as keyof Tables<"users">;
+  };
+
   const handleFileUpload = async (
     e: React.ChangeEvent<HTMLInputElement>,
-    docType: DocumentType
+    docType: DocumentType,
+    side?: DocumentSide
   ) => {
     try {
       if (!e.target.files || e.target.files.length === 0 || !user) {
@@ -106,7 +125,10 @@ const DocumentsSection = () => {
       const file = e.target.files[0];
 
       // Check file type
-      if (docType === "uber_profile" && !file.type.startsWith("image/")) {
+      if (
+        (docType === "uber_profile" || docType === "profile_photo") &&
+        !file.type.startsWith("image/")
+      ) {
         toast.error("Please upload an image file");
         return;
       }
@@ -118,10 +140,12 @@ const DocumentsSection = () => {
       }
 
       const fileExt = file.name.split(".").pop();
-      const fileName = `${user.id}_${docType}.${fileExt}`;
+      const fileName = side
+        ? `${user.id}_${docType}_${side}.${fileExt}`
+        : `${user.id}_${docType}.${fileExt}`;
       const filePath = `${docType}/${fileName}`;
 
-      setUploadLoading(docType);
+      setUploadLoading({ type: docType, side });
 
       // Upload file to storage
       const { error: uploadError } = await supabase.storage
@@ -136,7 +160,7 @@ const DocumentsSection = () => {
         .getPublicUrl(filePath);
 
       // Update user record
-      const updateField = docType as keyof Tables<"users">;
+      const updateField = getFieldName(docType, side);
       const { error: updateError } = await supabase
         .from("users")
         .update({ [updateField]: publicUrlData.publicUrl })
@@ -146,13 +170,17 @@ const DocumentsSection = () => {
 
       // Update local state
       setProfileData((prev) =>
-        prev ? { ...prev, [updateField]: publicUrlData.publicUrl } : prev
+        prev ? { ...prev, [updateField]: publicUrlData.publicUrl } : null
       );
 
-      toast.success(`${docType.replace("_", " ")} uploaded successfully!`);
+      const sideText = side ? ` (${side})` : "";
+      toast.success(
+        `${docType.replace("_", " ")}${sideText} uploaded successfully!`
+      );
     } catch (error) {
       console.error(`Error uploading ${docType}:`, error);
-      toast.error(`Failed to upload ${docType.replace("_", " ")}`);
+      const sideText = side ? ` (${side})` : "";
+      toast.error(`Failed to upload ${docType.replace("_", " ")}${sideText}`);
     } finally {
       setUploadLoading(null);
       // Reset file input
@@ -160,19 +188,31 @@ const DocumentsSection = () => {
     }
   };
 
-  const removeDocument = async (docType: DocumentType) => {
+  const removeDocument = async (docType: DocumentType, side?: DocumentSide) => {
     try {
       if (!user || !profileData) return;
 
-      setUploadLoading(docType);
+      setUploadLoading({ type: docType, side });
+
+      const updateField = getFieldName(docType, side);
+      const currentUrl = profileData[updateField] as string | null;
+
+      if (!currentUrl) return;
+
+      // Extract file path from URL or construct it
+      let filePath: string;
+      if (currentUrl.includes("/storage/v1/object/public/uploads/")) {
+        filePath = currentUrl.split("/uploads/")[1];
+      } else {
+        // Fallback: construct path
+        const fileExt = currentUrl.split(".").pop();
+        const fileName = side
+          ? `${user.id}_${docType}_${side}.${fileExt}`
+          : `${user.id}_${docType}.${fileExt}`;
+        filePath = `${docType}/${fileName}`;
+      }
 
       // Delete from storage
-      const fileExt = profileData[docType as keyof Tables<"users">]
-        ?.split(".")
-        .pop();
-      const fileName = `${user.id}_${docType}.${fileExt}`;
-      const filePath = `${docType}/${fileName}`;
-
       const { error: deleteError } = await supabase.storage
         .from("uploads")
         .remove([filePath]);
@@ -180,7 +220,6 @@ const DocumentsSection = () => {
       if (deleteError) throw deleteError;
 
       // Update user record
-      const updateField = docType as keyof Tables<"users">;
       const { error: updateError } = await supabase
         .from("users")
         .update({ [updateField]: null })
@@ -190,13 +229,17 @@ const DocumentsSection = () => {
 
       // Update local state
       setProfileData((prev) =>
-        prev ? { ...prev, [updateField]: null } : prev
+        prev ? { ...prev, [updateField]: null } : null
       );
 
-      toast.success(`${docType.replace("_", " ")} removed successfully!`);
+      const sideText = side ? ` (${side})` : "";
+      toast.success(
+        `${docType.replace("_", " ")}${sideText} removed successfully!`
+      );
     } catch (error) {
       console.error(`Error removing ${docType}:`, error);
-      toast.error(`Failed to remove ${docType.replace("_", " ")}`);
+      const sideText = side ? ` (${side})` : "";
+      toast.error(`Failed to remove ${docType.replace("_", " ")}${sideText}`);
     } finally {
       setUploadLoading(null);
     }
@@ -221,113 +264,119 @@ const DocumentsSection = () => {
       </p>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {documentItems.map((doc) => (
-          <Card key={doc.type} className="overflow-hidden">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-lg">{doc.title}</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-sm text-gray-500 mb-4">{doc.description}</p>
+        {documentItems.map((doc) => {
+          const renderDocumentSide = (side: DocumentSide) => {
+            const fieldName = getFieldName(doc.type, side);
+            const isUploaded = profileData && profileData[fieldName];
+            const isUploading =
+              uploadLoading?.type === doc.type && uploadLoading?.side === side;
 
-              {profileData && profileData[doc.fieldName] ? (
+            return (
+              <div key={side} className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label className="text-sm font-medium capitalize">
+                    {side} Side
+                  </Label>
+                  {isUploaded && (
+                    <FileCheck className="h-4 w-4 text-green-500" />
+                  )}
+                  {!isUploaded && <FileX className="h-4 w-4 text-yellow-500" />}
+                </div>
+
+                {isUploaded ? (
+                  <div className="flex items-center gap-2">
+                    <a
+                      href={profileData![fieldName] as string}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-xs text-fleet-purple hover:underline"
+                    >
+                      View
+                    </a>
+                    <label className="cursor-pointer">
+                      <input
+                        type="file"
+                        className="hidden"
+                        accept=".pdf,image/*"
+                        onChange={(e) => handleFileUpload(e, doc.type, side)}
+                        disabled={uploadLoading !== null}
+                      />
+                      <span className="text-xs text-gray-600 hover:text-fleet-purple hover:underline">
+                        Replace
+                      </span>
+                    </label>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-6 px-2"
+                      onClick={() => removeDocument(doc.type, side)}
+                      disabled={isUploading}
+                    >
+                      <X className="h-3 w-3" />
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="relative">
+                    <input
+                      type="file"
+                      id={`file-input-${doc.type}-${side}`}
+                      className="hidden"
+                      accept=".pdf,image/*"
+                      onChange={(e) => handleFileUpload(e, doc.type, side)}
+                      disabled={uploadLoading !== null}
+                    />
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="w-full text-xs border-dashed"
+                      disabled={uploadLoading !== null}
+                      onClick={() => {
+                        const input = document.getElementById(
+                          `file-input-${doc.type}-${side}`
+                        );
+                        if (input) input.click();
+                      }}
+                    >
+                      {isUploading ? (
+                        <span className="flex items-center justify-center">
+                          <RefreshCw className="h-3 w-3 mr-1 animate-spin" />
+                          Uploading...
+                        </span>
+                      ) : (
+                        <span className="flex items-center justify-center">
+                          <Upload className="h-3 w-3 mr-1" />
+                          Upload {side}
+                        </span>
+                      )}
+                    </Button>
+                  </div>
+                )}
+              </div>
+            );
+          };
+
+          const renderSingleDocument = () => {
+            const fieldName = getFieldName(doc.type);
+            const isUploaded = profileData && profileData[fieldName];
+            const isUploading =
+              uploadLoading?.type === doc.type && !uploadLoading?.side;
+
+            if (isUploaded) {
+              return (
                 <div className="space-y-3">
                   <div className="flex items-center space-x-2">
                     <FileCheck className="h-5 w-5 text-green-500" />
                     <span className="text-green-600 font-medium">Uploaded</span>
                   </div>
-
-                  {doc.type === "uber_profile" ? (
-                    // <div className="relative">
-                    //   <img
-                    //     src={profileData[doc.fieldName] as string}
-                    //     alt={doc.title}
-                    //     className="w-full max-w-md rounded-lg shadow-sm"
-                    //   />
-                    //   <Button
-                    //     variant="destructive"
-                    //     size="sm"
-                    //     className="absolute top-2 right-2"
-                    //     onClick={() => removeDocument(doc.type)}
-                    //     disabled={uploadLoading === doc.type}
-                    //   >
-                    //     <X className="h-4 w-4" />
-                    //   </Button>
-                    // </div>
-                    <>
-                      <div className="flex space-x-2">
-                        <a
-                          href={profileData[doc.fieldName] as string}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-sm text-fleet-purple hover:underline"
-                        >
-                          View Document
-                        </a>
-
-                        <label className="cursor-pointer">
-                          <input
-                            type="file"
-                            className="hidden"
-                            accept={
-                              doc.type === "uber_profile"
-                                ? "image/*"
-                                : ".pdf,image/*"
-                            }
-                            onChange={(e) => handleFileUpload(e, doc.type)}
-                            disabled={uploadLoading !== null}
-                          />
-                          <span className="text-sm text-gray-600 hover:text-fleet-purple hover:underline">
-                            Replace
-                          </span>
-                        </label>
-                      </div>
-                    </>
-                  ) : (
-                    <div className="flex space-x-2">
-                      <a
-                        href={profileData[doc.fieldName] as string}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-sm text-fleet-purple hover:underline"
-                      >
-                        View Document
-                      </a>
-
-                      <label className="cursor-pointer">
-                        <input
-                          type="file"
-                          className="hidden"
-                          accept={
-                            doc.type === "profile_photo" ||
-                            doc.type === "uber_profile"
-                              ? "image/*"
-                              : ".pdf,image/*"
-                          }
-                          onChange={(e) => handleFileUpload(e, doc.type)}
-                          disabled={uploadLoading !== null}
-                        />
-                        <span className="text-sm text-gray-600 hover:text-fleet-purple hover:underline">
-                          Replace
-                        </span>
-                      </label>
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  <div className="flex items-center space-x-2">
-                    <FileX className="h-5 w-5 text-yellow-500" />
-                    <span className="text-yellow-600 font-medium">
-                      Not Uploaded
-                    </span>
-                  </div>
-
-                  <Button
-                    variant="outline"
-                    className="w-full bg-white hover:bg-gray-50 border-dashed"
-                    asChild
-                    disabled={uploadLoading !== null}
-                  >
+                  <div className="flex space-x-2">
+                    <a
+                      href={profileData![fieldName] as string}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-sm text-fleet-purple hover:underline"
+                    >
+                      View Document
+                    </a>
                     <label className="cursor-pointer">
                       <input
                         type="file"
@@ -339,25 +388,102 @@ const DocumentsSection = () => {
                             : ".pdf,image/*"
                         }
                         onChange={(e) => handleFileUpload(e, doc.type)}
+                        disabled={uploadLoading !== null}
                       />
-                      {uploadLoading === doc.type ? (
-                        <span className="flex items-center justify-center">
-                          <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                          Uploading...
-                        </span>
-                      ) : (
-                        <span className="flex items-center justify-center">
-                          <Upload className="h-4 w-4 mr-2" />
-                          Upload {doc.title}
-                        </span>
-                      )}
+                      <span className="text-sm text-gray-600 hover:text-fleet-purple hover:underline">
+                        Replace
+                      </span>
                     </label>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-6 px-2"
+                      onClick={() => removeDocument(doc.type)}
+                      disabled={isUploading}
+                    >
+                      <X className="h-3 w-3" />
+                    </Button>
+                  </div>
+                </div>
+              );
+            }
+
+            return (
+              <div className="space-y-3">
+                <div className="flex items-center space-x-2">
+                  <FileX className="h-5 w-5 text-yellow-500" />
+                  <span className="text-yellow-600 font-medium">
+                    Not Uploaded
+                  </span>
+                </div>
+                <div className="relative">
+                  <input
+                    type="file"
+                    id={`file-input-${doc.type}`}
+                    className="hidden"
+                    accept={
+                      doc.type === "profile_photo" ||
+                      doc.type === "uber_profile"
+                        ? "image/*"
+                        : ".pdf,image/*"
+                    }
+                    onChange={(e) => handleFileUpload(e, doc.type)}
+                    disabled={uploadLoading !== null}
+                  />
+                  <Button
+                    variant="outline"
+                    className="w-full bg-white hover:bg-gray-50 border-dashed"
+                    disabled={uploadLoading !== null}
+                    onClick={() => {
+                      const input = document.getElementById(
+                        `file-input-${doc.type}`
+                      );
+                      if (input) input.click();
+                    }}
+                  >
+                    {isUploading ? (
+                      <span className="flex items-center justify-center">
+                        <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                        Uploading...
+                      </span>
+                    ) : (
+                      <span className="flex items-center justify-center">
+                        <Upload className="h-4 w-4 mr-2" />
+                        Upload {doc.title}
+                      </span>
+                    )}
                   </Button>
                 </div>
-              )}
-            </CardContent>
-          </Card>
-        ))}
+              </div>
+            );
+          };
+
+          return (
+            <Card key={doc.type} className="overflow-hidden">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-lg">{doc.title}</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm text-gray-500 mb-4">{doc.description}</p>
+
+                {doc.hasSides ? (
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-2 gap-4">
+                      {renderDocumentSide("front")}
+                      {renderDocumentSide("back")}
+                    </div>
+                    <Separator />
+                    <div className="text-xs text-gray-500">
+                      Both sides must be uploaded for verification
+                    </div>
+                  </div>
+                ) : (
+                  renderSingleDocument()
+                )}
+              </CardContent>
+            </Card>
+          );
+        })}
       </div>
 
       <div className="rounded-lg bg-blue-50 p-4 mt-8">

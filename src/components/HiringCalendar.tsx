@@ -30,7 +30,6 @@ import {
 } from "@/components/ui/select";
 import AdminLayout from "./AdminLayout";
 import { useNavigate } from "react-router-dom";
-
 import { supabase } from "@/lib/supabase";
 
 export default function HiringCalendar() {

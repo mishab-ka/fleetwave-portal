@@ -1,73 +1,76 @@
-import { useState, useEffect } from 'react';
-import { 
-  startOfDay, 
-  endOfDay, 
-  startOfWeek, 
-  endOfWeek, 
-  subDays, 
-  startOfMonth, 
-  endOfMonth 
-} from 'date-fns';
+import { useState, useEffect } from "react";
+import {
+  startOfDay,
+  endOfDay,
+  startOfWeek,
+  endOfWeek,
+  subDays,
+  startOfMonth,
+  endOfMonth,
+} from "date-fns";
 
 export const useCalendarDateRange = () => {
-  const [dateRange, setDateRange] = useState({
-    startDate: startOfDay(new Date()),
-    endDate: endOfDay(new Date()),
-    preset: 'today'
+  const [dateRange, setDateRange] = useState(() => {
+    const today = new Date();
+    return {
+      startDate: startOfDay(subDays(today, 29)),
+      endDate: endOfDay(today),
+      preset: "last30days",
+    };
   });
 
   const setDateRangeByPreset = (preset: string) => {
     const today = new Date();
-    
+
     switch (preset) {
-      case 'today':
+      case "today":
         setDateRange({
           startDate: startOfDay(today),
           endDate: endOfDay(today),
-          preset
+          preset,
         });
         break;
-      case 'yesterday':
+      case "yesterday":
         const yesterday = subDays(today, 1);
         setDateRange({
           startDate: startOfDay(yesterday),
           endDate: endOfDay(yesterday),
-          preset
+          preset,
         });
         break;
-      case 'last7days':
+      case "last7days":
         setDateRange({
           startDate: startOfDay(subDays(today, 6)),
           endDate: endOfDay(today),
-          preset
+          preset,
         });
         break;
-      case 'last30days':
+      case "last30days":
         setDateRange({
           startDate: startOfDay(subDays(today, 29)),
           endDate: endOfDay(today),
-          preset
+          preset,
         });
         break;
-      case 'thisMonth':
+      case "thisMonth":
         setDateRange({
           startDate: startOfMonth(today),
           endDate: endOfMonth(today),
-          preset
+          preset,
         });
         break;
-      case 'thisWeek':
+      case "thisWeek":
         setDateRange({
           startDate: startOfWeek(today, { weekStartsOn: 1 }),
           endDate: endOfWeek(today, { weekStartsOn: 1 }),
-          preset
+          preset,
         });
         break;
-      case 'custom':
+      case "custom":
         // For custom, we keep the current dates but change the preset
         setDateRange({
           ...dateRange,
-          preset
+          preset,
         });
         break;
       default:
@@ -75,7 +78,7 @@ export const useCalendarDateRange = () => {
         setDateRange({
           startDate: startOfDay(today),
           endDate: endOfDay(today),
-          preset: 'today'
+          preset: "today",
         });
     }
   };
@@ -84,7 +87,7 @@ export const useCalendarDateRange = () => {
     setDateRange({
       startDate: startOfDay(startDate),
       endDate: endOfDay(endDate),
-      preset: 'custom'
+      preset: "custom",
     });
   };
 
@@ -93,6 +96,6 @@ export const useCalendarDateRange = () => {
     endDate: dateRange.endDate,
     preset: dateRange.preset,
     setDateRangeByPreset,
-    setCustomDateRange
+    setCustomDateRange,
   };
 };

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -15,10 +15,33 @@ import {
   Wallet,
   Upload,
   X,
+  CreditCard,
+  User,
+  AlertTriangle,
+  DollarSign,
+  Home,
+  Bed,
 } from "lucide-react";
 import { format } from "date-fns";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Link } from "react-router-dom";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
 
 const UserProfile = () => {
   const { user } = useAuth();
@@ -26,6 +49,20 @@ const UserProfile = () => {
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [uberProfile, setUberProfile] = useState(null);
+  const [isEditing, setIsEditing] = useState(false);
+  const [accommodationInfo, setAccommodationInfo] = useState(null);
+  const [editForm, setEditForm] = useState({
+    account_number: "",
+    ifsc_code: "",
+    bank_name: "",
+    date_of_birth: "",
+  });
+  const [penaltyHistory, setPenaltyHistory] = useState([]);
+  const [loadingPenalties, setLoadingPenalties] = useState(false);
+  const [currentTab, setCurrentTab] = useState("profile");
+  const [isPhotoModalOpen, setIsPhotoModalOpen] = useState(false);
+  const [selectedPhotos, setSelectedPhotos] = useState<string[]>([]);
+  const [penaltyTransactions, setPenaltyTransactions] = useState([]);
 
   useEffect(() => {
     const fetchUserProfile = async () => {
@@ -39,6 +76,15 @@ const UserProfile = () => {
         if (error) throw error;
         setProfileData(data);
         setUberProfile(data?.uber_profile);
+        // Initialize edit form with current data
+        setEditForm({
+          account_number: data?.account_number || "",
+          ifsc_code: data?.ifsc_code || "",
+          bank_name: data?.bank_name || "",
+          date_of_birth: data?.date_of_birth
+            ? format(new Date(data.date_of_birth), "yyyy-MM-dd")
+            : "",
+        });
       } catch (error) {
         console.error("Error fetching user profile:", error);
         toast.error("Failed to load profile data");
@@ -46,8 +92,127 @@ const UserProfile = () => {
         setLoading(false);
       }
     };
+
+    const fetchAccommodationInfo = async () => {
+      try {
+        if (!user) return;
+        const { data, error } = await supabase
+          .from("bed_assignments")
+          .select(
+            `
+            *,
+            bed:beds(
+              id,
+              bed_number,
+              bed_name,
+              daily_rent,
+              room:rooms(
+                id,
+                room_number,
+                room_name
+              )
+            )
+          `
+          )
+          .eq("user_id", user.id)
+          .eq("status", "active")
+          .is("end_date", null)
+          .single();
+
+        if (error && error.code !== "PGRST116") {
+          throw error;
+        }
+
+        setAccommodationInfo(data || null);
+      } catch (error) {
+        console.error("Error fetching accommodation info:", error);
+        // Don't show error toast for accommodation as it's optional
+      }
+    };
+
     fetchUserProfile();
+    fetchAccommodationInfo();
   }, [user]);
+
+  const fetchPenaltyHistory = async () => {
+    if (!user) return;
+
+    try {
+      setLoadingPenalties(true);
+      const { data, error } = await supabase
+        .from("penalty_history")
+        .select("*")
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: false });
+
+      if (error) throw error;
+      setPenaltyHistory(data || []);
+    } catch (error) {
+      console.error("Error fetching penalty history:", error);
+      toast.error("Failed to load penalty history");
+    } finally {
+      setLoadingPenalties(false);
+    }
+  };
+
+  const fetchPenaltyTransactions = async () => {
+    if (!user) return;
+
+    try {
+      const { data, error } = await supabase
+        .from("driver_penalty_transactions")
+        .select("*")
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: false });
+
+      if (error) throw error;
+      setPenaltyTransactions(data || []);
+    } catch (error) {
+      console.error("Error fetching penalty transactions:", error);
+    }
+  };
+
+  useEffect(() => {
+    if (currentTab === "penalties") {
+      fetchPenaltyHistory();
+    }
+  }, [currentTab, user]);
+
+  useEffect(() => {
+    fetchPenaltyTransactions();
+  }, [user]);
+
+  const handleEditSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      const { error } = await supabase
+        .from("users")
+        .update({
+          account_number: editForm.account_number,
+          ifsc_code: editForm.ifsc_code,
+          bank_name: editForm.bank_name,
+          date_of_birth: editForm.date_of_birth || null,
+        })
+        .eq("id", user.id);
+
+      if (error) throw error;
+
+      // Update local state
+      setProfileData((prev) => ({
+        ...prev,
+        account_number: editForm.account_number,
+        ifsc_code: editForm.ifsc_code,
+        bank_name: editForm.bank_name,
+        date_of_birth: editForm.date_of_birth,
+      }));
+
+      setIsEditing(false);
+      toast.success("Profile updated successfully!");
+    } catch (error) {
+      console.error("Error updating profile:", error);
+      toast.error("Failed to update profile");
+    }
+  };
 
   const handleUberProfileUpload = async (event) => {
     try {
@@ -131,6 +296,58 @@ const UserProfile = () => {
     }
   };
 
+  // Calculate penalty summary from transactions (moved before early returns)
+  const penaltySummary = useMemo(() => {
+    if (!penaltyTransactions || penaltyTransactions.length === 0) {
+      return { netPenalties: 0, totalRefunds: 0, totalBonuses: 0 };
+    }
+
+    let totalPenalties = 0;
+    let totalPenaltyPaid = 0;
+    let totalRefunds = 0;
+    let totalBonuses = 0;
+
+    penaltyTransactions.forEach((transaction) => {
+      const amount = transaction.amount;
+
+      switch (transaction.type) {
+        case "penalty":
+          totalPenalties += amount;
+          break;
+        case "penalty_paid":
+          totalPenaltyPaid += amount;
+          break;
+        case "bonus":
+          totalBonuses += amount;
+          break;
+        case "refund":
+          totalRefunds += amount;
+          break;
+        case "due":
+          totalPenalties += amount; // Due amounts are treated as penalties
+          break;
+        case "extra_collection":
+          totalPenalties += amount; // Extra collection amounts are treated as penalties
+          break;
+      }
+    });
+
+    // Calculate net amount: if refunds > penalties, show positive refund balance
+    // If penalties > refunds, show penalty balance
+    const totalCredits = totalPenaltyPaid + totalRefunds + totalBonuses;
+    const netAmount = totalCredits - totalPenalties;
+
+    const summary = {
+      netPenalties: netAmount, // This will be positive (refund balance) or negative (penalty balance)
+      totalRefunds,
+      totalBonuses,
+      totalPenalties,
+      totalPenaltyPaid,
+    };
+
+    return summary;
+  }, [penaltyTransactions]);
+
   if (loading) {
     return (
       <div className="flex justify-center py-8">
@@ -161,6 +378,40 @@ const UserProfile = () => {
       maximumFractionDigits: 0,
     }).format(amount);
   };
+
+  const getPenaltyStatusBadge = (status: string) => {
+    switch (status) {
+      case "active":
+        return (
+          <Badge variant="destructive" className="text-xs">
+            Active
+          </Badge>
+        );
+      case "waived":
+        return (
+          <Badge variant="secondary" className="text-xs">
+            Waived
+          </Badge>
+        );
+      case "paid":
+        return (
+          <Badge variant="success" className="text-xs">
+            Paid
+          </Badge>
+        );
+      default:
+        return (
+          <Badge variant="outline" className="text-xs">
+            {status}
+          </Badge>
+        );
+    }
+  };
+
+  const openPhotoModal = (photos: string[]) => {
+    setSelectedPhotos(photos);
+    setIsPhotoModalOpen(true);
+  };
   return (
     <div className="space-y-6">
       <Card>
@@ -186,76 +437,289 @@ const UserProfile = () => {
             </div>
           </CardTitle>
         </CardHeader>
-        <CardContent className="space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            <div className="p-4 bg-gray-50 rounded-lg">
-              <div className="flex items-center gap-2 text-sm font-medium text-gray-500 mb-1">
-                <Calendar className="h-4 w-4" />
-                Joining Date
-              </div>
-              <p className="text-lg font-semibold">
-                {profileData.joining_date
-                  ? format(new Date(profileData.joining_date), "dd MMM yyyy")
-                  : "Not available"}
-              </p>
-            </div>
+        <CardContent>
+          <Tabs value={currentTab} onValueChange={setCurrentTab}>
+            <TabsList className="mb-4 grid w-full grid-cols-1">
+              <TabsTrigger value="profile">Profile</TabsTrigger>
+              {/* <TabsTrigger value="penalties">Penalty History</TabsTrigger> */}
+            </TabsList>
 
-            <div className="p-4 bg-gray-50 rounded-lg">
-              <div className="flex items-center gap-2 text-sm font-medium text-gray-500 mb-1">
-                <Car className="h-4 w-4" />
-                Total Trips
-              </div>
-              <p className="text-lg font-semibold">
-                {profileData.total_trip || 0}
-              </p>
-            </div>
+            <TabsContent value="profile" className="space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <div className="p-4 bg-gray-50 rounded-lg">
+                  <div className="flex items-center gap-2 text-sm font-medium text-gray-500 mb-1">
+                    <Calendar className="h-4 w-4" />
+                    Joining Date
+                  </div>
+                  <p className="text-lg font-semibold">
+                    {profileData.joining_date
+                      ? format(
+                          new Date(profileData.joining_date),
+                          "dd MMM yyyy"
+                        )
+                      : "Not available"}
+                  </p>
+                </div>
 
-            <div className="p-4 bg-gray-50 rounded-lg">
-              <div className="flex items-center gap-2 text-sm font-medium text-gray-500 mb-1">
-                <TrendingUp className="h-4 w-4" />
-                Total Earnings
-              </div>
-              <p className="text-lg font-semibold">
-                {formatCurrency(profileData.total_earning || 0)}
-              </p>
-            </div>
+                <div className="p-4 bg-gray-50 rounded-lg">
+                  <div className="flex items-center gap-2 text-sm font-medium text-gray-500 mb-1">
+                    <Wallet className="h-4 w-4" />
+                    Deposit Balance
+                  </div>
+                  <p
+                    className={`text-lg font-semibold ${
+                      (profileData.pending_balance || 0) < 0
+                        ? "text-red-500"
+                        : "text-green-500"
+                    }`}
+                  >
+                    {formatCurrency(profileData.pending_balance || 0)}
+                  </p>
+                </div>
 
-            <div className="p-4 bg-gray-50 rounded-lg">
+                <div className="p-4 bg-gray-50 rounded-lg">
+                  <div className="flex items-center gap-2 text-sm font-medium text-gray-500 mb-1">
+                    <AlertTriangle className="h-4 w-4" />
+                    Refunds & Penalties
+                  </div>
+                  <p
+                    className={`text-lg font-semibold ${
+                      penaltySummary.netPenalties > 0
+                        ? "text-green-500" // Positive = refund balance (green)
+                        : penaltySummary.netPenalties < 0
+                        ? "text-red-500" // Negative = penalty balance (red)
+                        : "text-gray-500" // Zero
+                    }`}
+                  >
+                    {penaltySummary.netPenalties < 0
+                      ? `-${formatCurrency(
+                          Math.abs(penaltySummary.netPenalties)
+                        )}`
+                      : formatCurrency(penaltySummary.netPenalties)}
+                  </p>
+                </div>
+
+                {/* <div className="p-4 bg-gray-50 rounded-lg">
               <div className="flex items-center gap-2 text-sm font-medium text-gray-500 mb-1">
-                <Wallet className="h-4 w-4" />
-                Current Balance
+                <DollarSign className="h-4 w-4" />
+                Net Balance
               </div>
               <p
                 className={`text-lg font-semibold ${
-                  (profileData.pending_balance || 0) < 0
-                    ? "text-red-500"
-                    : "text-green-500"
+                  (profileData.net_balance || 0) >= 0
+                    ? "text-blue-500"
+                    : "text-red-500"
                 }`}
               >
-                {formatCurrency(profileData.pending_balance || 0)}
+                {formatCurrency(profileData.net_balance || 0)}
               </p>
-            </div>
+            </div> */}
 
-            <div className="p-4 bg-gray-50 rounded-lg">
-              <div className="flex items-center gap-2 text-sm font-medium text-gray-500 mb-1">
-                Vehicle
+                <div className="p-4 bg-gray-50 rounded-lg">
+                  <div className="flex items-center gap-2 text-sm font-medium text-gray-500 mb-1">
+                    <TrendingUp className="h-4 w-4" />
+                    Total Earnings
+                  </div>
+                  <p className="text-lg font-semibold">
+                    {formatCurrency(profileData.total_earning || 0)}
+                  </p>
+                </div>
+
+                <div className="p-4 bg-gray-50 rounded-lg">
+                  <div className="flex items-center gap-2 text-sm font-medium text-gray-500 mb-1">
+                    <Car className="h-4 w-4" />
+                    Total Trips
+                  </div>
+                  <p className="text-lg font-semibold">
+                    {profileData.total_trip || 0}
+                  </p>
+                </div>
+
+                <div className="p-4 bg-gray-50 rounded-lg">
+                  <div className="flex items-center gap-2 text-sm font-medium text-gray-500 mb-1">
+                    Vehicle
+                  </div>
+                  <p className="text-lg font-semibold">
+                    {profileData.vehicle_number || "Not assigned"}
+                  </p>
+                </div>
+
+                <div className="p-4 bg-gray-50 rounded-lg">
+                  <div className="flex items-center gap-2 text-sm font-medium text-gray-500 mb-1">
+                    Current Shift
+                  </div>
+                  <p className="text-lg font-semibold capitalize">
+                    {profileData.shift || "Not assigned"}
+                  </p>
+                </div>
+
+                {accommodationInfo && (
+                  <>
+                    <div className="p-4 bg-gray-50 rounded-lg">
+                      <div className="flex items-center gap-2 text-sm font-medium text-gray-500 mb-1">
+                        <Home className="h-4 w-4" />
+                        Room
+                      </div>
+                      <p className="text-lg font-semibold">
+                        {accommodationInfo.bed.room.room_name}
+                      </p>
+                    </div>
+
+                    <div className="p-4 bg-gray-50 rounded-lg">
+                      <div className="flex items-center gap-2 text-sm font-medium text-gray-500 mb-1">
+                        <Bed className="h-4 w-4" />
+                        Bed Space
+                      </div>
+                      <p className="text-lg font-semibold">
+                        {accommodationInfo.bed.bed_name}
+                      </p>
+                    </div>
+                  </>
+                )}
               </div>
-              <p className="text-lg font-semibold">
-                {profileData.vehicle_number || "Not assigned"}
-              </p>
-            </div>
 
-            <div className="p-4 bg-gray-50 rounded-lg">
-              <div className="flex items-center gap-2 text-sm font-medium text-gray-500 mb-1">
-                Current Shift
+              {/* Account Details and DOB Section */}
+              <div className="border-t pt-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className=" font-semibold text-sm flex items-center gap-2">
+                    <CreditCard className="h-5  w-5" />
+                    Account Details
+                  </h3>
+                  <Button
+                    variant={isEditing ? "outline" : "default"}
+                    size="sm"
+                    onClick={() => setIsEditing(!isEditing)}
+                  >
+                    {isEditing ? "Cancel" : "Edit"}
+                  </Button>
+                </div>
+
+                {isEditing ? (
+                  <form onSubmit={handleEditSubmit} className="space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="account_number">Account Number</Label>
+                        <Input
+                          id="account_number"
+                          value={editForm.account_number}
+                          type="number"
+                          onChange={(e) =>
+                            setEditForm({
+                              ...editForm,
+                              account_number: e.target.value,
+                            })
+                          }
+                          placeholder="Enter account number"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="ifsc_code">IFSC Code</Label>
+                        <Input
+                          id="ifsc_code"
+                          style={{ textTransform: "uppercase" }}
+                          value={editForm.ifsc_code}
+                          onChange={(e) =>
+                            setEditForm({
+                              ...editForm,
+                              ifsc_code: e.target.value.toUpperCase(),
+                            })
+                          }
+                          placeholder="Enter IFSC code"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="bank_name">Bank Name</Label>
+                        <Input
+                          id="bank_name"
+                          value={editForm.bank_name}
+                          onChange={(e) =>
+                            setEditForm({
+                              ...editForm,
+                              bank_name: e.target.value,
+                            })
+                          }
+                          placeholder="Enter bank name"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="date_of_birth">Date of Birth</Label>
+                        <Input
+                          id="date_of_birth"
+                          type="date"
+                          value={editForm.date_of_birth}
+                          onChange={(e) =>
+                            setEditForm({
+                              ...editForm,
+                              date_of_birth: e.target.value,
+                            })
+                          }
+                        />
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button type="submit" disabled={uploading}>
+                        Save Changes
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => setIsEditing(false)}
+                      >
+                        Cancel
+                      </Button>
+                    </div>
+                  </form>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="p-4 bg-gray-50 rounded-lg">
+                      <div className="flex items-center gap-2 text-sm font-medium text-gray-500 mb-1">
+                        <CreditCard className="h-4 w-4" />
+                        Account Number
+                      </div>
+                      <p className="text-lg font-semibold">
+                        {profileData.account_number || "Not provided"}
+                      </p>
+                    </div>
+
+                    <div className="p-4 bg-gray-50 rounded-lg">
+                      <div className="flex items-center gap-2 text-sm font-medium text-gray-500 mb-1">
+                        <CreditCard className="h-4 w-4" />
+                        IFSC Code
+                      </div>
+                      <p className="text-lg font-semibold">
+                        {profileData.ifsc_code || "Not provided"}
+                      </p>
+                    </div>
+
+                    <div className="p-4 bg-gray-50 rounded-lg">
+                      <div className="flex items-center gap-2 text-sm font-medium text-gray-500 mb-1">
+                        <CreditCard className="h-4 w-4" />
+                        Bank Name
+                      </div>
+                      <p className="text-lg font-semibold">
+                        {profileData.bank_name || "Not provided"}
+                      </p>
+                    </div>
+
+                    <div className="p-4 bg-gray-50 rounded-lg">
+                      <div className="flex items-center gap-2 text-sm font-medium text-gray-500 mb-1">
+                        <User className="h-4 w-4" />
+                        Date of Birth
+                      </div>
+                      <p className="text-lg font-semibold">
+                        {profileData.date_of_birth
+                          ? format(
+                              new Date(profileData.date_of_birth),
+                              "dd MMM yyyy"
+                            )
+                          : "Not provided"}
+                      </p>
+                    </div>
+                  </div>
+                )}
               </div>
-              <p className="text-lg font-semibold capitalize">
-                {profileData.shift || "Not assigned"}
-              </p>
-            </div>
-          </div>
 
-          {/* <div className="border-t pt-6">
+              {/* <div className="border-t pt-6">
             <h3 className="text-lg font-semibold mb-4">Uber Profile</h3>
             <div className="space-y-4">
               {uberProfile ? (
@@ -310,7 +774,7 @@ const UserProfile = () => {
             </div>
           </div> */}
 
-          <div className="flex items-center justify-between border-t pt-4">
+              {/* <div className="flex items-center justify-between border-t pt-4">
             <div className="flex items-center gap-2">
               <Badge variant={profileData.online ? "success" : "secondary"}>
                 {profileData.online ? "Online" : "Offline"}
@@ -321,9 +785,163 @@ const UserProfile = () => {
                 {profileData.is_verified ? "Verified" : "Pending Verification"}
               </Badge>
             </div>
-          </div>
+          </div> */}
+            </TabsContent>
+
+            <TabsContent value="penalties" className="space-y-6">
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-lg font-semibold">Penalty History</h3>
+                  <div className="text-sm text-gray-500">
+                    Total Penalties:{" "}
+                    {formatCurrency(profileData.total_penalties || 0)}
+                  </div>
+                </div>
+
+                {loadingPenalties ? (
+                  <div className="flex items-center justify-center h-32">
+                    <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-red-500"></div>
+                  </div>
+                ) : penaltyHistory.length === 0 ? (
+                  <div className="text-center py-8 text-gray-500">
+                    <AlertTriangle className="h-12 w-12 mx-auto mb-4 text-gray-300" />
+                    <p className="text-lg font-medium">No penalties found</p>
+                    <p className="text-sm">You have no penalty history.</p>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Date</TableHead>
+                          <TableHead>Amount</TableHead>
+                          <TableHead>Reason</TableHead>
+                          <TableHead>Status</TableHead>
+                          <TableHead>Photos</TableHead>
+                          <TableHead>Notes</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {penaltyHistory.map((penalty) => (
+                          <TableRow key={penalty.id}>
+                            <TableCell>
+                              {format(
+                                new Date(penalty.penalty_date),
+                                "dd MMM yyyy"
+                              )}
+                            </TableCell>
+                            <TableCell className="font-medium text-red-600">
+                              ₹{penalty.amount.toLocaleString()}
+                            </TableCell>
+                            <TableCell>{penalty.reason}</TableCell>
+                            <TableCell>
+                              {getPenaltyStatusBadge(penalty.status)}
+                            </TableCell>
+                            <TableCell>
+                              {penalty.photos
+                                ? (() => {
+                                    const photosArray =
+                                      typeof penalty.photos === "string"
+                                        ? JSON.parse(penalty.photos)
+                                        : penalty.photos;
+
+                                    return photosArray &&
+                                      photosArray.length > 0 ? (
+                                      <div className="flex gap-1">
+                                        {photosArray
+                                          .slice(0, 3)
+                                          .map((photo, index) => (
+                                            <img
+                                              key={index}
+                                              src={photo}
+                                              alt={`Penalty photo ${index + 1}`}
+                                              className="w-8 h-8 object-cover rounded cursor-pointer hover:opacity-80"
+                                              onClick={() =>
+                                                openPhotoModal(photosArray)
+                                              }
+                                              title="Click to view all photos"
+                                            />
+                                          ))}
+                                        {photosArray.length > 3 && (
+                                          <div
+                                            className="w-8 h-8 bg-gray-200 rounded flex items-center justify-center text-xs cursor-pointer hover:bg-gray-300"
+                                            onClick={() =>
+                                              openPhotoModal(photosArray)
+                                            }
+                                            title="Click to view all photos"
+                                          >
+                                            +{photosArray.length - 3}
+                                          </div>
+                                        )}
+                                      </div>
+                                    ) : (
+                                      "-"
+                                    );
+                                  })()
+                                : "-"}
+                            </TableCell>
+                            <TableCell>
+                              {penalty.notes ? (
+                                <div
+                                  className="max-w-xs truncate"
+                                  title={penalty.notes}
+                                >
+                                  {penalty.notes}
+                                </div>
+                              ) : (
+                                "-"
+                              )}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                )}
+              </div>
+            </TabsContent>
+          </Tabs>
         </CardContent>
       </Card>
+
+      {/* Photo Gallery Modal */}
+      <Dialog open={isPhotoModalOpen} onOpenChange={setIsPhotoModalOpen}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Penalty Photos</DialogTitle>
+            <DialogDescription>
+              View all photos for this penalty
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {selectedPhotos.map((photo, index) => (
+              <div key={index} className="relative group">
+                <img
+                  src={photo}
+                  alt={`Penalty photo ${index + 1}`}
+                  className="w-full h-48 object-cover rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
+                  onClick={() => window.open(photo, "_blank")}
+                />
+                <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-20 transition-all rounded-lg flex items-center justify-center">
+                  <div className="opacity-0 group-hover:opacity-100 transition-opacity text-white text-sm font-medium">
+                    Click to view full size
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="flex justify-end pt-4">
+            <Button
+              variant="outline"
+              onClick={() => setIsPhotoModalOpen(false)}
+            >
+              Close
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

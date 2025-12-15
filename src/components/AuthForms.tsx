@@ -97,13 +97,12 @@ const AuthForms = () => {
               driver_id: driverId,
               joining_date: today,
               phone_number: data.user.user_metadata?.phone || "0000000000",
+              offline_from_date: today, // Set offline_from_date for new users
             });
           } else {
-            // Update online status
-            await supabase
-              .from("users")
-              .update({ online: false })
-              .eq("id", data.user.id);
+            // Keep user offline by default - don't automatically set to online
+            // Users will be manually set to online by admin when needed
+            console.log("User logged in but kept offline by default");
           }
         }
       }
@@ -149,6 +148,7 @@ const AuthForms = () => {
             driver_id: driverId,
             phone_number: signupForm.phone || "0000000000",
             online: false,
+            offline_from_date: today, // Set offline_from_date for new signups
           });
 
           if (profileError) {

@@ -24,6 +24,7 @@ import {
   getShiftBadgeColor,
 } from "./CalendarUtils";
 import { Button } from "@/components/ui/button";
+import { WhatsAppShareButton } from "@/components/WhatsAppShareButton";
 
 interface RentCalendarGridProps {
   currentDate: Date;
@@ -77,13 +78,34 @@ export const RentCalendarGrid = ({
     );
   };
 
-  // Filter to show only online drivers
-  const onlineDrivers = filteredDrivers.filter((driver) => driver.online);
+  // Filter to show online drivers
+  // For "All Shifts" tab: show all online drivers including "none" shift and N/A vehicle
+  // For "none" shift tab: show only drivers with "none" shift
+  // For other tabs: exclude drivers with "none" shift but include N/A vehicle drivers
+  const onlineDrivers = filteredDrivers.filter((driver) => {
+    if (!driver.online) return false;
+    if (!driver.shift) return false;
 
-  // Sort drivers by shift type - morning first, then night
+    // If we're in the "none" shift tab, only show drivers with "none" shift
+    if (shiftType === "none") {
+      return driver.shift === "none";
+    }
+
+    // For "All Shifts" tab, show all drivers including "none" shift
+    if (!shiftType || shiftType === "all") {
+      return true; // Show all online drivers with any shift
+    }
+
+    // For other specific shift tabs, exclude drivers with "none" shift
+    return driver.shift !== "none";
+  });
+
+  // Sort drivers by shift type - morning first, then night, then none shift
   const sortedDrivers = [...onlineDrivers].sort((a, b) => {
     if (a.shift === "morning" && b.shift !== "morning") return -1;
     if (a.shift !== "morning" && b.shift === "morning") return 1;
+    if (a.shift === "night" && b.shift === "none") return -1;
+    if (a.shift === "none" && b.shift === "night") return 1;
     return 0;
   });
 
@@ -116,12 +138,31 @@ export const RentCalendarGrid = ({
                     : "not_joined";
                   const driverShift = driver.shift || "N/A";
 
+                  // Debug logging
+                  console.log(
+                    `Driver: ${driver.name}, Date: ${format(
+                      day,
+                      "yyyy-MM-dd"
+                    )}, Status: ${driverStatus}`
+                  );
+
+                  // Debug: Log status for overdue detection
+                  if (driverStatus === "overdue") {
+                    console.log(
+                      `Overdue status detected for ${driver.name} on ${format(
+                        day,
+                        "yyyy-MM-dd"
+                      )}`
+                    );
+                  }
+
                   return (
                     <div
                       key={`${driver.id}-${format(day, "yyyy-MM-dd")}`}
                       className={cn(
                         "p-3 flex items-center justify-between cursor-pointer hover:opacity-80",
-                        getStatusColor(driverStatus)
+                        getStatusColor(driverStatus),
+                        driverStatus === "overdue" && "!bg-red-600 !text-white"
                       )}
                       onClick={() => handleCellClick(rentData)}
                     >
@@ -132,7 +173,16 @@ export const RentCalendarGrid = ({
                         <div>
                           <div className="font-medium">{driver.name}</div>
                           <div className="text-xs text-muted-foreground">
-                            {driver.vehicle_number} •
+                            <span
+                              className={cn(
+                                (!driver.vehicle_number ||
+                                  driver.vehicle_number === "N/A") &&
+                                  "text-orange-600 font-medium"
+                              )}
+                            >
+                              {driver.vehicle_number || "N/A"}
+                            </span>{" "}
+                            •
                             <Badge
                               variant="outline"
                               className={cn(
@@ -146,8 +196,30 @@ export const RentCalendarGrid = ({
                         </div>
                       </div>
 
-                      <div className="text-xs font-medium">
+                      <div className="text-xs font-medium text-center">
                         {getStatusLabel(driverStatus)}
+                      </div>
+                      {rentData?.rent_paid_amount !== undefined && (
+                        <div className="text-xs mt-1">
+                          ₹{rentData.rent_paid_amount.toLocaleString()}
+                        </div>
+                      )}
+                      <div className="mt-2">
+                        <WhatsAppShareButton
+                          driverData={
+                            rentData || {
+                              userId: driver.id,
+                              driverName: driver.name,
+                              vehicleNumber: driver.vehicle_number,
+                              shift: driver.shift,
+                              date: format(day, "yyyy-MM-dd"),
+                              status: driverStatus,
+                            }
+                          }
+                          size="sm"
+                          variant="ghost"
+                          className="text-green-600 hover:text-green-700"
+                        />
                       </div>
                     </div>
                   );
@@ -207,7 +279,15 @@ export const RentCalendarGrid = ({
                     {driver.name || "Unknown"}
                   </div>
                   <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                    {driver.vehicle_number}
+                    <span
+                      className={cn(
+                        (!driver.vehicle_number ||
+                          driver.vehicle_number === "N/A") &&
+                          "text-orange-600 font-medium"
+                      )}
+                    >
+                      {driver.vehicle_number || "N/A"}
+                    </span>
                     <Badge
                       variant="outline"
                       className={cn(
@@ -225,12 +305,31 @@ export const RentCalendarGrid = ({
                     ? rentData.status
                     : "not_joined";
 
+                  // Debug logging
+                  console.log(
+                    `Driver: ${driver.name}, Date: ${format(
+                      day,
+                      "yyyy-MM-dd"
+                    )}, Status: ${driverStatus}`
+                  );
+
+                  // Debug: Log status for overdue detection
+                  if (driverStatus === "overdue") {
+                    console.log(
+                      `Overdue status detected for ${driver.name} on ${format(
+                        day,
+                        "yyyy-MM-dd"
+                      )}`
+                    );
+                  }
+
                   return (
                     <TableCell
                       key={`${driver.id}-${format(day, "yyyy-MM-dd")}`}
                       className={cn(
                         "p-0 h-[50px] cursor-pointer hover:opacity-90",
                         getStatusColor(driverStatus),
+                        driverStatus === "overdue" && "!bg-red-600 !text-white",
                         "border"
                       )}
                       onClick={() => handleCellClick(rentData)}
@@ -239,7 +338,7 @@ export const RentCalendarGrid = ({
                         <Tooltip>
                           <TooltipTrigger asChild>
                             <div className="h-full w-full p-2">
-                              <div className="text-xs font-medium">
+                              <div className="text-xs font-medium text-center">
                                 {getStatusLabel(driverStatus)}
                               </div>
                               {rentData?.rent_paid_amount !== undefined && (
@@ -247,7 +346,24 @@ export const RentCalendarGrid = ({
                                   ₹{rentData.rent_paid_amount.toLocaleString()}
                                 </div>
                               )}
-                              {rentData?.shiftForDate &&
+                              {/* <div className="mt-1">
+                                <WhatsAppShareButton
+                                  driverData={
+                                    rentData || {
+                                      userId: driver.id,
+                                      driverName: driver.name,
+                                      vehicleNumber: driver.vehicle_number,
+                                      shift: driver.shift,
+                                      date: format(day, "yyyy-MM-dd"),
+                                      status: driverStatus,
+                                    }
+                                  }
+                                  size="sm"
+                                  variant="ghost"
+                                  className="text-green-600 hover:text-green-700 text-[10px] px-1 py-0"
+                                />
+                              </div> */}
+                              {/* {rentData?.shiftForDate &&
                                 rentData.shiftForDate !== driver.shift && (
                                   <div className="text-xs mt-1">
                                     <Badge
@@ -262,13 +378,16 @@ export const RentCalendarGrid = ({
                                       {rentData.shiftForDate}
                                     </Badge>
                                   </div>
-                                )}
+                                )} */}
                             </div>
                           </TooltipTrigger>
                           <TooltipContent side="right" className="w-[200px]">
                             <div className="space-y-2">
                               <div className="font-bold">{driver.name}</div>
                               <div>Status: {getStatusLabel(driverStatus)}</div>
+                              <div>
+                                Vehicle: {driver.vehicle_number || "N/A"}
+                              </div>
                               <div>Current Shift: {driver.shift || "N/A"}</div>
                               {rentData?.shiftForDate &&
                                 rentData.shiftForDate !== driver.shift && (

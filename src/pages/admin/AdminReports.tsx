@@ -1,13 +1,15 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback, useMemo } from "react";
 import AdminLayout from "@/components/AdminLayout";
 import { supabase } from "@/integrations/supabase/client";
 import { useAdminSettings } from "@/hooks/useAdminSettings";
+import { useAuth } from "@/context/AuthContext";
 import { format } from "date-fns";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
 } from "@/components/ui/dialog";
 import {
   Table,
@@ -29,10 +31,19 @@ import {
   X,
   Share,
   Share2,
+  DollarSign,
+  Plus,
+  Minus,
+  Wallet,
+  RefreshCcw,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import { DatePicker } from "@/components/ui/date-picker";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Popover,
   PopoverContent,
@@ -52,9 +63,9 @@ interface Report {
   user_id: string;
   driver_name: string;
   vehicle_number: string;
-  total_trips: number;
   total_earnings: number;
   rent_paid_status: boolean;
+  total_trips: number | null;
   total_cashcollect: number;
   rent_paid_amount: number;
   rent_verified: boolean;
@@ -66,7 +77,12 @@ interface Report {
   status: string | null;
   remarks: string | null;
   toll: number;
+  other_fee: number;
   driver_phone: string;
+  deposit_cutting_amount: number;
+  cng_expense: number;
+  km_runned: number;
+  is_service_day: boolean;
 }
 
 interface VehicleInfo {
@@ -83,8 +99,50 @@ const formatDateLocal = (date: Date): string => {
   )}-${String(date.getDate()).padStart(2, "0")}`;
 };
 
+// Helper function to calculate week start and end dates based on offset
+const getWeekDates = (
+  offset: number = 0
+): { start: Date; end: Date; startStr: string; endStr: string } => {
+  const today = new Date();
+  const dayOfWeek = today.getDay(); // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
+
+  // Calculate start of current week (Monday to Sunday) using local dates
+  let daysToGoBack;
+  if (dayOfWeek === 0) {
+    // If today is Sunday, go back 6 days to Monday
+    daysToGoBack = 6;
+  } else {
+    // For Monday to Saturday, go back to Monday
+    daysToGoBack = dayOfWeek - 1;
+  }
+
+  // Calculate Monday of the week (with offset)
+  const startDate = new Date(
+    today.getFullYear(),
+    today.getMonth(),
+    today.getDate() - daysToGoBack + offset * 7
+  );
+  const endDate = new Date(
+    today.getFullYear(),
+    today.getMonth(),
+    today.getDate() - daysToGoBack + offset * 7 + 6
+  );
+
+  return {
+    start: startDate,
+    end: endDate,
+    startStr: formatDateLocal(startDate),
+    endStr: formatDateLocal(endDate),
+  };
+};
+
 const AdminReports = () => {
-  const { calculateFleetRent, calculateCompanyEarnings } = useAdminSettings();
+  const {
+    calculateFleetRent,
+    calculateCompanyEarnings,
+    calculateCompanyEarnings24hr,
+  } = useAdminSettings();
+  const { user } = useAuth();
   const [reports, setReports] = useState<Report[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
@@ -96,16 +154,40 @@ const AdminReports = () => {
     "today" | "week" | "custom" | null
   >(null);
   const [customDate, setCustomDate] = useState<Date | null>(null);
+  const [weekOffset, setWeekOffset] = useState<number>(0); // 0 = current week, -1 = previous week, +1 = next week
 
   const [statusFilter, setStatusFilter] = useState<string[]>(["all"]);
+  const [serviceDayFilter, setServiceDayFilter] = useState<
+    "all" | "service" | "regular"
+  >("all");
 
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize] = useState(20);
+  const [pageSize] = useState(500);
   const [totalCount, setTotalCount] = useState(0);
   const [totalPages, setTotalPages] = useState(0);
 
   const [driverPhone, setDriverPhone] = useState("");
+
+  // Adjustment modal state
+  const [isAdjustmentModalOpen, setIsAdjustmentModalOpen] = useState(false);
+  const [selectedReportForAdjustment, setSelectedReportForAdjustment] =
+    useState<Report | null>(null);
+  const [adjustmentType, setAdjustmentType] = useState<"income" | "expense">(
+    "income"
+  );
+  const [adjustmentAmount, setAdjustmentAmount] = useState<number>(0);
+  const [adjustmentDescription, setAdjustmentDescription] = useState("");
+  const [vehicleTransactions, setVehicleTransactions] = useState<any[]>([]);
+
+  // Balance transaction modal state
+  const [isBalanceModalOpen, setIsBalanceModalOpen] = useState(false);
+  const [selectedReportForBalance, setSelectedReportForBalance] =
+    useState<Report | null>(null);
+  const [balanceDescription, setBalanceDescription] = useState("");
+  const [isBalanceSubmitting, setIsBalanceSubmitting] = useState(false);
+  const [balanceAmount, setBalanceAmount] = useState<string>("");
+  const [balanceType, setBalanceType] = useState<"due" | "refund">("due");
 
   // Statistics state - single state that responds to filters
   const [statistics, setStatistics] = useState({
@@ -113,6 +195,7 @@ const AdminReports = () => {
     totalCashCollect: 0,
     totalRentPaid: 0,
     tollAmount: 0,
+    totalTrips: 0,
     totalReports: 0,
     pendingCount: 0,
     approvedCount: 0,
@@ -124,7 +207,14 @@ const AdminReports = () => {
     fetchReports();
     fetchStatistics();
     setupRealtimeUpdates();
-  }, [currentPage, statusFilter, dateFilter, dateRange]);
+  }, [
+    currentPage,
+    statusFilter,
+    dateFilter,
+    dateRange,
+    serviceDayFilter,
+    weekOffset,
+  ]);
 
   // Debounce search query to avoid too many API calls
   useEffect(() => {
@@ -207,43 +297,34 @@ const AdminReports = () => {
       // Date filters
       if (dateFilter === "today") {
         const today = new Date();
-        const todayStr = today.toISOString().split("T")[0];
+        const todayStr = formatDateLocal(today);
         query = query.eq("rent_date", todayStr);
       } else if (dateFilter === "week") {
-        const today = new Date();
-        const dayOfWeek = today.getDay(); // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
-
-        // Calculate start of current week (Monday to Sunday) using local dates
-        let daysToGoBack;
-        if (dayOfWeek === 0) {
-          // If today is Sunday, go back 6 days to Monday
-          daysToGoBack = 6;
-        } else {
-          // For Monday to Saturday, go back to Monday
-          daysToGoBack = dayOfWeek - 1;
-        }
-
-        // Calculate Monday of current week
-        const startDate = new Date(
-          today.getFullYear(),
-          today.getMonth(),
-          today.getDate() - daysToGoBack
-        );
-        const endDate = new Date(
-          today.getFullYear(),
-          today.getMonth(),
-          today.getDate() - daysToGoBack + 6
-        );
-
-        // Format as YYYY-MM-DD
-        const startOfWeek = formatDateLocal(startDate);
-        const endOfWeek = formatDateLocal(endDate);
-
-        query = query.gte("rent_date", startOfWeek).lte("rent_date", endOfWeek);
-      } else if (dateFilter === "custom" && dateRange.start && dateRange.end) {
+        const weekDates = getWeekDates(weekOffset);
         query = query
-          .gte("rent_date", dateRange.start.toISOString().split("T")[0])
-          .lte("rent_date", dateRange.end.toISOString().split("T")[0]);
+          .gte("rent_date", weekDates.startStr)
+          .lte("rent_date", weekDates.endStr);
+      } else if (dateFilter === "custom") {
+        if (dateRange.start) {
+          const startDate = formatDateLocal(dateRange.start);
+          console.log("Filtering from start date:", startDate);
+          query = query.gte("rent_date", startDate);
+        }
+        if (dateRange.end) {
+          const endDate = formatDateLocal(dateRange.end);
+          console.log("Filtering to end date:", endDate);
+          query = query.lte("rent_date", endDate);
+        }
+        if (!dateRange.start && !dateRange.end) {
+          console.log("No date range selected, showing all reports");
+        }
+      }
+
+      // Service Day filter
+      if (serviceDayFilter === "service") {
+        query = query.eq("is_service_day", true);
+      } else if (serviceDayFilter === "regular") {
+        query = query.eq("is_service_day", false);
       }
 
       // Apply pagination
@@ -275,7 +356,7 @@ const AdminReports = () => {
       let query = supabase
         .from("fleet_reports")
         .select(
-          "user_id, total_earnings, total_cashcollect, rent_paid_amount, toll, status"
+          "user_id,total_trips, total_earnings, total_cashcollect, rent_paid_amount, toll, status"
         );
 
       // Apply the same filters as reports for statistics
@@ -304,43 +385,34 @@ const AdminReports = () => {
       // Apply date filters
       if (dateFilter === "today") {
         const today = new Date();
-        const todayStr = today.toISOString().split("T")[0];
+        const todayStr = formatDateLocal(today);
         query = query.eq("rent_date", todayStr);
       } else if (dateFilter === "week") {
-        const today = new Date();
-        const dayOfWeek = today.getDay(); // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
-
-        // Calculate start of current week (Monday to Sunday) using local dates
-        let daysToGoBack;
-        if (dayOfWeek === 0) {
-          // If today is Sunday, go back 6 days to Monday
-          daysToGoBack = 6;
-        } else {
-          // For Monday to Saturday, go back to Monday
-          daysToGoBack = dayOfWeek - 1;
-        }
-
-        // Calculate Monday of current week
-        const startDate = new Date(
-          today.getFullYear(),
-          today.getMonth(),
-          today.getDate() - daysToGoBack
-        );
-        const endDate = new Date(
-          today.getFullYear(),
-          today.getMonth(),
-          today.getDate() - daysToGoBack + 6
-        );
-
-        // Format as YYYY-MM-DD
-        const startOfWeek = formatDateLocal(startDate);
-        const endOfWeek = formatDateLocal(endDate);
-
-        query = query.gte("rent_date", startOfWeek).lte("rent_date", endOfWeek);
-      } else if (dateFilter === "custom" && dateRange.start && dateRange.end) {
+        const weekDates = getWeekDates(weekOffset);
         query = query
-          .gte("rent_date", dateRange.start.toISOString().split("T")[0])
-          .lte("rent_date", dateRange.end.toISOString().split("T")[0]);
+          .gte("rent_date", weekDates.startStr)
+          .lte("rent_date", weekDates.endStr);
+      } else if (dateFilter === "custom") {
+        if (dateRange.start) {
+          const startDate = formatDateLocal(dateRange.start);
+          console.log("Filtering from start date:", startDate);
+          query = query.gte("rent_date", startDate);
+        }
+        if (dateRange.end) {
+          const endDate = formatDateLocal(dateRange.end);
+          console.log("Filtering to end date:", endDate);
+          query = query.lte("rent_date", endDate);
+        }
+        if (!dateRange.start && !dateRange.end) {
+          console.log("No date range selected, showing all reports");
+        }
+      }
+
+      // Service Day filter
+      if (serviceDayFilter === "service") {
+        query = query.eq("is_service_day", true);
+      } else if (serviceDayFilter === "regular") {
+        query = query.eq("is_service_day", false);
       }
 
       const { data, error } = await query;
@@ -356,10 +428,10 @@ const AdminReports = () => {
           (sum, report) => sum + (report.total_cashcollect || 0),
           0
         );
-        const totalRentPaid = data.reduce(
-          (sum, report) => sum + (report.rent_paid_amount || 0),
-          0
-        );
+        const totalRentPaid = data.reduce((sum, report) => {
+          const amount = Number(report.rent_paid_amount) || 0;
+          return amount > 0 ? sum + amount : sum;
+        }, 0);
         const tollAmount = data.reduce(
           (sum, report) => sum + (report.toll || 0),
           0
@@ -378,12 +450,21 @@ const AdminReports = () => {
         const leaveCount = data.filter(
           (report) => report.status === "leave"
         ).length;
+        // const totalEarnings = data.reduce(
+        //   (sum, report) => sum + (report.total_earnings || 0),
+        //   0
+        // );
+        const totalTrips = data.reduce(
+          (sum, report) => sum + (report.total_trips || 0),
+          0
+        );
 
         setStatistics({
           totalEarnings,
           totalCashCollect,
           totalRentPaid,
           tollAmount,
+          totalTrips,
           totalReports: data.length,
           pendingCount,
           approvedCount,
@@ -425,10 +506,263 @@ const AdminReports = () => {
     };
   };
 
+  // Helper: compute company rent based on trips and shift (fallback if settings missing)
+  const computeCompanyRent = useCallback(
+    (trips: number, shift?: string): number => {
+      const tripsNum = Number(trips) || 0;
+      const shiftName = (shift || "morning").toLowerCase();
+
+      try {
+        if (
+          shiftName === "24hr" &&
+          typeof calculateCompanyEarnings24hr === "function"
+        ) {
+          const v = Number(calculateCompanyEarnings24hr(tripsNum));
+          if (!Number.isNaN(v) && v > 0) return v;
+        }
+        if (typeof calculateCompanyEarnings === "function") {
+          const v = Number(calculateCompanyEarnings(tripsNum));
+          if (!Number.isNaN(v) && v > 0) return v;
+        }
+      } catch (e) {
+        console.warn("computeCompanyRent fallback due to error:", e);
+      }
+
+      // Fallback slabs (same as SubmitReport)
+      if (shiftName === "24hr") {
+        if (tripsNum >= 24) return 1070;
+        if (tripsNum >= 22) return 1170;
+        if (tripsNum >= 20) return 1270;
+        if (tripsNum >= 16) return 1430;
+        if (tripsNum >= 10) return 1490;
+        return 1590;
+      }
+
+      if (tripsNum >= 12) return 535;
+      if (tripsNum >= 11) return 585;
+      if (tripsNum >= 10) return 635;
+      if (tripsNum >= 8) return 715;
+      if (tripsNum >= 5) return 745;
+      return 795;
+    },
+    [calculateCompanyEarnings, calculateCompanyEarnings24hr]
+  );
+
+  // Helper: recompute rent_paid_amount using earnings, toll, cashcollect, platform_fee, trips/shift, and saved deposit cutting
+  const recomputeRentPaidAmount = useCallback(
+    (r: Report): number => {
+      const earnings = Number(r.total_earnings) || 0;
+      const toll = Number(r.toll) || 0;
+      const cash = Number(r.total_cashcollect) || 0;
+      const otherFee = Number(r.other_fee) || 0;
+      const trips = Number(r.total_trips) || 0;
+      const depositCutting = Number(r.deposit_cutting_amount) || 0; // Use saved deposit cutting amount
+      const rent = computeCompanyRent(trips, r.shift);
+      const amount =
+        earnings + toll - cash - rent - otherFee - depositCutting;
+      // Store with same convention as SubmitReport
+      return amount > 0 ? -amount : Math.abs(amount);
+    },
+    [computeCompanyRent]
+  );
+
+  // Update selected report field and auto-recalculate rent
   const [selectedReport, setSelectedReport] = useState<Report | null>(null);
+  const updateSelectedReportField = useCallback(
+    (field: keyof Report, value: any) => {
+      setSelectedReport((prev) => {
+        if (!prev) return prev;
+        const updated: Report = { ...prev, [field]: value } as Report;
+        // Auto recalc for these fields
+        if (
+          field === "total_earnings" ||
+          field === "total_cashcollect" ||
+          field === "toll" ||
+          field === "total_trips" ||
+          field === "shift" ||
+          field === "other_fee"
+        ) {
+          const newRpa = recomputeRentPaidAmount(updated);
+          updated.rent_paid_amount = newRpa;
+        }
+        return updated;
+      });
+    },
+    [recomputeRentPaidAmount]
+  );
+
+  // Derived helper for UI message preview inside modal
+  const getPaymentPreviewMessage = useCallback(
+    (r?: Report | null) => {
+      if (!r) return "";
+      const earnings = Number(r.total_earnings) || 0;
+      const toll = Number(r.toll) || 0;
+      const cash = Number(r.total_cashcollect) || 0;
+      const otherFee = Number(r.other_fee) || 0;
+      const trips = Number(r.total_trips) || 0;
+      const depositCutting = Number(r.deposit_cutting_amount) || 0; // Use saved deposit cutting amount
+      const rent = computeCompanyRent(trips, r.shift);
+      const amount =
+        earnings + toll - cash - rent - otherFee - depositCutting;
+      if (amount > 0)
+        return `Tawaaq pays ₹${Math.abs(amount).toLocaleString()}`;
+      if (amount < 0)
+        return `Driver pays ₹${Math.abs(amount).toLocaleString()}`;
+      return "No payment required";
+    },
+    [computeCompanyRent]
+  );
 
   const updateReportStatus = async (id: string, newStatus: string) => {
     try {
+      // Get the report details first
+      const report = reports.find((r) => r.id === id);
+      if (!report) {
+        toast.error("Report not found");
+        return;
+      }
+
+      // If approving, create automatic transactions
+      if (newStatus === "approved") {
+        const transactions = [];
+
+        // 1. Deposit transaction (if deposit cutting amount > 0)
+        if (report.deposit_cutting_amount > 0) {
+          transactions.push(
+            supabase.from("driver_balance_transactions").insert({
+              user_id: report.user_id,
+              amount: report.deposit_cutting_amount,
+              type: "deposit",
+              description: `Deposit collection for report ${report.rent_date} - ${report.shift} shift`,
+              created_by: user?.id,
+              created_at: report.rent_date,
+            })
+          );
+        }
+
+        // 2. ₹100 transaction
+        // transactions.push(
+        //   supabase.from("driver_penalty_transactions").insert({
+        //     user_id: report.user_id,
+        //     amount: 100,
+        //     type: "refund",
+        //     description: `Advanced Rent Collection report ${report.rent_date} - ${report.shift} shift`,
+        //     created_by: user?.id,
+        //   })
+        // );
+
+        //
+
+        // Execute all transactions
+        const results = await Promise.allSettled(transactions);
+
+        // Check for errors
+        const errors = results.filter(
+          (result) =>
+            result.status === "rejected" ||
+            (result.status === "fulfilled" && result.value.error)
+        );
+
+        if (errors.length > 0) {
+          console.error("Error creating transactions:", errors);
+          toast.error("Failed to create some transactions");
+        } else {
+          // Update user deposit balance only if deposit transaction was successful
+          if (report.deposit_cutting_amount > 0) {
+            const { data: userData, error: userError } = await supabase
+              .from("users")
+              .select("pending_balance")
+              .eq("id", report.user_id)
+              .single();
+
+            if (!userError && userData) {
+              const currentDeposit = userData.pending_balance || 0;
+              const newBalance = currentDeposit + report.deposit_cutting_amount;
+
+              const { error: balanceError } = await supabase
+                .from("users")
+                .update({ pending_balance: newBalance })
+                .eq("id", report.user_id);
+
+              if (balanceError) {
+                console.error("Error updating deposit balance:", balanceError);
+                toast.error("Failed to update deposit balance");
+              }
+            }
+          }
+
+          // const totalRefund = 100 + (report.platform_fee || 0);
+          toast.success(
+            `Approved! Created transactions: ${
+              report.deposit_cutting_amount > 0
+                ? `Deposit: ₹${report.deposit_cutting_amount} `
+                : ""
+            }`
+          );
+        }
+      } else if (newStatus === "rejected") {
+        // On rejection: delete any deposit transactions for this report's rent_date and reverse deposit balance
+        try {
+          // Fetch matching deposit transactions first to get total amount
+          const { data: txs, error: fetchErr } = await supabase
+            .from("driver_balance_transactions")
+            .select("id, amount, description")
+            .eq("user_id", report.user_id)
+            .eq("type", "deposit")
+            .ilike("description", `%${report.rent_date}%`);
+
+          if (fetchErr) throw fetchErr;
+
+          const totalToRevert = (txs || []).reduce(
+            (sum, t: any) => sum + (Number(t.amount) || 0),
+            0
+          );
+
+          if ((txs || []).length > 0) {
+            // Delete those transactions
+            const { error: delErr } = await supabase
+              .from("driver_balance_transactions")
+              .delete()
+              .in(
+                "id",
+                (txs || []).map((t: any) => t.id)
+              );
+            if (delErr) throw delErr;
+
+            // Reverse user's pending_balance by the deleted amount
+            const { data: userData, error: userErr } = await supabase
+              .from("users")
+              .select("pending_balance")
+              .eq("id", report.user_id)
+              .single();
+
+            if (!userErr && userData) {
+              const currentDeposit = Number(userData.pending_balance) || 0;
+              const newBalance = Math.max(0, currentDeposit - totalToRevert);
+              const { error: updErr } = await supabase
+                .from("users")
+                .update({ pending_balance: newBalance })
+                .eq("id", report.user_id);
+              if (updErr) {
+                console.error("Error reverting deposit balance:", updErr);
+                toast.error("Failed to revert deposit balance");
+              }
+            }
+          }
+          toast.success(
+            `rejection! Removed transactions: ${
+              report.deposit_cutting_amount > 0
+                ? `Deposit: ₹${report.deposit_cutting_amount} `
+                : ""
+            }`
+          );
+        } catch (e) {
+          console.error("Error handling rejection transaction cleanup:", e);
+          toast.error("Failed to delete related transactions on rejection");
+        }
+      }
+
+      // Update report status
       const { error } = await supabase
         .from("fleet_reports")
         .update({
@@ -441,9 +775,7 @@ const AdminReports = () => {
       if (error) throw error;
 
       setReports(
-        reports.map((report) =>
-          report.id === id ? { ...report, status: newStatus } : report
-        )
+        reports.map((r) => (r.id === id ? { ...r, status: newStatus } : r))
       );
 
       toast.success(`Report marked as ${newStatus}`);
@@ -456,15 +788,15 @@ const AdminReports = () => {
   const getStatusBadge = (status: string | null) => {
     switch (status) {
       case "pending_verification":
-        return <Badge variant="outline">Pending</Badge>;
+        return <Badge variant="outline">P</Badge>;
       case "approved":
-        return <Badge variant="success">Approved</Badge>;
+        return <Badge variant="success">A</Badge>;
       case "rejected":
-        return <Badge variant="destructive">Rejected</Badge>;
+        return <Badge variant="destructive">R</Badge>;
       case "leave":
         return (
           <Badge variant="outline" className="bg-yellow-100 text-yellow-800">
-            Leave
+            L
           </Badge>
         );
       default:
@@ -553,6 +885,333 @@ const AdminReports = () => {
     }
   };
 
+  const fetchVehicleTransactions = async (
+    vehicleNumber: string,
+    reportDate: string
+  ) => {
+    try {
+      const { data, error } = await supabase
+        .from("vehicle_transactions")
+        .select("*")
+        .eq("vehicle_number", vehicleNumber)
+        .eq("transaction_date", reportDate)
+        .order("created_at", { ascending: false });
+
+      if (error) throw error;
+      setVehicleTransactions(data || []);
+    } catch (error) {
+      console.error("Error fetching vehicle transactions:", error);
+    }
+  };
+
+  const handleOpenAdjustmentModal = useCallback((report: Report) => {
+    setSelectedReportForAdjustment(report);
+    setIsAdjustmentModalOpen(true);
+    fetchVehicleTransactions(report.vehicle_number, report.rent_date);
+    setAdjustmentType("income");
+    setAdjustmentAmount(0);
+    setAdjustmentDescription("");
+  }, []);
+
+  const handleAddAdjustment = useCallback(async () => {
+    if (
+      !selectedReportForAdjustment ||
+      adjustmentAmount === 0 ||
+      !adjustmentDescription.trim()
+    ) {
+      toast.error("Please fill in all required fields");
+      return;
+    }
+
+    try {
+      // Add transaction to vehicle_transactions table
+      const { error: transactionError } = await supabase
+        .from("vehicle_transactions")
+        .insert([
+          {
+            vehicle_number: selectedReportForAdjustment.vehicle_number,
+            transaction_type: adjustmentType,
+            amount: adjustmentAmount,
+            description: adjustmentDescription.trim(),
+            transaction_date: selectedReportForAdjustment.rent_date,
+          },
+        ]);
+
+      if (transactionError) throw transactionError;
+
+      // Calculate new rent_paid_amount
+      const adjustmentValue =
+        adjustmentType === "income" ? adjustmentAmount : -adjustmentAmount;
+      const newRentPaidAmount =
+        selectedReportForAdjustment.rent_paid_amount + adjustmentValue;
+
+      // Update the report's rent_paid_amount
+      const { error: updateError } = await supabase
+        .from("fleet_reports")
+        .update({ rent_paid_amount: newRentPaidAmount })
+        .eq("id", selectedReportForAdjustment.id);
+
+      if (updateError) throw updateError;
+
+      // Update local state
+      setReports((prev) =>
+        prev.map((report) =>
+          report.id === selectedReportForAdjustment.id
+            ? { ...report, rent_paid_amount: newRentPaidAmount }
+            : report
+        )
+      );
+
+      // Refresh transactions list
+      await fetchVehicleTransactions(
+        selectedReportForAdjustment.vehicle_number,
+        selectedReportForAdjustment.rent_date
+      );
+
+      // Reset form
+      setAdjustmentAmount(0);
+      setAdjustmentDescription("");
+
+      toast.success(
+        `${
+          adjustmentType === "income" ? "Income" : "Expense"
+        } adjustment added successfully`
+      );
+    } catch (error) {
+      console.error("Error adding adjustment:", error);
+      toast.error("Failed to add adjustment");
+    }
+  }, [
+    selectedReportForAdjustment,
+    adjustmentAmount,
+    adjustmentDescription,
+    adjustmentType,
+    fetchVehicleTransactions,
+  ]);
+
+  // Memoize the new amount calculation to prevent expensive re-calculations
+  const previewNewAmount = useMemo(() => {
+    if (!selectedReportForAdjustment || adjustmentAmount === 0) return null;
+
+    return (
+      (selectedReportForAdjustment.rent_paid_amount || 0) +
+      (adjustmentType === "income" ? adjustmentAmount : -adjustmentAmount)
+    );
+  }, [
+    selectedReportForAdjustment?.rent_paid_amount,
+    adjustmentAmount,
+    adjustmentType,
+  ]);
+
+  const handleDeleteTransaction = useCallback(
+    async (transactionId: string) => {
+      if (!selectedReportForAdjustment) return;
+
+      try {
+        // Get transaction details before deleting
+        const { data: transactionData, error: fetchError } = await supabase
+          .from("vehicle_transactions")
+          .select("*")
+          .eq("id", transactionId)
+          .single();
+
+        if (fetchError) throw fetchError;
+
+        // Delete the transaction
+        const { error: deleteError } = await supabase
+          .from("vehicle_transactions")
+          .delete()
+          .eq("id", transactionId);
+
+        if (deleteError) throw deleteError;
+
+        // Reverse the transaction from rent_paid_amount
+        const reversalValue =
+          transactionData.transaction_type === "income"
+            ? -transactionData.amount
+            : transactionData.amount;
+
+        const newRentPaidAmount =
+          selectedReportForAdjustment.rent_paid_amount + reversalValue;
+
+        // Update the report's rent_paid_amount
+        const { error: updateError } = await supabase
+          .from("fleet_reports")
+          .update({ rent_paid_amount: newRentPaidAmount })
+          .eq("id", selectedReportForAdjustment.id);
+
+        if (updateError) throw updateError;
+
+        // Update local state
+        setReports((prev) =>
+          prev.map((report) =>
+            report.id === selectedReportForAdjustment.id
+              ? { ...report, rent_paid_amount: newRentPaidAmount }
+              : report
+          )
+        );
+
+        // Refresh transactions list
+        await fetchVehicleTransactions(
+          selectedReportForAdjustment.vehicle_number,
+          selectedReportForAdjustment.rent_date
+        );
+
+        toast.success("Transaction deleted successfully");
+      } catch (error) {
+        console.error("Error deleting transaction:", error);
+        toast.error("Failed to delete transaction");
+      }
+    },
+    [selectedReportForAdjustment, fetchVehicleTransactions]
+  );
+
+  // Memoized input handlers to prevent re-renders
+  const handleAmountChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      setAdjustmentAmount(Number(e.target.value));
+    },
+    []
+  );
+
+  const handleDescriptionChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      setAdjustmentDescription(e.target.value);
+    },
+    []
+  );
+
+  const handleTypeChange = useCallback((value: "income" | "expense") => {
+    setAdjustmentType(value);
+  }, []);
+
+  // Balance transaction functions
+  const handleOpenBalanceModal = useCallback((report: Report) => {
+    setSelectedReportForBalance(report);
+    setIsBalanceModalOpen(true);
+    // Set default values from report
+    const defaultAmount = report.rent_paid_amount
+      ? Math.abs(report.rent_paid_amount)
+      : 0;
+    setBalanceAmount(defaultAmount.toString());
+    setBalanceType(
+      report.rent_paid_amount && report.rent_paid_amount < 0 ? "refund" : "due"
+    );
+    setBalanceDescription("");
+  }, []);
+
+  const handleAddToBalance = useCallback(async () => {
+    if (!selectedReportForBalance) {
+      toast.error("No report selected");
+      return;
+    }
+
+    if (!balanceAmount || parseFloat(balanceAmount) <= 0) {
+      toast.error("Please enter a valid amount");
+      return;
+    }
+
+    try {
+      setIsBalanceSubmitting(true);
+
+      const amount = parseFloat(balanceAmount);
+      const transactionData = {
+        user_id: selectedReportForBalance.user_id,
+        amount: amount,
+        type: balanceType,
+        description:
+          balanceDescription.trim() ||
+          `Report adjustment for ${selectedReportForBalance.rent_date} - ${selectedReportForBalance.shift} shift`,
+        created_by: user?.id,
+        created_at: selectedReportForBalance.rent_date,
+      };
+
+      // Always insert new transaction
+      const { error: txError } = await supabase
+        .from("driver_penalty_transactions")
+        .insert([transactionData]);
+
+      if (txError) throw txError;
+
+      toast.success(
+        `Added ${
+          balanceType === "refund" ? "refund" : "due"
+        } transaction of ₹${amount.toLocaleString()} to driver penalty transactions`
+      );
+
+      setIsBalanceModalOpen(false);
+      setBalanceDescription("");
+      setBalanceAmount("");
+      setBalanceType("due");
+      setSelectedReportForBalance(null);
+    } catch (error) {
+      console.error("Error adding penalty transaction:", error);
+      toast.error("Failed to add to driver penalty transactions");
+    } finally {
+      setIsBalanceSubmitting(false);
+    }
+  }, [
+    selectedReportForBalance,
+    balanceDescription,
+    balanceAmount,
+    balanceType,
+    user?.id,
+  ]);
+
+  // Memoize button disabled state
+  const isButtonDisabled = useMemo(() => {
+    return adjustmentAmount === 0 || !adjustmentDescription.trim();
+  }, [adjustmentAmount, adjustmentDescription]);
+
+  // Memoize transactions list to prevent re-renders
+  const memoizedTransactionsList = useMemo(() => {
+    if (vehicleTransactions.length === 0) {
+      return (
+        <div className="text-center py-8 text-gray-500">
+          No transactions found for this vehicle on this date
+        </div>
+      );
+    }
+
+    return vehicleTransactions.map((transaction) => (
+      <div key={transaction.id} className="border rounded-lg p-3 bg-gray-50">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            {transaction.transaction_type === "income" ? (
+              <Plus className="h-4 w-4 text-green-500" />
+            ) : (
+              <Minus className="h-4 w-4 text-red-500" />
+            )}
+            <span
+              className={`font-medium ${
+                transaction.transaction_type === "income"
+                  ? "text-green-600"
+                  : "text-red-600"
+              }`}
+            >
+              {transaction.transaction_type === "income" ? "+" : "-"}₹
+              {transaction.amount.toLocaleString()}
+            </span>
+          </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => handleDeleteTransaction(transaction.id)}
+            className="text-red-500 hover:text-red-700"
+          >
+            <X className="h-4 w-4" />
+          </Button>
+        </div>
+        <div className="text-sm text-gray-600 mt-1">
+          {transaction.description}
+        </div>
+        <div className="text-xs text-gray-400 mt-1">
+          {format(new Date(transaction.created_at), "MMM d, yyyy 'at' h:mm a")}
+        </div>
+      </div>
+    ));
+  }, [vehicleTransactions, handleDeleteTransaction]);
+
   const handleExportReports = async () => {
     try {
       // Fetch all reports with current filters for complete export
@@ -587,43 +1246,27 @@ const AdminReports = () => {
       // Apply date filters
       if (dateFilter === "today") {
         const today = new Date();
-        const todayStr = today.toISOString().split("T")[0];
+        const todayStr = formatDateLocal(today);
         query = query.eq("rent_date", todayStr);
       } else if (dateFilter === "week") {
-        const today = new Date();
-        const dayOfWeek = today.getDay(); // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
-
-        // Calculate start of current week (Monday to Sunday) using local dates
-        let daysToGoBack;
-        if (dayOfWeek === 0) {
-          // If today is Sunday, go back 6 days to Monday
-          daysToGoBack = 6;
-        } else {
-          // For Monday to Saturday, go back to Monday
-          daysToGoBack = dayOfWeek - 1;
-        }
-
-        // Calculate Monday of current week
-        const startDate = new Date(
-          today.getFullYear(),
-          today.getMonth(),
-          today.getDate() - daysToGoBack
-        );
-        const endDate = new Date(
-          today.getFullYear(),
-          today.getMonth(),
-          today.getDate() - daysToGoBack + 6
-        );
-
-        // Format as YYYY-MM-DD
-        const startOfWeek = formatDateLocal(startDate);
-        const endOfWeek = formatDateLocal(endDate);
-
-        query = query.gte("rent_date", startOfWeek).lte("rent_date", endOfWeek);
-      } else if (dateFilter === "custom" && dateRange.start && dateRange.end) {
+        const weekDates = getWeekDates(weekOffset);
         query = query
-          .gte("rent_date", dateRange.start.toISOString().split("T")[0])
-          .lte("rent_date", dateRange.end.toISOString().split("T")[0]);
+          .gte("rent_date", weekDates.startStr)
+          .lte("rent_date", weekDates.endStr);
+      } else if (dateFilter === "custom") {
+        if (dateRange.start) {
+          const startDate = formatDateLocal(dateRange.start);
+          console.log("Filtering from start date:", startDate);
+          query = query.gte("rent_date", startDate);
+        }
+        if (dateRange.end) {
+          const endDate = formatDateLocal(dateRange.end);
+          console.log("Filtering to end date:", endDate);
+          query = query.lte("rent_date", endDate);
+        }
+        if (!dateRange.start && !dateRange.end) {
+          console.log("No date range selected, showing all reports");
+        }
       }
 
       const { data: allReports, error } = await query;
@@ -639,7 +1282,9 @@ const AdminReports = () => {
         "Total Earnings",
         "Toll",
         "Cash Collected",
+        "Other Fee",
         "Rent Paid",
+        "Service Day",
         "Status",
       ];
 
@@ -651,7 +1296,7 @@ const AdminReports = () => {
         );
         const status =
           report.status === "pending_verification"
-            ? "Pending"
+            ? "P"
             : report.status || "Unknown";
 
         return [
@@ -662,7 +1307,9 @@ const AdminReports = () => {
           report.total_earnings,
           report.toll,
           report.total_cashcollect,
+          report.other_fee || 0,
           report.rent_paid_amount,
+          report.is_service_day ? "Yes" : "No",
           status,
         ];
       });
@@ -696,6 +1343,15 @@ const AdminReports = () => {
       console.error("Error downloading report:", error);
       toast.error("Failed to download report");
     }
+  };
+
+  const driverActualEarnings = (user_id: string) => {
+    return reports.reduce((sum, report) => {
+      if (report.user_id === user_id) {
+        return report.total_earnings + report.toll - report.rent_paid_amount;
+      }
+      return sum;
+    }, 0);
   };
 
   return (
@@ -749,7 +1405,7 @@ const AdminReports = () => {
                   className="flex items-center gap-1"
                 >
                   {status === "pending_verification"
-                    ? "Pending"
+                    ? "P"
                     : status.charAt(0).toUpperCase() + status.slice(1)}
                   <button
                     onClick={() => {
@@ -767,6 +1423,25 @@ const AdminReports = () => {
           </div>
         </div>
 
+        <div className="w-full lg:w-[200px]">
+          <Select
+            value={serviceDayFilter}
+            onValueChange={(value: "all" | "service" | "regular") => {
+              setServiceDayFilter(value);
+              setCurrentPage(1);
+            }}
+          >
+            <SelectTrigger className="w-full">
+              <SelectValue placeholder="Service Day Filter" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Reports</SelectItem>
+              <SelectItem value="service">⚙️ Service Days</SelectItem>
+              <SelectItem value="regular">📊 Regular Days</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
         <div className="flex flex-wrap gap-2">
           <Button
             variant={dateFilter === "today" ? "default" : "outline"}
@@ -778,16 +1453,69 @@ const AdminReports = () => {
           >
             Today
           </Button>
-          <Button
-            variant={dateFilter === "week" ? "default" : "outline"}
-            onClick={() => {
-              setDateFilter("week");
-              setCurrentPage(1);
-            }}
-            className="flex-1 sm:flex-none"
-          >
-            This Week
-          </Button>
+          {dateFilter === "week" ? (
+            <div className="flex items-center gap-2 flex-1 sm:flex-none">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setWeekOffset((prev) => prev - 1);
+                  setCurrentPage(1);
+                }}
+                className="px-2"
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+              <div className="flex-1 text-center">
+                <Button
+                  variant="default"
+                  onClick={() => {
+                    setDateFilter("week");
+                    setWeekOffset(0);
+                    setCurrentPage(1);
+                  }}
+                  className="w-full"
+                >
+                  {(() => {
+                    const weekDates = getWeekDates(weekOffset);
+                    const isCurrentWeek = weekOffset === 0;
+                    return (
+                      <div className="flex flex-col items-center">
+                        <span>{isCurrentWeek ? "This Week" : "Week"}</span>
+                        <span className="text-xs opacity-90">
+                          {format(weekDates.start, "MMM d")} -{" "}
+                          {format(weekDates.end, "MMM d")}
+                        </span>
+                      </div>
+                    );
+                  })()}
+                </Button>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setWeekOffset((prev) => prev + 1);
+                  setCurrentPage(1);
+                }}
+                className="px-2"
+              >
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
+          ) : (
+            <Button
+              variant="outline"
+              onClick={() => {
+                setDateFilter("week");
+                setWeekOffset(0);
+                setCurrentPage(1);
+              }}
+              className="flex-1 sm:flex-none"
+            >
+              This Week
+            </Button>
+          )}
 
           <Popover>
             <PopoverTrigger asChild>
@@ -797,22 +1525,52 @@ const AdminReports = () => {
               >
                 <CalendarIcon className="h-4 w-4" />
                 Custom
+                {dateRange.start && (
+                  <span className="text-xs ml-1">
+                    ({formatDateLocal(dateRange.start)})
+                  </span>
+                )}
+                {dateRange.end && (
+                  <span className="text-xs ml-1">
+                    - {formatDateLocal(dateRange.end)}
+                  </span>
+                )}
               </Button>
             </PopoverTrigger>
             <PopoverContent className="w-auto p-0">
-              <Calendar
-                mode="range"
-                selected={{ from: dateRange.start, to: dateRange.end }}
-                onSelect={(range) => {
-                  setDateFilter("custom");
-                  setDateRange({
-                    start: range?.from,
-                    end: range?.to,
-                  });
-                  setCurrentPage(1);
-                }}
-                numberOfMonths={2}
-              />
+              <div className="p-3 border-b">
+                <div className="text-sm font-medium mb-2">
+                  Select Date Range
+                </div>
+                <div className="flex gap-2">
+                  <div className="flex-1">
+                    <label className="text-xs text-gray-500">Start Date</label>
+                    <Calendar
+                      mode="single"
+                      selected={dateRange.start}
+                      onSelect={(date) => {
+                        setDateFilter("custom");
+                        setDateRange((prev) => ({ ...prev, start: date }));
+                        setCurrentPage(1);
+                      }}
+                      className="rounded-md border"
+                    />
+                  </div>
+                  <div className="flex-1">
+                    <label className="text-xs text-gray-500">End Date</label>
+                    <Calendar
+                      mode="single"
+                      selected={dateRange.end}
+                      onSelect={(date) => {
+                        setDateFilter("custom");
+                        setDateRange((prev) => ({ ...prev, end: date }));
+                        setCurrentPage(1);
+                      }}
+                      className="rounded-md border"
+                    />
+                  </div>
+                </div>
+              </div>
             </PopoverContent>
           </Popover>
           <Button
@@ -821,6 +1579,7 @@ const AdminReports = () => {
               setDateFilter(null);
               setCustomDate(null);
               setDateRange({});
+              setWeekOffset(0);
               setCurrentPage(1);
             }}
             className="flex-1 sm:flex-none"
@@ -833,37 +1592,59 @@ const AdminReports = () => {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4 mb-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         <Card className="bg-gradient-to-br from-purple-50 to-white">
           <CardContent className="p-4">
             <div className="text-sm font-medium text-gray-500">
-              Fleet Earnings
+              Rental Income
             </div>
             <div className="text-2xl font-bold text-green-500">
-              ₹{earnings.toLocaleString()}
+              ₹
+              {(
+                (statistics.approvedCount +
+                  statistics.rejectedCount +
+                  statistics.pendingCount) *
+                600
+              ).toLocaleString()}
             </div>
           </CardContent>
         </Card>
 
-        <Card className="bg-gradient-to-br from-red-50 to-white">
+        {/* <Card className="bg-gradient-to-br from-red-50 to-white">
           <CardContent className="p-4">
             <div className="text-sm font-medium text-gray-500">
               Fleet Car Expense
             </div>
             <div className="text-2xl font-bold text-red-500">
-              ₹{totalRent * 7}
+              ₹
+              {(
+                (statistics.approvedCount +
+                  statistics.rejectedCount +
+                  statistics.pendingCount) *
+                700
+              ).toLocaleString()}
             </div>
           </CardContent>
-        </Card>
-
+        </Card> */}
+        {/* 
         <Card className="bg-gradient-to-br from-blue-50 to-white">
           <CardContent className="p-4">
             <div className="text-sm font-medium text-gray-500">Net Profit</div>
             <div className="text-2xl font-bold text-blue-500">
-              ₹{earnings - totalRent * 7}
+              ₹
+              {(
+                (statistics.approvedCount +
+                  statistics.rejectedCount +
+                  statistics.pendingCount) *
+                  700 -
+                (statistics.approvedCount +
+                  statistics.rejectedCount +
+                  statistics.pendingCount) *
+                  700
+              ).toLocaleString()}
             </div>
           </CardContent>
-        </Card>
+        </Card> */}
 
         <Card className="bg-gradient-to-br from-violet-50 to-white">
           <CardContent className="p-4">
@@ -879,7 +1660,7 @@ const AdminReports = () => {
         <Card className="bg-gradient-to-br from-emerald-50 to-white">
           <CardContent className="p-4">
             <div className="text-sm font-medium text-gray-500">
-              Cash in Hand
+              Cash at Bank
             </div>
             <div className="text-2xl font-bold">
               ₹{cashInHand.toLocaleString()}
@@ -887,7 +1668,7 @@ const AdminReports = () => {
           </CardContent>
         </Card>
 
-        <Card className="bg-gradient-to-br from-yellow-50 to-white">
+        {/* <Card className="bg-gradient-to-br from-yellow-50 to-white">
           <CardContent className="p-4">
             <div className="text-sm font-medium text-gray-500">
               Total Toll Amount
@@ -896,7 +1677,59 @@ const AdminReports = () => {
               ₹{statistics.tollAmount.toLocaleString()}
             </div>
           </CardContent>
+        </Card> */}
+        <Card className="bg-gradient-to-br from-gray-50 to-white border-gray-200">
+          <CardContent className="p-4">
+            <div className="text-sm font-medium text-gray-500">Total Trips</div>
+            <div className="text-2xl font-bold text-gray-700">
+              {statistics.totalTrips}
+            </div>
+          </CardContent>
         </Card>
+      </div>
+      {/* Status Indication Cards */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-3 gap-4 mb-6">
+        <Card className="bg-gradient-to-br from-orange-50 to-white border-orange-200">
+          <CardContent className="p-4">
+            <div className="text-sm font-medium text-orange-600">
+              Total Earnings
+            </div>
+            <div className="text-2xl font-bold text-orange-500">
+              {statistics.totalEarnings}
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-gradient-to-br from-green-50 to-white border-green-200">
+          <CardContent className="p-4">
+            <div className="text-sm font-medium text-green-600">Total Toll</div>
+            <div className="text-2xl font-bold text-green-500">
+              {statistics.tollAmount}
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-gradient-to-br from-red-50 to-white border-red-200">
+          <CardContent className="p-4">
+            <div className="text-sm font-medium text-red-600">
+              Total Cash Collected
+            </div>
+            <div className="text-2xl font-bold text-red-500">
+              {statistics.totalCashCollect}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* <Card className="bg-gradient-to-br from-yellow-50 to-white border-yellow-200">
+          <CardContent className="p-4">
+            <div className="text-sm font-medium text-yellow-600">
+              Total Rent Paid
+            </div>
+            <div className="text-2xl font-bold text-yellow-500">
+              {statistics.totalRentPaid}
+            </div>
+          </CardContent> */}
+        {/* </Card> */}
       </div>
 
       {/* Status Indication Cards */}
@@ -971,10 +1804,19 @@ const AdminReports = () => {
                 </h2>
                 <span className="text-sm text-muted-foreground hidden sm:inline-block">
                   Showing {reports.length} of {totalCount} reports
+                  <button
+                    className=""
+                    onClick={() => {
+                      fetchReports();
+                      fetchStatistics();
+                    }}
+                  >
+                    <RefreshCcw className="h-4 w-4" />
+                  </button>
                 </span>
               </div>
               <div className="min-w-full overflow-hidden">
-                <div className="max-h-[600px] overflow-y-auto">
+                <div className="max-h-[300px] overflow-y-auto">
                   <Table>
                     <TableHeader className="bg-muted/50 sticky top-0">
                       <TableRow>
@@ -982,23 +1824,20 @@ const AdminReports = () => {
                         <TableHead className="min-w-[150px]">
                           Date&time
                         </TableHead>
-                        <TableHead className="min-w-[120px]">Driver</TableHead>
-                        <TableHead className="min-w-[120px]">Vehicle</TableHead>
-                        <TableHead className="min-w-[80px]">Trips</TableHead>
+                        <TableHead className="min-w-[200px]">Driver</TableHead>
+                        <TableHead className="min-w-[50px]">Vehicle</TableHead>
+                        <TableHead className="min-w-[20px]">Trips</TableHead>
                         <TableHead className="min-w-[100px]">
                           Earnings
                         </TableHead>
-                        <TableHead className="min-w-[100px]">Toll</TableHead>
-                        <TableHead className="min-w-[120px]">
-                          Cash Collected
-                        </TableHead>
-                        <TableHead className="min-w-[100px]">
-                          Rent Paid
-                        </TableHead>
-                        <TableHead className="min-w-[100px]">
-                          Screenshots
-                        </TableHead>
-                        <TableHead className="min-w-[100px]">Status</TableHead>
+                        <TableHead className="min-w-[50px]">Toll</TableHead>
+                        <TableHead className="min-w-[50px]">C C</TableHead>
+                        <TableHead className="min-w-[50px]">OF</TableHead>
+                        <TableHead className="min-w-[50px]">RPA</TableHead>
+                        <TableHead className="min-w-[50px]">DAE</TableHead>
+                        <TableHead className="min-w-[50px]">S S</TableHead>
+                        <TableHead className="min-w-[50px]">Status</TableHead>
+                        <TableHead className="min-w-[30px]">🔧</TableHead>
                         <TableHead className="text-right min-w-[120px]">
                           Actions
                         </TableHead>
@@ -1028,22 +1867,34 @@ const AdminReports = () => {
                             </TableCell>
                             <TableCell>{report.vehicle_number}</TableCell>
                             <TableCell>{report.total_trips}</TableCell>
-                            <TableCell>
+                            <TableCell className="font-bold">
                               ₹{report.total_earnings.toLocaleString()}
                             </TableCell>
-                            <TableCell>₹{report.toll}</TableCell>
-                            <TableCell>
+                            <TableCell className="font-bold">
+                              ₹{report.toll}
+                            </TableCell>
+                            <TableCell className="font-bold">
                               ₹{report.total_cashcollect.toLocaleString()}
+                            </TableCell>
+                            <TableCell>
+                              ₹{report.other_fee?.toLocaleString() || "0"}
                             </TableCell>
                             <TableCell
                               className={`whitespace-nowrap ${
                                 report.rent_paid_amount < 0
-                                  ? "text-red-500"
-                                  : "text-green-500"
+                                  ? "text-red-500 font-bold"
+                                  : "text-green-500 font-bold"
                               }`}
                             >
                               ₹{report.rent_paid_amount.toLocaleString()}
                             </TableCell>
+                            <TableCell className="text-yellow-600">
+                              ₹
+                              {report.total_earnings -
+                                report.other_fee -
+                                600}
+                            </TableCell>
+
                             <TableCell>
                               <div className="flex space-x-1">
                                 {report.uber_screenshot ? (
@@ -1061,44 +1912,29 @@ const AdminReports = () => {
                             <TableCell>
                               {getStatusBadge(report.status)}
                             </TableCell>
+                            <TableCell className="text-center">
+                              {report.is_service_day && (
+                                <span
+                                  className="inline-flex items-center justify-center w-6 h-6 bg-orange-100 text-orange-600 rounded-full text-xs font-bold"
+                                  title="Service Day"
+                                >
+                                  ⚙️
+                                </span>
+                              )}
+                            </TableCell>
                             <TableCell>
                               <div className="flex justify-end space-x-1">
                                 <Button
                                   variant="ghost"
                                   size="sm"
-                                  className={`text-blue-600 sm:inline-flex ${
-                                    report.rent_paid_amount > -1
-                                      ? "lg:hidden"
-                                      : "flex"
-                                  }`}
-                                  onClick={async () => {
-                                    const { data, error } = await supabase
-                                      .from("users")
-                                      .select("phone_number")
-                                      .eq("id", report.user_id)
-                                      .single();
-
-                                    if (error || !data?.phone_number) {
-                                      console.error(
-                                        "Failed to get driver phone"
-                                      );
-                                      return;
-                                    }
-
-                                    const driverPhone = data.phone_number;
-
-                                    const message = encodeURIComponent(
-                                      `Refund slip 🧾\nDriver: ${report.driver_name}\nVehicle: ${report.vehicle_number}\nShift: ${report.shift}\nPhone: ${driverPhone}\nRent Date: ${report.rent_date}\nRefund Amount: ${report.rent_paid_amount}`
-                                    );
-
-                                    window.open(
-                                      `https://wa.me/?text=${message}`,
-                                      "_blank"
-                                    );
+                                  onClick={() => {
+                                    setSelectedReport(report);
+                                    setIsModalOpen(true);
                                   }}
                                 >
-                                  <Share2 className="h-4 w-4" />
+                                  <Eye className="h-4 w-4" />
                                 </Button>
+
                                 <Button
                                   variant="ghost"
                                   size="sm"
@@ -1124,12 +1960,60 @@ const AdminReports = () => {
                                 <Button
                                   variant="ghost"
                                   size="sm"
-                                  onClick={() => {
-                                    setSelectedReport(report);
-                                    setIsModalOpen(true);
+                                  className="text-purple-600 hover:text-purple-700"
+                                  onClick={() =>
+                                    handleOpenAdjustmentModal(report)
+                                  }
+                                  title="Add Adjustment"
+                                >
+                                  <DollarSign className="h-4 w-4" />
+                                </Button>
+                                {(report.status === "approved" ||
+                                  report.status === "pending_verification") &&
+                                  report.rent_paid_amount !== undefined && (
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      className="text-blue-600 hover:text-blue-700"
+                                      onClick={() =>
+                                        handleOpenBalanceModal(report)
+                                      }
+                                      title="Add to Penalty Transactions"
+                                    >
+                                      <Wallet className="h-4 w-4" />
+                                    </Button>
+                                  )}
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className={`text-blue-600 sm:inline-flex`}
+                                  onClick={async () => {
+                                    const { data, error } = await supabase
+                                      .from("users")
+                                      .select("phone_number")
+                                      .eq("id", report.user_id)
+                                      .single();
+
+                                    if (error || !data?.phone_number) {
+                                      console.error(
+                                        "Failed to get driver phone"
+                                      );
+                                      return;
+                                    }
+
+                                    const driverPhone = data.phone_number;
+
+                                    const message = encodeURIComponent(
+                                      `OverDue slip 🧾\nDriver: ${report.driver_name}\nVehicle: ${report.vehicle_number}\nShift: ${report.shift}\nPhone: ${driverPhone}\nRent Date: ${report.rent_date}\nOverdue Amount: ${report.rent_paid_amount}`
+                                    );
+
+                                    window.open(
+                                      `https://wa.me/?text=${message}`,
+                                      "_blank"
+                                    );
                                   }}
                                 >
-                                  <Eye className="h-4 w-4" />
+                                  <Share2 className="h-4 w-4" />
                                 </Button>
                               </div>
                             </TableCell>
@@ -1274,28 +2158,38 @@ const AdminReports = () => {
                 />
               </div>
               <div className="space-y-2">
+                <div className="space-y-2">
+                  <label>Shift</label>
+                  <Input
+                    type="text"
+                    value={selectedReport?.shift}
+                    onChange={(e) =>
+                      updateSelectedReportField("shift", e.target.value)
+                    }
+                  />
+                </div>
+              </div>
+              <div className="space-y-2">
                 <label>Total Earnings</label>
                 <Input
                   type="number"
                   value={selectedReport?.total_earnings}
                   onChange={(e) =>
-                    setSelectedReport((prev) => ({
-                      ...prev!,
-                      total_earnings: Number(e.target.value),
-                    }))
+                    updateSelectedReportField(
+                      "total_earnings",
+                      Number(e.target.value)
+                    )
                   }
                 />
-              </div>
-              <div className="space-y-2">
                 <label>Cash Collected</label>
                 <Input
                   type="number"
                   value={selectedReport?.total_cashcollect}
                   onChange={(e) =>
-                    setSelectedReport((prev) => ({
-                      ...prev!,
-                      total_cashcollect: Number(e.target.value),
-                    }))
+                    updateSelectedReportField(
+                      "total_cashcollect",
+                      Number(e.target.value)
+                    )
                   }
                 />
               </div>
@@ -1305,39 +2199,100 @@ const AdminReports = () => {
                   type="number"
                   value={selectedReport?.total_trips}
                   onChange={(e) =>
-                    setSelectedReport((prev) => ({
-                      ...prev!,
-                      total_trips: Number(e.target.value),
-                    }))
+                    updateSelectedReportField(
+                      "total_trips",
+                      Number(e.target.value)
+                    )
                   }
                 />
-              </div>
-              <div className="space-y-2">
-                <label>Rent Paid Amount</label>
-                <Input
-                  type="number"
-                  value={selectedReport?.rent_paid_amount}
-                  onChange={(e) =>
-                    setSelectedReport((prev) => ({
-                      ...prev!,
-                      rent_paid_amount: Number(e.target.value),
-                    }))
-                  }
-                />
-              </div>
-              <div className="space-y-2">
                 <label>Toll Amount</label>
                 <Input
                   type="number"
                   value={selectedReport?.toll}
                   onChange={(e) =>
-                    setSelectedReport((prev) => ({
-                      ...prev!,
-                      toll: Number(e.target.value),
-                    }))
+                    updateSelectedReportField("toll", Number(e.target.value))
                   }
                 />
               </div>
+              <div className="space-y-2">
+                <label>Other Fee / Expenses (₹)</label>
+                <Input
+                  type="number"
+                  value={selectedReport?.other_fee}
+                  onChange={(e) =>
+                    updateSelectedReportField(
+                      "other_fee",
+                      Number(e.target.value)
+                    )
+                  }
+                />
+                <p className="text-xs text-gray-500">
+                  Platform fee, fuel, maintenance, or any other expenses
+                </p>
+              </div>
+              <div className="space-y-2">
+                <label>Rent Paid Amount (Auto)</label>
+                <Input
+                  type="number"
+                  value={selectedReport?.rent_paid_amount}
+                  disabled
+                />
+                <div className="text-xs text-gray-500">
+                  {getPaymentPreviewMessage(selectedReport)}
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <label>Deposit Cutting Amount (₹)</label>
+                <Input
+                  type="number"
+                  value={selectedReport?.deposit_cutting_amount || 0}
+                  onChange={(e) =>
+                    setSelectedReport((prev) => ({
+                      ...prev!,
+                      deposit_cutting_amount: Number(e.target.value),
+                    }))
+                  }
+                  placeholder="Enter deposit cutting amount"
+                />
+                <div className="text-xs text-gray-500">
+                  This amount was calculated at report submission and is fixed
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <label>Service Day</label>
+                <div className="flex items-center gap-3 p-3 border rounded-md">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setSelectedReport((prev) => ({
+                        ...prev!,
+                        is_service_day: !prev?.is_service_day,
+                      }))
+                    }
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
+                      selectedReport?.is_service_day
+                        ? "bg-orange-600"
+                        : "bg-gray-200"
+                    }`}
+                  >
+                    <span
+                      className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                        selectedReport?.is_service_day
+                          ? "translate-x-6"
+                          : "translate-x-1"
+                      }`}
+                    />
+                  </button>
+                  <span className="text-sm">
+                    {selectedReport?.is_service_day
+                      ? "⚙️ Service Day"
+                      : "📊 Regular Day"}
+                  </span>
+                </div>
+              </div>
+
               <div className="space-y-2">
                 <label>Remarks</label>
                 <Input
@@ -1425,6 +2380,10 @@ const AdminReports = () => {
                         total_cashcollect: selectedReport?.total_cashcollect,
                         rent_date: selectedReport?.rent_date,
                         toll: selectedReport?.toll,
+                        other_fee: selectedReport?.other_fee,
+                        deposit_cutting_amount:
+                          selectedReport?.deposit_cutting_amount,
+                        is_service_day: selectedReport?.is_service_day,
                         remarks: selectedReport?.remarks,
                         status: selectedReport?.status,
                       })
@@ -1434,7 +2393,7 @@ const AdminReports = () => {
                       setReports((prev) =>
                         prev.map((report) =>
                           report.id === selectedReport?.id
-                            ? selectedReport
+                            ? (selectedReport as Report)
                             : report
                         )
                       );
@@ -1445,6 +2404,281 @@ const AdminReports = () => {
                   Save Changes
                 </Button>
               </div>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Adjustment Modal */}
+      <Dialog
+        open={isAdjustmentModalOpen}
+        onOpenChange={setIsAdjustmentModalOpen}
+      >
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>
+              Report Adjustments - {selectedReportForAdjustment?.driver_name} (
+              {selectedReportForAdjustment?.vehicle_number})
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Add New Adjustment */}
+            <Card>
+              <CardContent className="p-4">
+                <h3 className="text-lg font-semibold mb-4">
+                  Add New Adjustment
+                </h3>
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium mb-2">
+                      Type
+                    </label>
+                    <Select
+                      value={adjustmentType}
+                      onValueChange={handleTypeChange}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="income">
+                          <div className="flex items-center gap-2">
+                            <Plus className="h-4 w-4 text-green-500" />
+                            Income (Add to rent paid)
+                          </div>
+                        </SelectItem>
+                        <SelectItem value="expense">
+                          <div className="flex items-center gap-2">
+                            <Minus className="h-4 w-4 text-red-500" />
+                            Expense (Deduct from rent paid)
+                          </div>
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium mb-2">
+                      Amount (₹)
+                    </label>
+                    <Input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={adjustmentAmount}
+                      onChange={handleAmountChange}
+                      placeholder="Enter amount"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium mb-2">
+                      Description
+                    </label>
+                    <Input
+                      value={adjustmentDescription}
+                      onChange={handleDescriptionChange}
+                      placeholder="Enter description"
+                    />
+                  </div>
+
+                  <div className="bg-gray-50 p-3 rounded-lg">
+                    <div className="text-sm text-gray-600">
+                      Current Rent Paid:{" "}
+                      <span className="font-medium">
+                        ₹
+                        {selectedReportForAdjustment?.rent_paid_amount?.toLocaleString()}
+                      </span>
+                    </div>
+                    {previewNewAmount !== null && (
+                      <div className="text-sm text-gray-600 mt-1">
+                        New Amount:{" "}
+                        <span
+                          className={`font-medium ${
+                            adjustmentType === "income"
+                              ? "text-green-600"
+                              : "text-red-600"
+                          }`}
+                        >
+                          ₹{previewNewAmount.toLocaleString()}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+
+                  <Button
+                    onClick={handleAddAdjustment}
+                    className="w-full"
+                    disabled={isButtonDisabled}
+                  >
+                    Add {adjustmentType === "income" ? "Income" : "Expense"}{" "}
+                    Adjustment
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Existing Adjustments */}
+            <Card>
+              <CardContent className="p-4">
+                <h3 className="text-lg font-semibold mb-4">
+                  Adjustment History
+                </h3>
+                <div className="space-y-3 max-h-[400px] overflow-y-auto">
+                  {memoizedTransactionsList}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          <div className="flex justify-end gap-2 mt-6">
+            <Button
+              variant="outline"
+              onClick={() => setIsAdjustmentModalOpen(false)}
+            >
+              Close
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Balance Transaction Modal */}
+      <Dialog open={isBalanceModalOpen} onOpenChange={setIsBalanceModalOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Add to Driver Penalty Transactions</DialogTitle>
+            <DialogDescription>
+              Add this report's rent amount to the driver's penalty transactions
+              (does not affect deposit balance)
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="p-3 bg-gray-50 rounded-lg">
+              <div className="text-sm text-gray-600 mb-2">Report Details:</div>
+              <div className="space-y-1 text-sm">
+                <div>
+                  <strong>Driver:</strong>{" "}
+                  {selectedReportForBalance?.driver_name}
+                </div>
+                <div>
+                  <strong>Date:</strong> {selectedReportForBalance?.rent_date}
+                </div>
+                <div>
+                  <strong>Shift:</strong> {selectedReportForBalance?.shift}
+                </div>
+                <div>
+                  <strong>Original Amount:</strong> ₹
+                  {selectedReportForBalance?.rent_paid_amount?.toLocaleString()}
+                </div>
+                <div>
+                  <strong>Original Type:</strong>
+                  <span
+                    className={`ml-1 px-2 py-1 rounded text-xs ${
+                      selectedReportForBalance?.rent_paid_amount &&
+                      selectedReportForBalance.rent_paid_amount < 0
+                        ? "bg-green-100 text-green-800"
+                        : "bg-red-100 text-red-800"
+                    }`}
+                  >
+                    {selectedReportForBalance?.rent_paid_amount &&
+                    selectedReportForBalance.rent_paid_amount < 0
+                      ? "Refund"
+                      : "Due"}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Editable Amount Field */}
+            <div className="space-y-2">
+              <Label htmlFor="balance-amount">
+                Amount <span className="text-red-500">*</span>
+              </Label>
+              <Input
+                id="balance-amount"
+                type="number"
+                step="0.01"
+                min="0"
+                placeholder="Enter amount"
+                value={balanceAmount}
+                onChange={(e) => setBalanceAmount(e.target.value)}
+                disabled={isBalanceSubmitting}
+                className="w-full"
+              />
+            </div>
+
+            {/* Editable Type Field */}
+            <div className="space-y-2">
+              <Label htmlFor="balance-type">
+                Transaction Type <span className="text-red-500">*</span>
+              </Label>
+              <Select
+                value={balanceType}
+                onValueChange={(value: "due" | "refund") =>
+                  setBalanceType(value)
+                }
+                disabled={isBalanceSubmitting}
+              >
+                <SelectTrigger id="balance-type" className="w-full">
+                  <SelectValue placeholder="Select type" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="due">Due</SelectItem>
+                  <SelectItem value="refund">Refund</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-gray-500">
+                {balanceType === "due"
+                  ? "Due: Amount owed by the driver"
+                  : "Refund: Amount to be refunded to the driver"}
+              </p>
+            </div>
+
+            {/* Description Field */}
+            <div className="space-y-2">
+              <Label htmlFor="balance-description">
+                Description (Optional)
+              </Label>
+              <Textarea
+                id="balance-description"
+                placeholder="Enter a description for this transaction..."
+                value={balanceDescription}
+                onChange={(e) => setBalanceDescription(e.target.value)}
+                rows={3}
+                disabled={isBalanceSubmitting}
+              />
+              <p className="text-xs text-gray-500">
+                If left empty, a default description will be generated
+              </p>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-4">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setIsBalanceModalOpen(false);
+                  setBalanceDescription("");
+                  setBalanceAmount("");
+                  setBalanceType("due");
+                  setSelectedReportForBalance(null);
+                }}
+                disabled={isBalanceSubmitting}
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleAddToBalance}
+                disabled={
+                  isBalanceSubmitting ||
+                  !balanceAmount ||
+                  parseFloat(balanceAmount) <= 0
+                }
+                className="bg-blue-600 hover:bg-blue-700"
+              >
+                {isBalanceSubmitting ? "Adding..." : "Add to Balance"}
+              </Button>
             </div>
           </div>
         </DialogContent>

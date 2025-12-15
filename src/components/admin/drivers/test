@@ -1,0 +1,427 @@
+import { PenaltyManagement } from "@/components/admin/drivers/PenaltyManagement";
+            <TabsTrigger value="view">View Details</TabsTrigger>
+            <TabsTrigger value="balance">Balance</TabsTrigger>
+              <Card>
+                <CardHeader className="pb-2">
+                  <div className="flex items-center space-x-4">
+                    <Avatar className="h-12 w-12">
+                      <AvatarImage src={driver?.profile_photo || undefined} />
+                      <AvatarFallback>
+                        {driver?.name?.charAt(0) || "U"}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div>
+                      <CardTitle>{driver?.name}</CardTitle>
+                      <CardDescription>
+                        Driver ID: {driver?.driver_id}
+                      </CardDescription>
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="grid grid-cols-2 gap-2">
+                    <Badge variant={driver?.online ? "success" : "destructive"}>
+                      {driver?.online ? "Online" : "Offline"}
+                    </Badge>
+                    {driver?.shift && (
+                      <Badge
+                        variant={
+                          driver?.shift === "morning" ? "default" : "secondary"
+                        }
+                      >
+                        {driver?.shift}
+                      </Badge>
+                    )}
+                  </div>
+
+                  <Separator />
+
+                  <div className="space-y-3">
+                    <div className="flex items-center space-x-2">
+                      <Mail className="h-4 w-4 text-muted-foreground" />
+                      <span className="text-sm font-medium">Email:</span>
+                      <span className="text-sm">
+                        {driver?.email_id || "Not available"}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center space-x-2">
+                      <Phone className="h-4 w-4 text-muted-foreground" />
+                      <span className="text-sm font-medium">Phone:</span>
+                      <span className="text-sm">
+                        {driver?.phone_number || "Not available"}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center space-x-2">
+                      <Calendar className="h-4 w-4 text-muted-foreground" />
+                      <span className="text-sm font-medium">Joining Date:</span>
+                      <span className="text-sm">{formattedJoiningDate}, </span>
+                    </div>
+
+                    <div className="flex items-center space-x-2">
+                      <Car className="h-4 w-4 text-muted-foreground" />
+                      <span className="text-sm font-medium">Vehicle:</span>
+                      <span className="text-sm">
+                        {driver?.vehicle_number || "Not assigned"}
+                      </span>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <Car className="h-4 w-4 text-muted-foreground" />
+                      <span className="text-sm font-medium">
+                        Total Rentals:
+                      </span>
+                      <span className="text-sm">{rentalDays} days</span>
+                    </div>
+                  </div>
+
+                  <Separator />
+
+                  {/* Account Details and DOB Section */}
+                  <div>
+                    <h4 className="text-sm font-medium mb-2">
+                      Account Details & Personal Info
+                    </h4>
+                    <div className="space-y-3">
+                      <div className="flex items-center space-x-2">
+                        <CreditCard className="h-4 w-4 text-muted-foreground" />
+                        <span className="text-sm font-medium">
+                          Account Number:
+                        </span>
+                        <span className="text-sm">
+                          {driver?.account_number || "Not provided"}
+                        </span>
+                      </div>
+
+                      <div className="flex items-center space-x-2">
+                        <CreditCard className="h-4 w-4 text-muted-foreground" />
+                        <span className="text-sm font-medium">IFSC Code:</span>
+                        <span className="text-sm">
+                          {driver?.ifsc_code || "Not provided"}
+                        </span>
+                      </div>
+
+                      <div className="flex items-center space-x-2">
+                        <CreditCard className="h-4 w-4 text-muted-foreground" />
+                        <span className="text-sm font-medium">Bank Name:</span>
+                        <span className="text-sm">
+                          {driver?.bank_name || "Not provided"}
+                        </span>
+                      </div>
+
+                      <div className="flex items-center space-x-2">
+                        <User className="h-4 w-4 text-muted-foreground" />
+                        <span className="text-sm font-medium">
+                          Date of Birth:
+                        </span>
+                        <span className="text-sm">
+                          {driver?.date_of_birth
+                            ? format(
+                                new Date(driver.date_of_birth),
+                                "dd MMM yyyy"
+                              )
+                            : "Not provided"}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <Separator />
+
+                  {/* Resignation Details Section */}
+                  <div>
+                    <h4 className="text-sm font-medium mb-2">
+                      Resignation Details
+                    </h4>
+                    <div className="space-y-3">
+                      <div className="flex items-center space-x-2">
+                        <Calendar className="h-4 w-4 text-muted-foreground" />
+                        <span className="text-sm font-medium">
+                          Resigning Date:
+                        </span>
+                        <span className="text-sm">
+                          {driver?.resigning_date
+                            ? format(
+                                new Date(driver.resigning_date),
+                                "dd MMM yyyy"
+                              )
+                            : "Not set"}
+                        </span>
+                      </div>
+
+                      <div className="flex items-center space-x-2">
+                        <FileText className="h-4 w-4 text-muted-foreground" />
+                        <span className="text-sm font-medium">
+                          Resignation Reason:
+                        </span>
+                        <span className="text-sm">
+                          {driver?.resignation_reason || "Not provided"}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <Separator />
+
+                  <div>
+                    <h4 className="text-sm font-medium mb-2">Documents</h4>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="flex items-center space-x-2">
+                        <FileText className="h-4 w-4 text-muted-foreground" />
+                        <span className="text-sm">License:</span>
+                        {driver?.license ? (
+                          <div className="flex items-center space-x-2">
+                            <CheckCircle className="h-4 w-4 text-green-500" />
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-6 px-2"
+                              onClick={() =>
+                                window.open(driver.license, "_blank")
+                              }
+                            >
+                              View
+                            </Button>
+                          </div>
+                        ) : (
+                          <XCircle className="h-4 w-4 text-red-500" />
+                        )}
+                      </div>
+
+                      <div className="flex items-center space-x-2">
+                        <FileText className="h-4 w-4 text-muted-foreground" />
+                        <span className="text-sm">Aadhar:</span>
+                        {driver?.aadhar ? (
+                          <div className="flex items-center space-x-2">
+                            <CheckCircle className="h-4 w-4 text-green-500" />
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-6 px-2"
+                              onClick={() =>
+                                window.open(driver.aadhar, "_blank")
+                              }
+                            >
+                              View
+                            </Button>
+                          </div>
+                        ) : (
+                          <XCircle className="h-4 w-4 text-red-500" />
+                        )}
+                      </div>
+
+                      <div className="flex items-center space-x-2">
+                        <FileText className="h-4 w-4 text-muted-foreground" />
+                        <span className="text-sm">PAN:</span>
+                        {driver?.pan ? (
+                          <div className="flex items-center space-x-2">
+                            <CheckCircle className="h-4 w-4 text-green-500" />
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-6 px-2"
+                              onClick={() => window.open(driver.pan, "_blank")}
+                            >
+                              View
+                            </Button>
+                          </div>
+                        ) : (
+                          <XCircle className="h-4 w-4 text-red-500" />
+                        )}
+                      </div>
+
+                      <div className="flex items-center space-x-2">
+                        <FileText className="h-4 w-4 text-muted-foreground" />
+                        <span className="text-sm">Uber Profile:</span>
+                        {driver?.uber_profile ? (
+                          <div className="flex items-center space-x-2">
+                            <CheckCircle className="h-4 w-4 text-green-500" />
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-6 px-2"
+                              onClick={() =>
+                                window.open(driver.uber_profile, "_blank")
+                              }
+                            >
+                              View
+                            </Button>
+                          </div>
+                        ) : (
+                          <XCircle className="h-4 w-4 text-red-500" />
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  <Separator />
+
+                  {/* Cash Trip Blocking Section */}
+                  <div>
+                    <h4 className="text-sm font-medium mb-2">
+                      Cash Trip Management
+                    </h4>
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center space-x-2">
+                          <Ban className="h-4 w-4 text-muted-foreground" />
+                          <span className="text-sm font-medium">
+                            Cash Trip Blocked:
+                          </span>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <span className="text-sm text-muted-foreground">
+                            {driver?.cash_trip_blocked ? "Blocked" : "Allowed"}
+                          </span>
+                          <Switch
+                            checked={driver?.cash_trip_blocked || false}
+                            onCheckedChange={async (checked) => {
+                              try {
+                                const { error } = await supabase
+                                  .from("users")
+                                  .update({ cash_trip_blocked: checked })
+                                  .eq("id", driverId);
+
+                                if (error) throw error;
+
+                                toast.success(
+                                  `Cash trip ${
+                                    checked ? "blocked" : "unblocked"
+                                  } for ${driver?.name}`
+                                );
+                                fetchDriverDetails(); // Refresh data
+                                if (onDriverUpdate) onDriverUpdate();
+                              } catch (error) {
+                                console.error(
+                                  "Error updating cash trip block:",
+                                  error
+                                );
+                                toast.error(
+                                  "Failed to update cash trip block status"
+                                );
+                              }
+                            }}
+                          />
+                        </div>
+                      </div>
+
+                      {driver?.cash_trip_blocked && (
+                        <div className="text-xs text-muted-foreground bg-yellow-50 p-2 rounded">
+                          <AlertTriangle className="h-3 w-3 inline mr-1" />
+                          This driver is blocked from cash trips due to overdue
+                          payments or missing submissions.
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <Separator />
+
+                  {/* Penalty Management Section */}
+                  <div>
+                    <h4 className="text-sm font-medium mb-2">
+                      Penalty Management
+                    </h4>
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center space-x-2">
+                          <AlertCircle className="h-4 w-4 text-muted-foreground" />
+                          <span className="text-sm font-medium">
+                            Total Penalties:
+                          </span>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <span className="text-sm text-red-600 font-medium">
+                            ₹{driver?.total_penalties?.toLocaleString() || "0"}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center space-x-2">
+                          <AlertCircle className="h-4 w-4 text-muted-foreground" />
+                          <span className="text-sm font-medium">
+                            Net Balance:
+                          </span>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <span
+                            className={`text-sm font-medium ${
+                              (driver?.net_balance || 0) >= 0
+                                ? "text-blue-600"
+                                : "text-red-600"
+                            }`}
+                          >
+                            ₹{driver?.net_balance?.toLocaleString() || "0"}
+                          </span>
+                        </div>
+                      </div>
+
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setIsPenaltyModalOpen(true)}
+                        className="w-full"
+                      >
+                        <AlertCircle className="h-4 w-4 mr-2" />
+                        Manage Penalties
+                      </Button>
+                    </div>
+                  </div>
+
+                  <Separator />
+
+                  <div className="space-y-2">
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm font-medium">Total Trips:</span>
+                      <span>{driver?.total_trip || "0"}</span>
+                    </div>
+
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm font-medium">
+                        Deposit Amount:
+                      </span>
+                      <div className="flex items-center">
+                        <IndianRupee className="h-3 w-3 mr-1" />
+                        <span>{driver?.deposit_amount || "0"}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* {overdueData && overdueData.totalOverdue > 0 && (
+                    <>
+                      <Separator />
+                      <div className="space-y-2">
+                        <div className="flex items-center space-x-2 text-red-500">
+                          <AlertCircle className="h-4 w-4" />
+                          <span className="text-sm font-medium">
+                            Overdue Amounts
+                          </span>
+                        </div>
+                        <div className="flex justify-between items-center">
+                          <span className="text-sm">Total Overdue:</span>
+                          <div className="flex items-center text-red-500">
+                            <IndianRupee className="h-3 w-3 mr-1" />
+                            <span>{overdueData.totalOverdue}</span>
+                          </div>
+                        </div>
+                        <div className="flex justify-between items-center">
+                          <span className="text-sm">Overdue Count:</span>
+                          <span>{overdueData.overdueCount}</span>
+                        </div>
+                        {overdueData.lastOverdueDate && (
+                          <div className="flex justify-between items-center">
+                            <span className="text-sm">Last Overdue:</span>
+                            <span>
+                              {format(
+                                new Date(overdueData.lastOverdueDate),
+                                "dd MMM yyyy"
+                              )}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    </>
+                  )} */}
+                </CardContent>
+              </Card>

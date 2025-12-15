@@ -33,6 +33,12 @@ export interface SystemConfig {
   api_key: string;
 }
 
+interface PenaltyDivisionSettings {
+  division_days: number;
+  enabled: boolean;
+  auto_apply: boolean;
+}
+
 export interface AdminSetting {
   id: string;
   setting_type: string;
@@ -47,6 +53,9 @@ export const useAdminSettings = () => {
   const [loading, setLoading] = useState(true);
   const [fleetRentSlabs, setFleetRentSlabs] = useState<FleetRentSlab[]>([]);
   const [companyEarningsSlabs, setCompanyEarningsSlabs] = useState<
+    CompanyEarningsSlab[]
+  >([]);
+  const [companyEarningsSlabs24hr, setCompanyEarningsSlabs24hr] = useState<
     CompanyEarningsSlab[]
   >([]);
   const [companyInfo, setCompanyInfo] = useState<CompanyInfo>({
@@ -67,6 +76,16 @@ export const useAdminSettings = () => {
     api_key: "",
   });
 
+  const [penaltyDivisionSettings, setPenaltyDivisionSettings] =
+    useState<PenaltyDivisionSettings>({
+      division_days: 7,
+      enabled: true,
+      auto_apply: true,
+    });
+
+  const [vehiclePerformanceRentalIncome, setVehiclePerformanceRentalIncome] =
+    useState<number>(0);
+
   // Load all settings
   const loadSettings = async () => {
     try {
@@ -85,6 +104,12 @@ export const useAdminSettings = () => {
           case "company_earnings":
             if (setting.setting_key === "earnings_slabs") {
               setCompanyEarningsSlabs(setting.setting_value);
+            } else if (setting.setting_key === "earnings_slabs_24hr") {
+              setCompanyEarningsSlabs24hr(setting.setting_value);
+            } else if (
+              setting.setting_key === "vehicle_performance_rental_income"
+            ) {
+              setVehiclePerformanceRentalIncome(setting.setting_value || 0);
             }
             break;
           case "general":
@@ -100,6 +125,11 @@ export const useAdminSettings = () => {
           case "system":
             if (setting.setting_key === "config") {
               setSystemConfig(setting.setting_value);
+            }
+            break;
+          case "penalty_division":
+            if (setting.setting_key === "division_period") {
+              setPenaltyDivisionSettings(setting.setting_value);
             }
             break;
         }
@@ -159,6 +189,59 @@ export const useAdminSettings = () => {
     } catch (error) {
       console.error("Error updating company earnings slabs:", error);
       toast.error("Failed to update company earnings slabs");
+    }
+  };
+
+  // Update company earnings slabs for 24-hour shifts
+  const updateCompanyEarningsSlabs24hr = async (
+    slabs: CompanyEarningsSlab[]
+  ) => {
+    try {
+      const { error } = await supabase.from("admin_settings").upsert(
+        {
+          setting_type: "company_earnings",
+          setting_key: "earnings_slabs_24hr",
+          setting_value: slabs,
+          description:
+            "Company earnings calculation for 24-hour shifts based on trip count",
+        },
+        {
+          onConflict: "setting_type,setting_key",
+        }
+      );
+
+      if (error) throw error;
+
+      setCompanyEarningsSlabs24hr(slabs);
+      toast.success("24-hour company earnings slabs updated successfully");
+    } catch (error) {
+      console.error("Error updating 24-hour company earnings slabs:", error);
+      toast.error("Failed to update 24-hour company earnings slabs");
+    }
+  };
+
+  // Update vehicle performance rental income
+  const updateVehiclePerformanceRentalIncome = async (amount: number) => {
+    try {
+      const { error } = await supabase.from("admin_settings").upsert(
+        {
+          setting_type: "company_earnings",
+          setting_key: "vehicle_performance_rental_income",
+          setting_value: amount,
+          description: "Fixed rental income amount for Vehicle Performance tab",
+        },
+        {
+          onConflict: "setting_type,setting_key",
+        }
+      );
+
+      if (error) throw error;
+
+      setVehiclePerformanceRentalIncome(amount);
+      toast.success("Vehicle Performance Rental Income updated successfully");
+    } catch (error) {
+      console.error("Error updating vehicle performance rental income:", error);
+      toast.error("Failed to update vehicle performance rental income");
     }
   };
 
@@ -239,6 +322,33 @@ export const useAdminSettings = () => {
     }
   };
 
+  // Update penalty division settings
+  const updatePenaltyDivisionSettings = async (
+    settings: PenaltyDivisionSettings
+  ) => {
+    try {
+      const { error } = await supabase.from("admin_settings").upsert(
+        {
+          setting_type: "penalty_division",
+          setting_key: "division_period",
+          setting_value: settings,
+          description: "Penalty division period in days and settings",
+        },
+        {
+          onConflict: "setting_type,setting_key",
+        }
+      );
+
+      if (error) throw error;
+
+      setPenaltyDivisionSettings(settings);
+      toast.success("Penalty division settings updated successfully");
+    } catch (error) {
+      console.error("Error updating penalty division settings:", error);
+      toast.error("Failed to update penalty division settings");
+    }
+  };
+
   // Calculate fleet rent based on trip count
   const calculateFleetRent = (tripCount: number): number => {
     const slab = fleetRentSlabs.find(
@@ -259,6 +369,16 @@ export const useAdminSettings = () => {
     return slab?.amount || 0;
   };
 
+  // Calculate company earnings for 24-hour shifts based on trip count
+  const calculateCompanyEarnings24hr = (tripCount: number): number => {
+    const slab = companyEarningsSlabs24hr.find(
+      (slab) =>
+        tripCount >= slab.min_trips &&
+        (slab.max_trips === null || tripCount <= slab.max_trips)
+    );
+    return slab?.amount || 0;
+  };
+
   useEffect(() => {
     loadSettings();
   }, []);
@@ -267,16 +387,23 @@ export const useAdminSettings = () => {
     loading,
     fleetRentSlabs,
     companyEarningsSlabs,
+    companyEarningsSlabs24hr,
     companyInfo,
     notificationPreferences,
     systemConfig,
+    penaltyDivisionSettings,
+    vehiclePerformanceRentalIncome,
     updateFleetRentSlabs,
     updateCompanyEarningsSlabs,
+    updateCompanyEarningsSlabs24hr,
     updateCompanyInfo,
     updateNotificationPreferences,
     updateSystemConfig,
+    updatePenaltyDivisionSettings,
+    updateVehiclePerformanceRentalIncome,
     calculateFleetRent,
     calculateCompanyEarnings,
+    calculateCompanyEarnings24hr,
     loadSettings,
   };
 };

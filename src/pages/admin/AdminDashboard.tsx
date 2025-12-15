@@ -16,12 +16,15 @@ import {
   Wallet,
   Building2,
   CreditCard,
+  Ban,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Leaderboard } from "@/components/Leaderboard";
 import AdminVehicleAudit from "./AdminVehicleAudit";
 import { Link } from "react-router-dom";
 import TodoComponent from "@/components/admin/todo/TodoComponent";
+import DriversBirthdaySheet from "@/components/admin/drivers/DriversBirthdaySheet";
+import CashTripBlockingList from "@/components/admin/drivers/CashTripBlockingList";
 const AdminDashboard = () => {
   const navigate = useNavigate();
   const [stats, setStats] = useState({
@@ -221,6 +224,62 @@ const AdminDashboard = () => {
             <div className="flex items-center text-xs text-teal-600 mt-2">
               <TrendingUp className="h-4 w-4 mr-1" />
               <span>Total fleet value</span>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="mb-8">
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Users className="h-5 w-5" />
+              Quick Actions
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex flex-wrap gap-4">
+              <DriversBirthdaySheet />
+              <Button
+                variant="outline"
+                onClick={() => navigate("/admin/cash-trip-blocking")}
+                className="flex items-center gap-2"
+              >
+                <Ban className="h-4 w-4" />
+                Cash Trip Blocking
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => navigate("/admin/refund-list")}
+                className="flex items-center gap-2"
+              >
+                <ArrowUpRight className="h-4 w-4" />
+                Refund List
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => navigate("/admin/drivers")}
+                className="flex items-center gap-2"
+              >
+                <Users className="h-4 w-4" />
+                Manage Drivers
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => navigate("/admin/vehicles")}
+                className="flex items-center gap-2"
+              >
+                <Car className="h-4 w-4" />
+                Manage Vehicles
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => navigate("/admin/calendar")}
+                className="flex items-center gap-2"
+              >
+                <FileText className="h-4 w-4" />
+                Rent Calendar
+              </Button>
             </div>
           </CardContent>
         </Card>

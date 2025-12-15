@@ -27,11 +27,16 @@ import { Banknote, Plus, DollarSign, CreditCard } from "lucide-react";
 import { formatter } from "@/lib/utils";
 
 interface Account {
-  id: number;
+  id: string;
+  account_code: string;
   name: string;
   type: string;
   balance: number;
+  normal_balance: string;
+  is_active: boolean;
+  description?: string;
   created_at: string;
+  updated_at: string;
 }
 
 const BankAccountsSection = () => {
@@ -44,9 +49,44 @@ const BankAccountsSection = () => {
 
   const [formData, setFormData] = useState({
     name: "",
-    type: "bank",
+    type: "Asset",
     balance: 0,
+    account_code: "",
+    normal_balance: "Debit",
+    description: "",
   });
+
+  const generateAccountCode = async (type: string): Promise<string> => {
+    try {
+      // Get the highest account code for this type
+      const { data, error } = await supabase
+        .from("accounts")
+        .select("account_code")
+        .ilike("account_code", `${type.charAt(0)}%`)
+        .order("account_code", { ascending: false })
+        .limit(1);
+
+      if (error) throw error;
+
+      let nextCode = "";
+      if (data && data.length > 0) {
+        const lastCode = data[0].account_code;
+        const numericPart = parseInt(lastCode.substring(1));
+        nextCode = `${type.charAt(0)}${(numericPart + 1)
+          .toString()
+          .padStart(3, "0")}`;
+      } else {
+        // First account of this type
+        nextCode = `${type.charAt(0)}001`;
+      }
+
+      return nextCode;
+    } catch (error) {
+      console.error("Error generating account code:", error);
+      // Fallback to timestamp-based code
+      return `${type.charAt(0)}${Date.now().toString().slice(-3)}`;
+    }
+  };
 
   const fetchAccounts = async () => {
     try {
@@ -96,16 +136,23 @@ const BankAccountsSection = () => {
 
   const handleAddAccount = async () => {
     try {
-      if (!formData.name || !formData.type) {
+      if (!formData.name || !formData.type || !formData.normal_balance) {
         toast.error("Please fill all required fields");
         return;
       }
+
+      // Generate account code automatically
+      const accountCode = await generateAccountCode(formData.type);
 
       const { error } = await supabase.from("accounts").insert([
         {
           name: formData.name,
           type: formData.type,
           balance: formData.balance,
+          account_code: accountCode,
+          normal_balance: formData.normal_balance,
+          description: formData.description || null,
+          is_active: true,
         },
       ]);
 
@@ -124,8 +171,11 @@ const BankAccountsSection = () => {
   const resetForm = () => {
     setFormData({
       name: "",
-      type: "bank",
+      type: "Asset",
       balance: 0,
+      account_code: "",
+      normal_balance: "Debit",
+      description: "",
     });
   };
 
@@ -156,6 +206,9 @@ const BankAccountsSection = () => {
       name: account.name,
       type: account.type,
       balance: account.balance,
+      account_code: account.account_code,
+      normal_balance: account.normal_balance,
+      description: account.description || "",
     });
     setIsEditDialogOpen(true);
   };
@@ -170,6 +223,9 @@ const BankAccountsSection = () => {
           name: formData.name,
           type: formData.type,
           balance: formData.balance,
+          account_code: formData.account_code,
+          normal_balance: formData.normal_balance,
+          description: formData.description || null,
         })
         .eq("id", editingAccount.id);
 
@@ -185,7 +241,7 @@ const BankAccountsSection = () => {
     }
   };
 
-  const handleDelete = async (id: number) => {
+  const handleDelete = async (id: string) => {
     if (!confirm("Are you sure you want to delete this account?")) return;
 
     try {
@@ -223,7 +279,7 @@ const BankAccountsSection = () => {
             <div className="grid gap-4 py-4">
               <div className="grid grid-cols-4 items-center gap-4">
                 <Label htmlFor="name" className="text-right">
-                  Name
+                  Name *
                 </Label>
                 <Input
                   id="name"
@@ -237,7 +293,7 @@ const BankAccountsSection = () => {
 
               <div className="grid grid-cols-4 items-center gap-4">
                 <Label htmlFor="type" className="text-right">
-                  Type
+                  Type *
                 </Label>
                 <Select
                   value={formData.type}
@@ -247,9 +303,31 @@ const BankAccountsSection = () => {
                     <SelectValue placeholder="Select type" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="bank">Bank Account</SelectItem>
-                    <SelectItem value="cash">Cash</SelectItem>
-                    <SelectItem value="card">Card</SelectItem>
+                    <SelectItem value="Asset">Asset</SelectItem>
+                    <SelectItem value="Liability">Liability</SelectItem>
+                    <SelectItem value="Equity">Equity</SelectItem>
+                    <SelectItem value="Income">Income</SelectItem>
+                    <SelectItem value="Expense">Expense</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="normal_balance" className="text-right">
+                  Normal Balance *
+                </Label>
+                <Select
+                  value={formData.normal_balance}
+                  onValueChange={(value) =>
+                    handleSelectChange("normal_balance", value)
+                  }
+                >
+                  <SelectTrigger className="col-span-3">
+                    <SelectValue placeholder="Select normal balance" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Debit">Debit</SelectItem>
+                    <SelectItem value="Credit">Credit</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -266,6 +344,20 @@ const BankAccountsSection = () => {
                   onChange={handleInputChange}
                   className="col-span-3"
                   placeholder="0.00"
+                />
+              </div>
+
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="description" className="text-right">
+                  Description
+                </Label>
+                <Input
+                  id="description"
+                  name="description"
+                  value={formData.description}
+                  onChange={handleInputChange}
+                  className="col-span-3"
+                  placeholder="Account description (optional)"
                 />
               </div>
             </div>
@@ -297,7 +389,7 @@ const BankAccountsSection = () => {
           <div className="grid gap-4 py-4">
             <div className="grid grid-cols-4 items-center gap-4">
               <Label htmlFor="edit-name" className="text-right">
-                Name
+                Name *
               </Label>
               <Input
                 id="edit-name"
@@ -310,7 +402,7 @@ const BankAccountsSection = () => {
 
             <div className="grid grid-cols-4 items-center gap-4">
               <Label htmlFor="edit-type" className="text-right">
-                Type
+                Type *
               </Label>
               <Select
                 value={formData.type}
@@ -320,9 +412,45 @@ const BankAccountsSection = () => {
                   <SelectValue placeholder="Select type" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="bank">Bank</SelectItem>
-                  <SelectItem value="cash">Cash</SelectItem>
-                  <SelectItem value="card">Card</SelectItem>
+                  <SelectItem value="Asset">Asset</SelectItem>
+                  <SelectItem value="Liability">Liability</SelectItem>
+                  <SelectItem value="Equity">Equity</SelectItem>
+                  <SelectItem value="Income">Income</SelectItem>
+                  <SelectItem value="Expense">Expense</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="edit-account-code" className="text-right">
+                Account Code *
+              </Label>
+              <Input
+                id="edit-account-code"
+                name="account_code"
+                value={formData.account_code}
+                onChange={handleInputChange}
+                className="col-span-3"
+                placeholder="e.g., A001"
+              />
+            </div>
+
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="edit-normal-balance" className="text-right">
+                Normal Balance *
+              </Label>
+              <Select
+                value={formData.normal_balance}
+                onValueChange={(value) =>
+                  handleSelectChange("normal_balance", value)
+                }
+              >
+                <SelectTrigger className="col-span-3">
+                  <SelectValue placeholder="Select normal balance" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Debit">Debit</SelectItem>
+                  <SelectItem value="Credit">Credit</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -338,6 +466,20 @@ const BankAccountsSection = () => {
                 value={formData.balance}
                 onChange={handleInputChange}
                 className="col-span-3"
+              />
+            </div>
+
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="edit-description" className="text-right">
+                Description
+              </Label>
+              <Input
+                id="edit-description"
+                name="description"
+                value={formData.description}
+                onChange={handleInputChange}
+                className="col-span-3"
+                placeholder="Account description (optional)"
               />
             </div>
           </div>
@@ -399,27 +541,44 @@ const BankAccountsSection = () => {
           <CardTitle>Accounts List</CardTitle>
         </CardHeader>
         <CardContent>
-          <ScrollArea className="h-[400px]">
+          <ScrollArea className="h-[300px]">
             <table className="w-full">
               <thead>
                 <tr className="border-b">
+                  <th className="text-left p-3">Code</th>
                   <th className="text-left p-3">Name</th>
                   <th className="text-left p-3">Type</th>
+                  <th className="text-left p-3">Normal Balance</th>
                   <th className="text-right p-3">Balance</th>
+                  <th className="text-center p-3">Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {accounts.map((account) => (
                   <tr key={account.id} className="border-b hover:bg-gray-50">
+                    <td className="p-3 font-mono text-sm">
+                      {account.account_code}
+                    </td>
                     <td className="p-3 flex items-center">
                       {getAccountTypeIcon(account.type)}
                       {account.name}
                     </td>
                     <td className="p-3 capitalize">{account.type}</td>
+                    <td className="p-3">
+                      <Badge
+                        variant={
+                          account.normal_balance === "Debit"
+                            ? "default"
+                            : "secondary"
+                        }
+                      >
+                        {account.normal_balance}
+                      </Badge>
+                    </td>
                     <td className="p-3 text-right font-medium">
                       {formatter.format(account.balance)}
                     </td>
-                    <td className="p-3 flex justify-end gap-2">
+                    <td className="p-3 flex justify-center gap-2">
                       <Button
                         size="sm"
                         variant="outline"
@@ -440,7 +599,7 @@ const BankAccountsSection = () => {
 
                 {accounts.length === 0 && (
                   <tr>
-                    <td colSpan={3} className="p-4 text-center text-gray-500">
+                    <td colSpan={6} className="p-4 text-center text-gray-500">
                       No accounts found
                     </td>
                   </tr>

@@ -17,7 +17,14 @@ import {
 } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 
-type VehicleStatus = "running" | "stopped" | "breakdown" | "leave";
+type VehicleStatus =
+  | "running"
+  | "stopped"
+  | "breakdown"
+  | "leave"
+  | "offline"
+  | "swapped"
+  | "not_active";
 
 interface VehicleStatusModalProps {
   isOpen: boolean;
@@ -25,6 +32,7 @@ interface VehicleStatusModalProps {
   onSubmit: (status: VehicleStatus, notes: string) => void;
   vehicleNumber: string;
   date: string;
+  shift?: string;
   currentStatus?: VehicleStatus;
   currentNotes?: string;
 }
@@ -35,6 +43,7 @@ const VehicleStatusModal = ({
   onSubmit,
   vehicleNumber,
   date,
+  shift,
   currentStatus = "running",
   currentNotes = "",
 }: VehicleStatusModalProps) => {
@@ -72,13 +81,25 @@ const VehicleStatusModal = ({
     <Dialog open={isOpen} onOpenChange={handleClose}>
       <DialogContent className="sm:max-w-[425px]">
         <DialogHeader>
-          <DialogTitle>Update Vehicle Status - {vehicleNumber}</DialogTitle>
+          <DialogTitle>
+            Update Vehicle Status - {vehicleNumber} (
+            {shift ? shift.charAt(0).toUpperCase() + shift.slice(1) : ""} Shift)
+          </DialogTitle>
         </DialogHeader>
         <div className="space-y-4 py-4">
           <div className="space-y-2">
             <Label>Date</Label>
             <Input type="date" value={date} disabled />
           </div>
+          {shift && (
+            <div className="space-y-2">
+              <Label>Shift</Label>
+              <Input
+                value={shift.charAt(0).toUpperCase() + shift.slice(1)}
+                disabled
+              />
+            </div>
+          )}
           <div className="space-y-2">
             <Label>Status</Label>
             <Select
@@ -93,6 +114,9 @@ const VehicleStatusModal = ({
                 <SelectItem value="stopped">Stopped</SelectItem>
                 <SelectItem value="breakdown">Breakdown</SelectItem>
                 <SelectItem value="leave">Leave</SelectItem>
+                <SelectItem value="offline">Offline</SelectItem>
+                <SelectItem value="swapped">Swapped</SelectItem>
+                <SelectItem value="not_active">Not Active</SelectItem>
               </SelectContent>
             </Select>
           </div>

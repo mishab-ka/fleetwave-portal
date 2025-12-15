@@ -13,6 +13,7 @@ import { cn } from "@/lib/utils";
 import { DateRangeFilter } from "@/components/admin/calendar/DateRangeFilter";
 import { DriverDetailModal } from "@/components/admin/calendar/DriverDetailModal";
 import { useCalendarDateRange } from "@/hooks/useCalendarDateRange";
+import { BulkWhatsAppShare } from "@/components/BulkWhatsAppShare";
 import {
   processReportData,
   ReportData,
@@ -226,7 +227,8 @@ const AdminCalendar = () => {
                 if (!joinDate || checkDate < new Date(driver.joining_date)) {
                   status = "not_joined";
                   notes = "Driver not yet joined";
-                } else if (checkDate < now) {
+                } else if (checkDate <= now) {
+                  // Check for overdue status for past dates and today (if deadline has passed)
                   status = determineOverdueStatus(
                     dateStr,
                     driver.shift || "unknown",
@@ -235,6 +237,14 @@ const AdminCalendar = () => {
                     driver.offline_from_date,
                     driver.online_from_date
                   );
+
+                  // Debug: Log overdue detection
+                  if (status === "overdue") {
+                    console.log(
+                      `Overdue detected for ${driver.name} on ${dateStr}, shift: ${driver.shift}`
+                    );
+                  }
+
                   notes =
                     status === "overdue"
                       ? "Overdue"
@@ -288,11 +298,20 @@ const AdminCalendar = () => {
     date: string
   ) => {
     try {
+      // Handle drivers without vehicles or with N/A vehicle
+      const validVehicleNumber =
+        vehicleNumber &&
+        vehicleNumber.trim() !== "" &&
+        vehicleNumber !== "N/A" &&
+        vehicleNumber !== "Not assigned"
+          ? vehicleNumber
+          : null;
+
       const { error } = await supabase.from("fleet_reports").upsert({
         user_id: userId,
         driver_name: driverName,
-        vehicle_number: vehicleNumber,
-        shift,
+        vehicle_number: validVehicleNumber,
+        shift: shift || "none",
         rent_date: date,
         submission_date: new Date().toISOString(),
         rent_paid_status: false,
@@ -375,16 +394,18 @@ const AdminCalendar = () => {
   const morningShiftDrivers = getShiftFilteredDrivers("morning");
   const nightShiftDrivers = getShiftFilteredDrivers("night");
   const fullDayShiftDrivers = getShiftFilteredDrivers("24");
+  const noShiftDrivers = getShiftFilteredDrivers("none");
 
   const morningShiftData = calendarData.filter(
     (data) => data.shift === "morning"
   );
   const nightShiftData = calendarData.filter((data) => data.shift === "night");
   const fullDayShiftData = calendarData.filter((data) => data.shift === "24");
+  const noShiftData = calendarData.filter((data) => data.shift === "none");
 
   const statusLegend = [
     { status: "paid", label: "Paid" },
-    { status: "pending", label: "Pending" },
+    { status: "pending_verification", label: "Pending" },
     { status: "overdue", label: "Overdue" },
     { status: "leave", label: "Leave" },
     { status: "not_joined", label: "Not Paid" },
@@ -420,22 +441,35 @@ const AdminCalendar = () => {
         </div>
 
         <div className="flex flex-wrap gap-3 mb-4">
-          {statusLegend.map((item) => (
-            <div key={item.status} className="flex items-center gap-2">
-              <div
-                className={cn("w-3 h-3 rounded", getStatusColor(item.status))}
-              ></div>
-              <span className="text-xs">{item.label}</span>
-            </div>
-          ))}
+          {statusLegend.map((item) => {
+            const driversWithStatus = calendarData.filter(
+              (data) => data.status === item.status
+            );
+            return (
+              <div key={item.status} className="flex items-center gap-2">
+                <div
+                  className={cn("w-3 h-3 rounded", getStatusColor(item.status))}
+                ></div>
+                <span className="text-xs">{item.label}</span>
+                {driversWithStatus.length > 0 && (
+                  <BulkWhatsAppShare
+                    drivers={driversWithStatus}
+                    status={item.status}
+                    className="ml-2"
+                  />
+                )}
+              </div>
+            );
+          })}
         </div>
 
         <Tabs defaultValue="all" className="w-full">
-          <TabsList className="w-full mb-4 grid grid-cols-4">
+          <TabsList className="w-full mb-4 grid grid-cols-5">
             <TabsTrigger value="all">All Shifts</TabsTrigger>
             <TabsTrigger value="morning">Morning</TabsTrigger>
             <TabsTrigger value="night">Night</TabsTrigger>
             <TabsTrigger value="fullday">24 Hours</TabsTrigger>
+            <TabsTrigger value="none">No Shift</TabsTrigger>
           </TabsList>
 
           <TabsContent value="all">
@@ -466,6 +500,7 @@ const AdminCalendar = () => {
                       filteredDrivers={filteredDrivers}
                       calendarData={calendarData}
                       isMobile={isMobile}
+                      shiftType="all"
                       onCellClick={handleOpenDriverDetail}
                       onMarkAsLeave={handleMarkAsLeave}
                       mobileStartIndex={mobileStartIndex}
@@ -507,6 +542,7 @@ const AdminCalendar = () => {
                       isMobile={isMobile}
                       shiftType="morning"
                       onCellClick={handleOpenDriverDetail}
+                      onMarkAsLeave={handleMarkAsLeave}
                       mobileStartIndex={mobileStartIndex}
                     />
                   </>
@@ -546,6 +582,7 @@ const AdminCalendar = () => {
                       isMobile={isMobile}
                       shiftType="night"
                       onCellClick={handleOpenDriverDetail}
+                      onMarkAsLeave={handleMarkAsLeave}
                       mobileStartIndex={mobileStartIndex}
                     />
                   </>
@@ -585,6 +622,47 @@ const AdminCalendar = () => {
                       isMobile={isMobile}
                       shiftType="24"
                       onCellClick={handleOpenDriverDetail}
+                      onMarkAsLeave={handleMarkAsLeave}
+                      mobileStartIndex={mobileStartIndex}
+                    />
+                  </>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="none">
+            <Card>
+              <CardContent className="p-6">
+                {loading ? (
+                  <div className="flex items-center justify-center h-64">
+                    <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-fleet-purple"></div>
+                  </div>
+                ) : (
+                  <>
+                    <CalendarHeader
+                      currentDate={currentDate}
+                      weekOffset={weekOffset}
+                      onPreviousWeek={() => setWeekOffset(weekOffset - 1)}
+                      onNextWeek={() => setWeekOffset(weekOffset + 1)}
+                      onTodayClick={handleTodayClick}
+                      selectedShift="none"
+                      onShiftChange={() => {}}
+                      isMobile={isMobile}
+                      hideShiftSelector
+                      onPreviousDay={handlePreviousDay}
+                      onNextDay={handleNextDay}
+                      mobileStartIndex={mobileStartIndex}
+                    />
+                    <RentCalendarGrid
+                      currentDate={currentDate}
+                      weekOffset={weekOffset}
+                      filteredDrivers={noShiftDrivers}
+                      calendarData={noShiftData}
+                      isMobile={isMobile}
+                      shiftType="none"
+                      onCellClick={handleOpenDriverDetail}
+                      onMarkAsLeave={handleMarkAsLeave}
                       mobileStartIndex={mobileStartIndex}
                     />
                   </>

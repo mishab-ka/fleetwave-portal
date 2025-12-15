@@ -6,6 +6,7 @@ import {
   isBefore,
   addDays,
   startOfDay,
+  isSameDay,
 } from "date-fns";
 
 export type RentStatus =
@@ -262,18 +263,19 @@ export const determineOverdueStatus = (
     return "not_joined";
   }
 
-  console.warn("Shift value received:", shift);
-
   let deadlineTime: Date;
 
   if (shift === "morning") {
     const deadlineDate = new Date(checkDate);
-    deadlineDate.setHours(16, 30, 0, 0); // ✅ 4:30 PM
+    deadlineDate.setHours(17, 0, 0, 0); // 5:00 PM
     deadlineTime = deadlineDate;
   } else if (shift === "night" || shift === "24hr") {
     const nextDay = addDays(new Date(checkDate), 1);
-    nextDay.setHours(4, 30, 0, 0); // ✅ 4:30 AM
+    nextDay.setHours(5, 0, 0, 0); // 5:00 AM
     deadlineTime = nextDay;
+  } else if (shift === "none") {
+    // For drivers with no shift, they don't have deadlines
+    return "not_joined";
   } else {
     throw new Error("Invalid shift type");
   }
@@ -286,27 +288,32 @@ export const determineOverdueStatus = (
     return "overdue";
   }
 
-  // ✅ If not overdue but joined, status should be something else like "pending"
-  return "not_joined"; // <-- instead of "not_joined"
+  // If the date is today and we're past the deadline, it's overdue
+  if (isSameDay(currentDate, checkDate) && isAfter(currentDate, deadlineTime)) {
+    return "overdue";
+  }
+
+  // If not overdue but joined, status should be "not_joined" (no report submitted)
+  return "not_joined";
 };
 
 // Get status color for UI
 export const getStatusColor = (status: string) => {
   switch (status) {
     case "paid":
-      return "bg-green-300";
+      return "bg-green-400 text-black";
     case "pending_verification":
-      return "bg-yellow-300";
+      return "bg-yellow-400 text-black";
     case "overdue":
-      return "bg-red-300";
+      return "bg-red-500 text-white";
     case "leave":
-      return "bg-blue-300";
+      return "bg-blue-500 text-white";
     case "offline":
-      return "bg-gray-300";
+      return "bg-gray-500 text-white";
     case "not_joined":
-      return "bg-white";
+      return "bg-white border border-gray-300";
     default:
-      return "";
+      return "bg-gray-100";
   }
 };
 
@@ -351,6 +358,8 @@ export const getShiftBadgeColor = (shift: string) => {
       return "bg-indigo-100 text-indigo-800";
     case "24hr":
       return "bg-purple-100 text-purple-800";
+    case "none":
+      return "bg-red-100 text-red-800";
     default:
       return "bg-gray-100 text-gray-800";
   }

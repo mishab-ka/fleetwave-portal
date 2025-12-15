@@ -1,0 +1,196 @@
+═══════════════════════════════════════════════════════════════
+  HR PERFORMANCE TRACKING - SETUP INSTRUCTIONS
+═══════════════════════════════════════════════════════════════
+
+PROBLEM FIXED:
+--------------
+✓ "Calls Today" was showing 0 even after making calls
+✓ No daily performance history was being saved
+✓ Date comparison had timezone issues
+
+SOLUTION SUMMARY:
+-----------------
+1. Fixed date comparison logic in HRPerformanceAnalytics.tsx
+2. Created daily history tracking table with automatic updates
+3. Added new "Daily History" view in dashboard
+4. Implemented automatic stats aggregation after each call
+
+═══════════════════════════════════════════════════════════════
+  STEP-BY-STEP SETUP (REQUIRED)
+═══════════════════════════════════════════════════════════════
+
+STEP 1: Create Daily Stats Table
+---------------------------------
+1. Open Supabase Dashboard
+2. Go to SQL Editor
+3. Copy contents of: supabase/CREATE_HR_DAILY_STATS_TABLE.sql
+4. Paste and click "Run"
+5. Wait for success message
+
+STEP 2: Backfill Historical Data
+---------------------------------
+1. In same SQL Editor
+2. Copy contents of: supabase/BACKFILL_DAILY_STATS.sql
+3. Paste and click "Run"
+4. Wait for "Backfill complete!" message
+
+STEP 3: Test the Fix
+---------------------
+1. Login to HR Portal
+2. Go to "Leads Management"
+3. Make a test call on any lead
+4. Go to "Team Performance"
+5. Verify "Calls Today" shows the call count
+6. Go to "Daily History" tab
+7. Verify today's stats are displayed
+
+═══════════════════════════════════════════════════════════════
+  WHAT'S NEW
+═══════════════════════════════════════════════════════════════
+
+NEW TAB: "Daily History"
+------------------------
+Location: HR Dashboard → Daily History
+
+Features:
+• View daily performance breakdown
+• Filter by date range (7 days, 1 month, 3 months)
+• Filter by staff member (managers only)
+• See conversion rates over time
+• Track trends with visual indicators
+• Export-ready data table
+
+Metrics Tracked:
+• Total calls per day
+• Successful calls
+• Leads joined
+• Hot leads generated
+• Conversion rate
+• Average call duration
+• Work hours
+
+═══════════════════════════════════════════════════════════════
+  FILES CREATED
+═══════════════════════════════════════════════════════════════
+
+SQL Scripts:
+• supabase/CREATE_HR_DAILY_STATS_TABLE.sql
+• supabase/BACKFILL_DAILY_STATS.sql
+
+React Components:
+• src/components/HRDailyHistory.tsx
+
+Documentation:
+• HR_DAILY_HISTORY_SETUP_GUIDE.md (detailed guide)
+• HR_QUICK_FIX_SUMMARY.md (quick reference)
+• SETUP_INSTRUCTIONS.txt (this file)
+
+═══════════════════════════════════════════════════════════════
+  FILES MODIFIED
+═══════════════════════════════════════════════════════════════
+
+• src/components/HRDashboard.tsx
+  - Added "Daily History" tab for managers and staff
+  - Added import for HRDailyHistory component
+
+• src/components/HRPerformanceAnalytics.tsx
+  - Fixed date comparison using string comparison
+  - Improved "Calls Today" accuracy
+  - Fixed timezone issues
+
+• src/components/HRStaffLeads.tsx
+  - Added automatic stats aggregation after saving calls
+  - Triggers daily stats update immediately
+
+═══════════════════════════════════════════════════════════════
+  VERIFICATION QUERIES
+═══════════════════════════════════════════════════════════════
+
+Check if table exists:
+---------------------
+SELECT table_name 
+FROM information_schema.tables 
+WHERE table_name = 'hr_staff_daily_stats';
+
+Check today's stats:
+-------------------
+SELECT 
+  u.name,
+  ds.total_calls,
+  ds.successful_calls,
+  ds.conversion_rate
+FROM hr_staff_daily_stats ds
+JOIN users u ON u.id = ds.staff_user_id
+WHERE ds.date = CURRENT_DATE;
+
+Check historical data:
+---------------------
+SELECT 
+  COUNT(*) as total_records,
+  COUNT(DISTINCT staff_user_id) as unique_staff,
+  MIN(date) as earliest_date,
+  MAX(date) as latest_date
+FROM hr_staff_daily_stats;
+
+═══════════════════════════════════════════════════════════════
+  TROUBLESHOOTING
+═══════════════════════════════════════════════════════════════
+
+If "Calls Today" still shows 0:
+-------------------------------
+
+1. Check if call was saved:
+   SELECT * FROM hr_call_tracking
+   WHERE called_date = CURRENT_DATE
+   ORDER BY created_at DESC;
+
+2. Manually aggregate today:
+   SELECT aggregate_daily_stats(
+     'YOUR-USER-ID-HERE'::uuid,
+     CURRENT_DATE
+   );
+
+3. Check for errors in browser console
+
+4. Check Supabase logs for database errors
+
+═══════════════════════════════════════════════════════════════
+  FEATURES AVAILABLE
+═══════════════════════════════════════════════════════════════
+
+For HR Managers:
+---------------
+✓ View all staff daily history
+✓ Filter by staff member
+✓ Track team conversion rates
+✓ Monitor work hours
+✓ Export performance reports
+✓ Compare staff performance
+
+For HR Staff:
+------------
+✓ View personal daily history
+✓ Track own conversion rate
+✓ Monitor call duration trends
+✓ See daily achievements
+✓ Track progress over time
+
+═══════════════════════════════════════════════════════════════
+  SUCCESS CHECKLIST
+═══════════════════════════════════════════════════════════════
+
+□ Ran CREATE_HR_DAILY_STATS_TABLE.sql
+□ Ran BACKFILL_DAILY_STATS.sql
+□ Made a test call
+□ "Calls Today" shows correct count
+□ "Daily History" tab is visible
+□ Today's stats appear in Daily History
+□ Historical data is visible
+
+═══════════════════════════════════════════════════════════════
+
+🎉 Once all checks pass, your HR performance tracking is ready!
+
+For detailed documentation, see: HR_DAILY_HISTORY_SETUP_GUIDE.md
+
+═══════════════════════════════════════════════════════════════

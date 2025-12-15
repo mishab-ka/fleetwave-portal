@@ -13,7 +13,7 @@ const Footer = () => {
               <div className="w-10 h-10 rounded-md bg-fleet-purple flex items-center justify-center text-white font-bold text-xl">
                 T
               </div>
-              <span className="text-xl font-bold">Tawaaq</span>
+              <span className="text-xl font-bold">Tawaaq Fleet</span>
             </Link>
             <p className="text-gray-600 mb-4 max-w-md">
               “Empowering drivers with smart technology. Our platform helps you
@@ -192,7 +192,7 @@ const Footer = () => {
 
         <div className="border-t border-gray-100 mt-12 pt-8 flex flex-col md:flex-row justify-between items-center">
           <p className="text-gray-500 text-sm mb-4 md:mb-0">
-            &copy; {new Date().getFullYear()} Tawaaq. All rights reserved.
+            &copy; {new Date().getFullYear()} Tawaaq Fleet. All rights reserved.
           </p>
           <div className="flex flex-wrap justify-center gap-4 md:gap-8">
             <Link

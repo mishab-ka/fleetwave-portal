@@ -31,7 +31,7 @@ const Navbar = () => {
             to="/"
             className="navbar-brand text-2xl font-bold text-fleet-purple"
           >
-            Tawaaq
+            Tawaaq Fleet
           </Link>
 
           <div className="navbar-right hidden md:flex items-center space-x-4">
@@ -49,6 +49,18 @@ const Navbar = () => {
               className="text-gray-700 hover:text-fleet-purple"
             >
               How It Works
+            </NavLink>
+            <NavLink
+              to="/#team"
+              className="text-gray-700 hover:text-fleet-purple"
+            >
+              Team
+            </NavLink>
+            <NavLink
+              to="/team"
+              className="text-gray-700 hover:text-fleet-purple"
+            >
+              About Team
             </NavLink>
             <NavLink
               to="/#contact"
@@ -137,6 +149,18 @@ const Navbar = () => {
             className="block py-2 text-gray-700 hover:text-fleet-purple"
           >
             How It Works
+          </NavLink>
+          <NavLink
+            to="/#team"
+            className="block py-2 text-gray-700 hover:text-fleet-purple"
+          >
+            Team
+          </NavLink>
+          <NavLink
+            to="/team"
+            className="block py-2 text-gray-700 hover:text-fleet-purple"
+          >
+            About Team
           </NavLink>
           <NavLink
             to="/#contact"

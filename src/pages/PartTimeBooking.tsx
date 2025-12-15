@@ -95,8 +95,8 @@ export default function PartTimeBooking() {
             shift
           )
         `
-        )
-        .eq("status", "approved");
+        );
+      // .eq("status", "approved");
 
       if (leaveError) throw leaveError;
 

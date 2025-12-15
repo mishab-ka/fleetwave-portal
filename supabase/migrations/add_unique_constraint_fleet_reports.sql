@@ -1,0 +1,2 @@
+-- This migration is replaced by cleanup_duplicate_reports.sql
+-- The unique constraint and cleanup are handled there to avoid conflicts with existing duplicates 

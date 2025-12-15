@@ -3,6 +3,7 @@ import Navbar from "@/components/Navbar";
 import Hero from "@/components/Hero";
 import Features from "@/components/Features";
 import HowItWorks from "@/components/HowItWorks";
+import Team from "@/components/Team";
 import ContactForm from "@/components/ContactForm";
 import Footer from "@/components/Footer";
 import { Dialog, DialogContent, DialogTrigger } from "@/components/ui/dialog";
@@ -48,6 +49,7 @@ const Index = () => {
         <Hero />
         <Features />
         <HowItWorks />
+        <Team />
         <ContactForm />
       </main>
       <Footer />

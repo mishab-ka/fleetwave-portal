@@ -7,7 +7,7 @@ import { Clock, Users2, CalendarClock } from "lucide-react";
 const AdminShifts = () => {
   return (
     <AdminLayout title="Shift Management">
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+      {/* <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
         <Card className="bg-gradient-to-br from-purple-100 to-purple-50">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium text-purple-800">
@@ -41,16 +41,18 @@ const AdminShifts = () => {
         <Card className="bg-gradient-to-br from-emerald-100 to-emerald-50">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium text-emerald-800">
-              Shift Status
+              Vehicle Assignment
             </CardTitle>
             <CalendarClock className="h-5 w-5 text-emerald-600" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-emerald-900">Real-time</div>
-            <p className="text-sm text-emerald-600 mt-2">Live shift tracking</p>
+            <div className="text-2xl font-bold text-emerald-900">
+              2 Drivers Max
+            </div>
+            <p className="text-sm text-emerald-600 mt-2">Per vehicle limit</p>
           </CardContent>
         </Card>
-      </div>
+      </div> */}
 
       <ShiftManagement />
     </AdminLayout>
