@@ -2100,7 +2100,7 @@ const AdminReports = () => {
                     <TableBody>
                       {reports.length === 0 ? (
                         <TableRow>
-                          <TableCell colSpan={11} className="text-center py-8">
+                          <TableCell colSpan={16} className="text-center py-8">
                             No reports found
                           </TableCell>
                         </TableRow>
@@ -2579,6 +2579,67 @@ const AdminReports = () => {
                 </div>
               </div>
 
+              <div className="space-y-2 border-t pt-4">
+                <label className="font-medium">Paying by cash</label>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs text-muted-foreground">Cash amount (₹)</label>
+                    <Input
+                      type="number"
+                      min={0}
+                      value={selectedReport?.cash_amount ?? ""}
+                      onChange={(e) =>
+                        setSelectedReport((prev) => ({
+                          ...prev!,
+                          cash_amount: e.target.value ? Number(e.target.value) : null,
+                        }))
+                      }
+                      placeholder="Amount"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-muted-foreground">Manager</label>
+                    <Select
+                      value={selectedReport?.cash_manager_id ?? ""}
+                      onValueChange={(value) =>
+                        setSelectedReport((prev) => ({
+                          ...prev!,
+                          cash_manager_id: value || null,
+                        }))
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select manager" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {Object.entries(managerNames).map(([id, name]) => (
+                          <SelectItem key={id} value={id}>
+                            {name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    id="paying-cash-edit"
+                    checked={!!selectedReport?.paying_cash}
+                    onChange={(e) =>
+                      setSelectedReport((prev) => ({
+                        ...prev!,
+                        paying_cash: e.target.checked,
+                      }))
+                    }
+                    className="rounded border-gray-300"
+                  />
+                  <label htmlFor="paying-cash-edit" className="text-sm">
+                    Driver paying by cash
+                  </label>
+                </div>
+              </div>
+
               <div className="space-y-2">
                 <label>Service Day</label>
                 <div className="flex items-center gap-3 p-3 border rounded-md">
@@ -2824,6 +2885,9 @@ const AdminReports = () => {
                         other_fee: selectedReport?.other_fee,
                         deposit_cutting_amount:
                           selectedReport?.deposit_cutting_amount,
+                        paying_cash: selectedReport?.paying_cash ?? false,
+                        cash_amount: selectedReport?.cash_amount ?? null,
+                        cash_manager_id: selectedReport?.cash_manager_id ?? null,
                         is_service_day: selectedReport?.is_service_day,
                         remarks: selectedReport?.remarks,
                         status: selectedReport?.status,

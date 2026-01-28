@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { FileUp, Banknote, Check } from "lucide-react";
+import { FileUp, Banknote } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   Select,
