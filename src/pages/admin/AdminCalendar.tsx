@@ -37,6 +37,8 @@ const AdminCalendar = () => {
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
   const [rentHistory, setRentHistory] = useState<any[]>([]);
   const [shiftHistory, setShiftHistory] = useState<any[]>([]);
+  const [offlineRecords, setOfflineRecords] = useState<any[]>([]);
+  const [serviceDayAdjustments, setServiceDayAdjustments] = useState<any[]>([]);
   const [mobileStartIndex, setMobileStartIndex] = useState(0); // Track which days are visible on mobile
   const isMobile = useIsMobile();
 
@@ -51,10 +53,16 @@ const AdminCalendar = () => {
   const [currentDate, setCurrentDate] = useState(new Date());
 
   useEffect(() => {
-    fetchDrivers();
-    fetchCalendarData();
-    fetchRentHistory();
-    fetchShiftHistory();
+    const loadData = async () => {
+      fetchDrivers();
+      fetchRentHistory();
+      fetchShiftHistory();
+      fetchOfflineRecords();
+      // Fetch adjustments first, then calendar data
+      await fetchServiceDayAdjustments();
+      await fetchCalendarData();
+    };
+    loadData();
   }, [weekOffset, selectedDriver, selectedShift, startDate, endDate]);
 
   // Handle navigation for mobile day-by-day view
@@ -112,6 +120,25 @@ const AdminCalendar = () => {
     }
   };
 
+  const fetchOfflineRecords = async () => {
+    try {
+      const formattedStartDate = format(startDate, "yyyy-MM-dd");
+      const formattedEndDate = format(endDate, "yyyy-MM-dd");
+
+      const { data, error } = await supabase
+        .from("driver_offline_records")
+        .select("*")
+        .gte("offline_date", formattedStartDate)
+        .lte("offline_date", formattedEndDate)
+        .order("offline_date", { ascending: true });
+
+      if (error) throw error;
+      setOfflineRecords(data || []);
+    } catch (error) {
+      console.error("Error fetching offline records:", error);
+    }
+  };
+
   const fetchShiftHistory = async () => {
     try {
       const formattedStartDate = format(startDate, "yyyy-MM-dd");
@@ -126,6 +153,30 @@ const AdminCalendar = () => {
       setShiftHistory(data || []);
     } catch (error) {
       console.error("Error fetching shift history:", error);
+    }
+  };
+
+  const fetchServiceDayAdjustments = async () => {
+    try {
+      const formattedStartDate = format(startDate, "yyyy-MM-dd");
+      const formattedEndDate = format(endDate, "yyyy-MM-dd");
+
+      // Fetch from common_adjustments table (all adjustment types and statuses)
+      const { data, error } = await supabase
+        .from("common_adjustments")
+        .select("*")
+        .in("status", ["approved", "applied"]) // Fetch both approved and applied adjustments
+        .gte("adjustment_date", formattedStartDate)
+        .lte("adjustment_date", formattedEndDate);
+
+      if (error) throw error;
+
+      console.log("Fetched adjustments:", data?.length || 0, "records (approved or applied)");
+      setServiceDayAdjustments(data || []);
+      return data || [];
+    } catch (error) {
+      console.error("Error fetching adjustments:", error);
+      return [];
     }
   };
 
@@ -163,7 +214,7 @@ const AdminCalendar = () => {
       const { data: onlineDrivers, error: driversError } = await supabase
         .from("users")
         .select(
-          "id, name, vehicle_number, joining_date, shift, online, offline_from_date, online_from_date"
+          "id, name, vehicle_number, joining_date, shift, online, offline_from_date, online_from_date, is_verified"
         )
         .eq("online", true);
 
@@ -183,6 +234,54 @@ const AdminCalendar = () => {
       let processedData: ReportData[] =
         reportsData?.map((report) => processReportData(report)) || [];
 
+      // Only override with offline records if the report status is actually "offline"
+      // If a real report exists (approved, rejected, pending_verification), use that instead
+      processedData = processedData.map((report) => {
+        // Check for any adjustment (not just service day)
+        const hasAdjustment = serviceDayAdjustments.some(
+          (adj) =>
+            adj.user_id === report.userId && adj.adjustment_date === report.date
+        );
+
+        if (hasAdjustment) {
+          console.log(`Report has adjustment: ${report.driverName} on ${report.date}`);
+        }
+
+        // If report has a real status (not offline), don't override it
+        if (
+          report.status &&
+          report.status !== "offline" &&
+          report.status !== "not_joined"
+        ) {
+          return {
+            ...report,
+            hasServiceDayAdjustment: hasAdjustment, // Keep for backward compatibility
+            hasAdjustment, // New flag
+          };
+        }
+
+        // Only override if the report status is actually "offline" or "not_joined"
+        const offlineRecord = offlineRecords.find(
+          (record) =>
+            record.user_id === report.userId &&
+            record.offline_date === report.date
+        );
+        if (offlineRecord && report.status === "offline") {
+          return {
+            ...report,
+            status: "offline" as RentStatus,
+            notes: offlineRecord.notes || "Driver marked as offline",
+            hasServiceDayAdjustment: hasAdjustment,
+            hasAdjustment,
+          };
+        }
+        return {
+          ...report,
+          hasServiceDayAdjustment: hasAdjustment,
+          hasAdjustment,
+        };
+      });
+
       // Create "not_joined" entries for drivers without reports
       if (onlineDrivers) {
         for (const driver of onlineDrivers) {
@@ -200,6 +299,13 @@ const AdminCalendar = () => {
 
             // If no report exists, create a placeholder with "not_joined" status
             if (!existingReport) {
+              // Check offline records first (takes priority)
+              const offlineRecord = offlineRecords.find(
+                (record) =>
+                  record.user_id === driver.id &&
+                  record.offline_date === dateStr
+              );
+
               // Check rent history if this was marked as leave or offline
               const historyEntry = rentHistory.find(
                 (entry) =>
@@ -209,7 +315,10 @@ const AdminCalendar = () => {
               let status: RentStatus = "not_joined";
               let notes = "";
 
-              if (historyEntry) {
+              if (offlineRecord) {
+                status = "offline";
+                notes = offlineRecord.notes || "Driver marked as offline";
+              } else if (historyEntry) {
                 if (historyEntry.payment_status === "leave") {
                   status = "leave";
                   notes = "Driver on leave";
@@ -262,6 +371,12 @@ const AdminCalendar = () => {
                 // }
               }
 
+              // Check for any adjustment
+              const hasAdjustment = serviceDayAdjustments.some(
+                (adj) =>
+                  adj.user_id === driver.id && adj.adjustment_date === dateStr
+              );
+
               processedData.push({
                 date: dateStr,
                 userId: driver.id,
@@ -272,6 +387,8 @@ const AdminCalendar = () => {
                 shiftForDate,
                 notes,
                 joiningDate: driver.joining_date,
+                hasServiceDayAdjustment: hasAdjustment, // Keep for backward compatibility
+                hasAdjustment, // New flag
               });
             } else if (shiftForDate && shiftForDate !== existingReport.shift) {
               // Update existing report with shift history information
@@ -327,6 +444,83 @@ const AdminCalendar = () => {
     } catch (error) {
       console.error("Error marking as leave:", error);
       toast.error("Failed to mark as leave");
+    }
+  };
+
+  const handleMarkAsOffline = async (
+    userId: string,
+    driverName: string,
+    vehicleNumber: string,
+    shift: string,
+    date: string,
+    notes?: string
+  ) => {
+    try {
+      // Get current user for created_by
+      const {
+        data: { user: authUser },
+      } = await supabase.auth.getUser();
+
+      // Handle drivers without vehicles or with N/A vehicle
+      const validVehicleNumber =
+        vehicleNumber &&
+        vehicleNumber.trim() !== "" &&
+        vehicleNumber !== "N/A" &&
+        vehicleNumber !== "Not assigned"
+          ? vehicleNumber
+          : null;
+
+      // Create record in driver_offline_records table
+      const { error: offlineError } = await supabase
+        .from("driver_offline_records")
+        .upsert(
+          {
+            user_id: userId,
+            driver_name: driverName,
+            vehicle_number: validVehicleNumber,
+            shift: shift || "none",
+            offline_date: date,
+            notes: notes || "Marked as offline",
+            created_by: authUser?.id || null,
+          },
+          {
+            onConflict: "user_id,offline_date",
+          }
+        );
+
+      if (offlineError) throw offlineError;
+
+      // Also create a fleet_report entry with status "offline" (similar to leave)
+      const { error: reportError } = await supabase
+        .from("fleet_reports")
+        .upsert(
+          {
+            user_id: userId,
+            driver_name: driverName,
+            vehicle_number: validVehicleNumber, // Use null instead of "N/A" to avoid foreign key constraint violation
+            shift: shift || "none",
+            rent_date: date,
+            submission_date: new Date().toISOString(),
+            total_trips: 0,
+            total_earnings: 0,
+            total_cashcollect: 0,
+            rent_paid_amount: 0,
+            status: "offline",
+            remarks: notes || "Marked as offline",
+          },
+          {
+            onConflict: "user_id,rent_date",
+          }
+        );
+
+      if (reportError) throw reportError;
+
+      toast.success("Marked as offline");
+      await fetchOfflineRecords();
+      fetchCalendarData(); // refresh calendar
+    } catch (error) {
+      console.error("Error marking as offline:", error);
+      toast.error("Failed to mark as offline");
     }
   };
 
@@ -403,13 +597,13 @@ const AdminCalendar = () => {
   const fullDayShiftData = calendarData.filter((data) => data.shift === "24");
   const noShiftData = calendarData.filter((data) => data.shift === "none");
 
-  const statusLegend = [
-    { status: "paid", label: "Paid" },
-    { status: "pending_verification", label: "Pending" },
-    { status: "overdue", label: "Overdue" },
-    { status: "leave", label: "Leave" },
-    { status: "not_joined", label: "Not Paid" },
-  ];
+  // const statusLegend = [
+  //   { status: "paid", label: "Paid" },
+  //   { status: "pending_verification", label: "Pending" },
+  //   { status: "overdue", label: "Overdue" },
+  //   { status: "leave", label: "Leave" },
+  //   { status: "not_joined", label: "Not Paid" },
+  // ];
 
   // When clicking "Today", reset the mobile view to start from the first day of the current week
   const handleTodayClick = () => {
@@ -440,7 +634,7 @@ const AdminCalendar = () => {
           )}
         </div>
 
-        <div className="flex flex-wrap gap-3 mb-4">
+        {/* <div className="flex flex-wrap gap-3 mb-4">
           {statusLegend.map((item) => {
             const driversWithStatus = calendarData.filter(
               (data) => data.status === item.status
@@ -461,7 +655,7 @@ const AdminCalendar = () => {
               </div>
             );
           })}
-        </div>
+        </div> */}
 
         <Tabs defaultValue="all" className="w-full">
           <TabsList className="w-full mb-4 grid grid-cols-5">
@@ -502,7 +696,6 @@ const AdminCalendar = () => {
                       isMobile={isMobile}
                       shiftType="all"
                       onCellClick={handleOpenDriverDetail}
-                      onMarkAsLeave={handleMarkAsLeave}
                       mobileStartIndex={mobileStartIndex}
                     />
                   </>
@@ -542,7 +735,6 @@ const AdminCalendar = () => {
                       isMobile={isMobile}
                       shiftType="morning"
                       onCellClick={handleOpenDriverDetail}
-                      onMarkAsLeave={handleMarkAsLeave}
                       mobileStartIndex={mobileStartIndex}
                     />
                   </>
@@ -582,7 +774,6 @@ const AdminCalendar = () => {
                       isMobile={isMobile}
                       shiftType="night"
                       onCellClick={handleOpenDriverDetail}
-                      onMarkAsLeave={handleMarkAsLeave}
                       mobileStartIndex={mobileStartIndex}
                     />
                   </>
@@ -622,7 +813,6 @@ const AdminCalendar = () => {
                       isMobile={isMobile}
                       shiftType="24"
                       onCellClick={handleOpenDriverDetail}
-                      onMarkAsLeave={handleMarkAsLeave}
                       mobileStartIndex={mobileStartIndex}
                     />
                   </>
@@ -662,7 +852,6 @@ const AdminCalendar = () => {
                       isMobile={isMobile}
                       shiftType="none"
                       onCellClick={handleOpenDriverDetail}
-                      onMarkAsLeave={handleMarkAsLeave}
                       mobileStartIndex={mobileStartIndex}
                     />
                   </>
@@ -673,7 +862,8 @@ const AdminCalendar = () => {
         </Tabs>
 
         <DriverDetailModal
-          onMarkAsLeave={handleMarkAsLeave}
+          // onMarkAsLeave={handleMarkAsLeave}
+          onMarkAsOffline={handleMarkAsOffline}
           isOpen={isDetailModalOpen}
           onClose={() => setIsDetailModalOpen(false)}
           driverData={selectedDriverData}

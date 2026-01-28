@@ -3,7 +3,18 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { format } from "date-fns";
+import {
+  format,
+  startOfMonth,
+  endOfMonth,
+  eachDayOfInterval,
+  isSameMonth,
+  isSameDay,
+  addMonths,
+  subMonths,
+  parseISO,
+  isWithinInterval,
+} from "date-fns";
 import AdminLayout from "@/components/AdminLayout";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -16,7 +27,18 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { Search, Eye, Edit, Trash2 } from "lucide-react";
+import {
+  Search,
+  Eye,
+  Edit,
+  Trash2,
+  ChevronLeft,
+  ChevronRight,
+  Calendar as CalendarIcon,
+  Users,
+  Phone,
+  Mail,
+} from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -81,6 +103,9 @@ export default function AdminLeaveManagement() {
   const [isEditBookingModalOpen, setIsEditBookingModalOpen] = useState(false);
   const [isDeleteBookingModalOpen, setIsDeleteBookingModalOpen] =
     useState(false);
+  const [calendarDate, setCalendarDate] = useState(new Date());
+  const [selectedDate, setSelectedDate] = useState<Date | null>(null);
+  const [dateLeaves, setDateLeaves] = useState<LeaveApplication[]>([]);
 
   useEffect(() => {
     fetchLeaveApplications();
@@ -283,6 +308,233 @@ export default function AdminLeaveManagement() {
       booking.phone_number.includes(searchTerm)
   );
 
+  // Calendar functions
+  const getLeavesForDate = (date: Date) => {
+    const dateStr = format(date, "yyyy-MM-dd");
+    return leaveApplications.filter((leave) => {
+      if (leave.status !== "approved") return false;
+      const startDate = parseISO(leave.start_date);
+      const endDate = parseISO(leave.end_date);
+      return isWithinInterval(date, { start: startDate, end: endDate });
+    });
+  };
+
+  const handleDateClick = (date: Date) => {
+    setSelectedDate(date);
+    const leaves = getLeavesForDate(date);
+    setDateLeaves(leaves);
+  };
+
+  const renderCalendar = () => {
+    const monthStart = startOfMonth(calendarDate);
+    const monthEnd = endOfMonth(calendarDate);
+    const days = eachDayOfInterval({ start: monthStart, end: monthEnd });
+
+    // Get first day of week for the month
+    const firstDayOfWeek = monthStart.getDay();
+    const emptyDays = Array(firstDayOfWeek).fill(null);
+
+    // Calculate total vacancies for the month
+    const allLeaves = leaveApplications.filter(
+      (leave) => leave.status === "approved"
+    );
+    const totalVacancies = allLeaves.length;
+
+    return (
+      <div className="space-y-6">
+        {/* Summary Card */}
+        <Card className="bg-gradient-to-r from-blue-50 to-indigo-50">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-gray-600">Total Approved Leaves</p>
+                <p className="text-3xl font-bold text-gray-900">
+                  {totalVacancies}
+                </p>
+              </div>
+              <div className="text-right">
+                <p className="text-sm text-gray-600">Total Vacancies</p>
+                <p className="text-3xl font-bold text-orange-600">
+                  {totalVacancies}
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Calendar Header */}
+        <div className="flex items-center justify-between">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setCalendarDate(subMonths(calendarDate, 1))}
+          >
+            <ChevronLeft className="h-4 w-4" />
+          </Button>
+          <h2 className="text-xl font-semibold">
+            {format(calendarDate, "MMMM yyyy")}
+          </h2>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setCalendarDate(addMonths(calendarDate, 1))}
+          >
+            <ChevronRight className="h-4 w-4" />
+          </Button>
+        </div>
+
+        {/* Calendar Grid */}
+        <div className="border rounded-lg overflow-hidden bg-white">
+          {/* Weekday Headers */}
+          <div className="grid grid-cols-7 bg-gray-100 border-b">
+            {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => (
+              <div
+                key={day}
+                className="p-3 text-center text-sm font-semibold text-gray-700"
+              >
+                {day}
+              </div>
+            ))}
+          </div>
+
+          {/* Calendar Days */}
+          <div className="grid grid-cols-7">
+            {emptyDays.map((_, index) => (
+              <div
+                key={`empty-${index}`}
+                className="min-h-[80px] border border-gray-200 bg-gray-50"
+              />
+            ))}
+            {days.map((day) => {
+              const dayLeaves = getLeavesForDate(day);
+              const isToday = isSameDay(day, new Date());
+              const isCurrentMonth = isSameMonth(day, calendarDate);
+              const vacancyCount = dayLeaves.length;
+              const availableCount = dayLeaves.filter(
+                (l) => !l.is_booked
+              ).length;
+
+              return (
+                <div
+                  key={day.toISOString()}
+                  className={`min-h-[80px] border border-gray-200 p-2 cursor-pointer transition-all ${
+                    isCurrentMonth ? "bg-white" : "bg-gray-50"
+                  } ${isToday ? "ring-2 ring-blue-500 bg-blue-50" : ""} ${
+                    vacancyCount > 0
+                      ? "bg-orange-50 hover:bg-orange-100 border-orange-300"
+                      : "hover:bg-gray-50"
+                  }`}
+                  onClick={() => handleDateClick(day)}
+                >
+                  <div className="flex flex-col h-full">
+                    <div className="flex items-center justify-between mb-1">
+                      <span
+                        className={`text-sm font-semibold ${
+                          isCurrentMonth ? "text-gray-900" : "text-gray-400"
+                        } ${isToday ? "text-blue-700" : ""}`}
+                      >
+                        {format(day, "d")}
+                      </span>
+                    </div>
+
+                    {vacancyCount > 0 && (
+                      <div className="mt-auto">
+                        <div className="bg-orange-500 text-white text-xs font-bold rounded px-2 py-1 text-center">
+                          {availableCount} Vacancy
+                          {availableCount !== 1 ? "ies" : ""}
+                        </div>
+                        {dayLeaves.length > availableCount && (
+                          <div className="text-xs text-gray-600 mt-1 text-center">
+                            {dayLeaves.length - availableCount} booked
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Selected Date Details */}
+        {selectedDate && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <CalendarIcon className="h-5 w-5" />
+                {format(selectedDate, "EEEE, MMMM d, yyyy")}
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {dateLeaves.length === 0 ? (
+                <div className="text-center py-8">
+                  <Users className="h-12 w-12 text-gray-300 mx-auto mb-3" />
+                  <p className="text-gray-500 font-medium">
+                    No leaves on this date
+                  </p>
+                  <p className="text-sm text-gray-400 mt-1">
+                    No vacancies available
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                    <div className="flex items-center justify-between">
+                      <span className="font-semibold text-gray-900">
+                        Total Vacancies:
+                      </span>
+                      <Badge className="bg-orange-500 text-white text-lg px-3 py-1">
+                        {dateLeaves.filter((l) => !l.is_booked).length}
+                      </Badge>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <h4 className="font-semibold text-gray-900 mb-3">
+                      Drivers on Leave:
+                    </h4>
+                    {dateLeaves.map((leave) => (
+                      <div
+                        key={leave.id}
+                        className={`p-3 border rounded-lg ${
+                          leave.is_booked
+                            ? "bg-blue-50 border-blue-200"
+                            : "bg-green-50 border-green-200"
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex-1">
+                            <div className="font-semibold text-gray-900 mb-1">
+                              {leave.driver.name}
+                            </div>
+                            <div className="text-sm text-gray-600">
+                              {format(new Date(leave.start_date), "MMM d")} -{" "}
+                              {format(new Date(leave.end_date), "MMM d, yyyy")}
+                            </div>
+                          </div>
+                          <Badge
+                            className={
+                              leave.is_booked
+                                ? "bg-blue-500 text-white"
+                                : "bg-green-500 text-white"
+                            }
+                          >
+                            {leave.is_booked ? "Booked" : "Available"}
+                          </Badge>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
+      </div>
+    );
+  };
+
   if (loading) {
     return (
       <AdminLayout title="Leave & Part-time Management">
@@ -297,20 +549,21 @@ export default function AdminLeaveManagement() {
     <AdminLayout title="Leave & Part-time Management">
       <div className="space-y-6">
         <Tabs defaultValue="leave" className="w-full">
-          <TabsList className="grid w-full grid-cols-2">
+          <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="leave">Leave Applications</TabsTrigger>
             <TabsTrigger value="parttime">Part-time Bookings</TabsTrigger>
+            <TabsTrigger value="calendar">Calendar</TabsTrigger>
           </TabsList>
 
           <TabsContent value="leave">
-            <Card>
+            <Card className="">
               <CardHeader>
-                <div className="flex justify-between items-center">
-                  <CardTitle>Leave Applications</CardTitle>
-                  <div className="relative w-64">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                  <CardTitle className="text-xl">Leave Applications</CardTitle>
+                  <div className="relative w-full sm:w-64">
                     <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                     <Input
-                      placeholder="Search applications..."
+                      placeholder="Search by driver name, email, or phone..."
                       value={searchTerm}
                       onChange={(e) => setSearchTerm(e.target.value)}
                       className="pl-9"
@@ -318,136 +571,199 @@ export default function AdminLeaveManagement() {
                   </div>
                 </div>
               </CardHeader>
-              <CardContent>
-                <div className="overflow-x-auto max-h-[700px] overflow-y-auto">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Driver</TableHead>
-                        <TableHead>Contact</TableHead>
-                        <TableHead>Leave Period</TableHead>
-                        <TableHead>Reason</TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead>Booking Status</TableHead>
-                        <TableHead>Actions</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody className="">
-                      {filteredLeaveApplications.map((app) => (
-                        <TableRow key={app.id} className="">
-                          <TableCell>{app.driver.name}</TableCell>
-                          <TableCell>
-                            <div className="text-sm">
-                              <p>{app.driver.email_id}</p>
-                              <p>{app.driver.phone_number}</p>
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            {format(new Date(app.start_date), "PPP")} -{" "}
-                            {format(new Date(app.end_date), "PPP")}
-                          </TableCell>
-                          <TableCell>{app.reason}</TableCell>
-                          <TableCell>
-                            <Badge
-                              variant={
-                                app.status === "approved"
-                                  ? "success"
-                                  : app.status === "rejected"
-                                  ? "destructive"
-                                  : "secondary"
-                              }
-                            >
-                              {app.status}
-                            </Badge>
-                          </TableCell>
-                          <TableCell>
-                            {app.is_booked ? (
-                              <div className="space-y-1">
+              <CardContent className="h-[800px] overflow-x-scroll ">
+                {filteredLeaveApplications.length === 0 ? (
+                  <div className="text-center py-12">
+                    <Users className="h-12 w-12 text-gray-300 mx-auto mb-4" />
+                    <p className="text-gray-500">
+                      {searchTerm
+                        ? "No leave applications found matching your search"
+                        : "No leave applications found"}
+                    </p>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="min-w-[150px]">
+                            Driver
+                          </TableHead>
+                          <TableHead className="min-w-[180px]">
+                            Contact
+                          </TableHead>
+                          <TableHead className="min-w-[200px]">
+                            Leave Period
+                          </TableHead>
+                          <TableHead className="min-w-[200px]">
+                            Reason
+                          </TableHead>
+                          <TableHead className="min-w-[100px]">
+                            Status
+                          </TableHead>
+                          <TableHead className="min-w-[150px]">
+                            Booking Status
+                          </TableHead>
+                          <TableHead className="min-w-[200px]">
+                            Actions
+                          </TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {filteredLeaveApplications.map((app) => (
+                          <TableRow key={app.id}>
+                            <TableCell>
+                              <div className="font-medium">
+                                {app.driver.name}
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <div className="text-sm space-y-1">
+                                <div className="flex items-center gap-1">
+                                  <Mail className="h-3 w-3 text-gray-400" />
+                                  <span>{app.driver.email_id}</span>
+                                </div>
+                                <div className="flex items-center gap-1">
+                                  <Phone className="h-3 w-3 text-gray-400" />
+                                  <span>{app.driver.phone_number}</span>
+                                </div>
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <div className="text-sm">
+                                <div className="font-medium">
+                                  {format(
+                                    new Date(app.start_date),
+                                    "MMM d, yyyy"
+                                  )}
+                                </div>
+                                <div className="text-gray-500">to</div>
+                                <div className="font-medium">
+                                  {format(
+                                    new Date(app.end_date),
+                                    "MMM d, yyyy"
+                                  )}
+                                </div>
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <div
+                                className="text-sm max-w-[200px] truncate"
+                                title={app.reason}
+                              >
+                                {app.reason}
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <Badge
+                                variant={
+                                  app.status === "approved"
+                                    ? "success"
+                                    : app.status === "rejected"
+                                    ? "destructive"
+                                    : "secondary"
+                                }
+                                className="capitalize"
+                              >
+                                {app.status}
+                              </Badge>
+                            </TableCell>
+                            <TableCell>
+                              {app.is_booked ? (
+                                <div className="space-y-1">
+                                  <Badge
+                                    variant="secondary"
+                                    className="bg-blue-100 text-blue-700"
+                                  >
+                                    Booked
+                                  </Badge>
+                                  {app.booking_details && (
+                                    <div className="text-xs text-gray-500 space-y-0.5">
+                                      <p className="font-medium">
+                                        {app.booking_details.name}
+                                      </p>
+                                      <p>{app.booking_details.phone_number}</p>
+                                    </div>
+                                  )}
+                                </div>
+                              ) : (
                                 <Badge
-                                  variant="secondary"
-                                  className="bg-blue-100 text-blue-700"
+                                  variant="outline"
+                                  className="bg-green-50 text-green-700"
                                 >
-                                  Booked
+                                  Available
                                 </Badge>
-                                {app.booking_details && (
-                                  <div className="text-xs text-gray-500 mt-1">
-                                    <p>By: {app.booking_details.name}</p>
-                                    <p>
-                                      Contact:{" "}
-                                      {app.booking_details.phone_number}
-                                    </p>
-                                  </div>
+                              )}
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex flex-wrap gap-2">
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => handleViewLeave(app)}
+                                  className="h-8 w-8 p-0"
+                                  title="View details"
+                                >
+                                  <Eye className="h-4 w-4" />
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => handleEditLeave(app)}
+                                  className="h-8 w-8 p-0"
+                                  title="Edit"
+                                >
+                                  <Edit className="h-4 w-4" />
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => handleDeleteLeave(app)}
+                                  className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
+                                  title="Delete"
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                                {app.status === "pending" && (
+                                  <>
+                                    <Button
+                                      size="sm"
+                                      onClick={() =>
+                                        handleLeaveStatusChange(
+                                          app.id,
+                                          "approved"
+                                        )
+                                      }
+                                      variant="outline"
+                                      className="bg-green-50 text-green-700 hover:bg-green-100 border-green-200"
+                                      disabled={app.is_booked}
+                                    >
+                                      Approve
+                                    </Button>
+                                    <Button
+                                      size="sm"
+                                      onClick={() =>
+                                        handleLeaveStatusChange(
+                                          app.id,
+                                          "rejected"
+                                        )
+                                      }
+                                      variant="outline"
+                                      className="bg-red-50 text-red-700 hover:bg-red-100 border-red-200"
+                                      disabled={app.is_booked}
+                                    >
+                                      Reject
+                                    </Button>
+                                  </>
                                 )}
                               </div>
-                            ) : (
-                              <Badge variant="outline">Available</Badge>
-                            )}
-                          </TableCell>
-                          <TableCell>
-                            <div className="flex gap-2">
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => handleViewLeave(app)}
-                                className="h-8 w-8 p-0"
-                              >
-                                <Eye className="h-4 w-4" />
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => handleEditLeave(app)}
-                                className="h-8 w-8 p-0"
-                              >
-                                <Edit className="h-4 w-4" />
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => handleDeleteLeave(app)}
-                                className="h-8 w-8 p-0 text-red-600 hover:text-red-700"
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                              {app.status === "pending" && (
-                                <>
-                                  <Button
-                                    size="sm"
-                                    onClick={() =>
-                                      handleLeaveStatusChange(
-                                        app.id,
-                                        "approved"
-                                      )
-                                    }
-                                    variant="outline"
-                                    className="bg-green-50 text-green-700 hover:bg-green-100"
-                                    disabled={app.is_booked}
-                                  >
-                                    Approve
-                                  </Button>
-                                  <Button
-                                    size="sm"
-                                    onClick={() =>
-                                      handleLeaveStatusChange(
-                                        app.id,
-                                        "rejected"
-                                      )
-                                    }
-                                    variant="outline"
-                                    className="bg-red-50 text-red-700 hover:bg-red-100"
-                                    disabled={app.is_booked}
-                                  >
-                                    Reject
-                                  </Button>
-                                </>
-                              )}
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                )}
               </CardContent>
             </Card>
           </TabsContent>
@@ -455,12 +771,12 @@ export default function AdminLeaveManagement() {
           <TabsContent value="parttime">
             <Card>
               <CardHeader>
-                <div className="flex justify-between items-center">
-                  <CardTitle>Part-time Bookings</CardTitle>
-                  <div className="relative w-64">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                  <CardTitle className="text-xl">Part-time Bookings</CardTitle>
+                  <div className="relative w-full sm:w-64">
                     <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                     <Input
-                      placeholder="Search bookings..."
+                      placeholder="Search by name, email, or phone..."
                       value={searchTerm}
                       onChange={(e) => setSearchTerm(e.target.value)}
                       className="pl-9"
@@ -469,103 +785,148 @@ export default function AdminLeaveManagement() {
                 </div>
               </CardHeader>
               <CardContent>
-                <div className="overflow-x-auto">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Name</TableHead>
-                        <TableHead>Contact</TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead>Actions</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {filteredPartTimeBookings.map((booking) => (
-                        <TableRow key={booking.id}>
-                          <TableCell>{booking.name}</TableCell>
-                          <TableCell>
-                            <div className="text-sm">
-                              <p>{booking.email}</p>
-                              <p>{booking.phone_number}</p>
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            <Badge
-                              variant={
-                                booking.status === "approved"
-                                  ? "success"
-                                  : booking.status === "rejected"
-                                  ? "destructive"
-                                  : "secondary"
-                              }
-                            >
-                              {booking.status}
-                            </Badge>
-                          </TableCell>
-                          <TableCell>
-                            <div className="flex gap-2">
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => handleViewBooking(booking)}
-                                className="h-8 w-8 p-0"
-                              >
-                                <Eye className="h-4 w-4" />
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => handleEditBooking(booking)}
-                                className="h-8 w-8 p-0"
-                              >
-                                <Edit className="h-4 w-4" />
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => handleDeleteBooking(booking)}
-                                className="h-8 w-8 p-0 text-red-600 hover:text-red-700"
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                              {booking.status === "pending" && (
-                                <>
-                                  <Button
-                                    size="sm"
-                                    onClick={() =>
-                                      handleBookingStatusChange(
-                                        booking.id,
-                                        "approved"
-                                      )
-                                    }
-                                    variant="outline"
-                                    className="bg-green-50 text-green-700 hover:bg-green-100"
-                                  >
-                                    Approve
-                                  </Button>
-                                  <Button
-                                    size="sm"
-                                    onClick={() =>
-                                      handleBookingStatusChange(
-                                        booking.id,
-                                        "rejected"
-                                      )
-                                    }
-                                    variant="outline"
-                                    className="bg-red-50 text-red-700 hover:bg-red-100"
-                                  >
-                                    Reject
-                                  </Button>
-                                </>
-                              )}
-                            </div>
-                          </TableCell>
+                {filteredPartTimeBookings.length === 0 ? (
+                  <div className="text-center py-12">
+                    <Users className="h-12 w-12 text-gray-300 mx-auto mb-4" />
+                    <p className="text-gray-500">
+                      {searchTerm
+                        ? "No bookings found matching your search"
+                        : "No part-time bookings found"}
+                    </p>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="min-w-[150px]">Name</TableHead>
+                          <TableHead className="min-w-[200px]">
+                            Contact
+                          </TableHead>
+                          <TableHead className="min-w-[100px]">
+                            Status
+                          </TableHead>
+                          <TableHead className="min-w-[200px]">
+                            Actions
+                          </TableHead>
                         </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
+                      </TableHeader>
+                      <TableBody>
+                        {filteredPartTimeBookings.map((booking) => (
+                          <TableRow key={booking.id}>
+                            <TableCell>
+                              <div className="font-medium">{booking.name}</div>
+                            </TableCell>
+                            <TableCell>
+                              <div className="text-sm space-y-1">
+                                <div className="flex items-center gap-1">
+                                  <Mail className="h-3 w-3 text-gray-400" />
+                                  <span>{booking.email}</span>
+                                </div>
+                                <div className="flex items-center gap-1">
+                                  <Phone className="h-3 w-3 text-gray-400" />
+                                  <span>{booking.phone_number}</span>
+                                </div>
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <Badge
+                                variant={
+                                  booking.status === "approved"
+                                    ? "success"
+                                    : booking.status === "rejected"
+                                    ? "destructive"
+                                    : "secondary"
+                                }
+                                className="capitalize"
+                              >
+                                {booking.status}
+                              </Badge>
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex flex-wrap gap-2">
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => handleViewBooking(booking)}
+                                  className="h-8 w-8 p-0"
+                                  title="View details"
+                                >
+                                  <Eye className="h-4 w-4" />
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => handleEditBooking(booking)}
+                                  className="h-8 w-8 p-0"
+                                  title="Edit"
+                                >
+                                  <Edit className="h-4 w-4" />
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => handleDeleteBooking(booking)}
+                                  className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
+                                  title="Delete"
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                                {booking.status === "pending" && (
+                                  <>
+                                    <Button
+                                      size="sm"
+                                      onClick={() =>
+                                        handleBookingStatusChange(
+                                          booking.id,
+                                          "approved"
+                                        )
+                                      }
+                                      variant="outline"
+                                      className="bg-green-50 text-green-700 hover:bg-green-100 border-green-200"
+                                    >
+                                      Approve
+                                    </Button>
+                                    <Button
+                                      size="sm"
+                                      onClick={() =>
+                                        handleBookingStatusChange(
+                                          booking.id,
+                                          "rejected"
+                                        )
+                                      }
+                                      variant="outline"
+                                      className="bg-red-50 text-red-700 hover:bg-red-100 border-red-200"
+                                    >
+                                      Reject
+                                    </Button>
+                                  </>
+                                )}
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                )}
               </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="calendar">
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-xl flex items-center gap-2">
+                  <CalendarIcon className="h-5 w-5" />
+                  Leave Calendar & Vacancies
+                </CardTitle>
+                <p className="text-sm text-gray-500 mt-2">
+                  View approved leaves and available vacancies by date. Click on
+                  a date to see details.
+                </p>
+              </CardHeader>
+              <CardContent>{renderCalendar()}</CardContent>
             </Card>
           </TabsContent>
         </Tabs>

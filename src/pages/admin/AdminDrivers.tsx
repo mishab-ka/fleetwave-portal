@@ -1,6 +1,13 @@
 import React, { useEffect, useState } from "react";
 import AdminLayout from "@/components/AdminLayout";
 import { supabase } from "@/integrations/supabase/client";
+import { BadgeCheck } from "lucide-react";
+import { useActivityLogger } from "@/hooks/useActivityLogger";
+
+// Supabase configuration
+const SUPABASE_URL = "https://upnhxshwzpbcfmumclwz.supabase.co";
+const SUPABASE_ANON_KEY =
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVwbmh4c2h3enBiY2ZtdW1jbHd6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDIzOTAyMzgsImV4cCI6MjA1Nzk2NjIzOH0.hVFRmd9UtrVPuufJawg6aJGcVQoxSVzKsBrz3_4lkCc";
 import {
   Table,
   TableBody,
@@ -27,6 +34,14 @@ import {
   AlertTriangle,
   AlertCircle,
   Key,
+  ChevronDown,
+  ChevronUp,
+  X,
+  Calendar as CalendarIcon,
+  Save,
+  Trash2,
+  Copy,
+  Check,
 } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { toast } from "sonner";
@@ -34,6 +49,7 @@ import { DriverDetailsModal } from "@/components/admin/drivers/DriverDetailsModa
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
@@ -44,6 +60,17 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { format } from "date-fns";
+import { Calendar } from "@/components/ui/calendar";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { cn } from "@/lib/utils";
+import {
+  processReportData,
+  determineOverdueStatus,
+} from "@/components/admin/calendar/CalendarUtils";
 import {
   Dialog,
   DialogContent,
@@ -63,6 +90,7 @@ type DriverPenaltySummary = {
 };
 
 const AdminDrivers = () => {
+  const { logActivity } = useActivityLogger();
   const [drivers, setDrivers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedDriver, setSelectedDriver] = useState<any>(null);
@@ -72,14 +100,51 @@ const AdminDrivers = () => {
   const [shiftFilter, setShiftFilter] = useState<string>("all");
   const [verificationFilter, setVerificationFilter] = useState<string>("all");
   const [showFilters, setShowFilters] = useState(false);
+  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
   const [isUpdating, setIsUpdating] = useState<string | null>(null);
   const [showLowDeposit, setShowLowDeposit] = useState(false);
   const [showNegativeBalance, setShowNegativeBalance] = useState(false);
+
+  // Advanced filter states
+  const [advancedFilters, setAdvancedFilters] = useState({
+    // Date filters
+    joiningDateFrom: null as Date | null,
+    joiningDateTo: null as Date | null,
+
+    // Deposit range
+    depositMin: "" as string,
+    depositMax: "" as string,
+
+    // R&F Balance range
+    rAndFBalanceMin: "" as string,
+    rAndFBalanceMax: "" as string,
+
+    // Driver category
+    driverCategory: "all" as string,
+
+    // Driver status
+    driverStatus: "all" as string, // online, offline, leave, resigning, all
+
+    // Document status
+    documentStatus: "all" as string, // complete, incomplete, all
+
+    // Total trips range
+    totalTripsMin: "" as string,
+    totalTripsMax: "" as string,
+
+    // Vehicle assignment
+    vehicleAssignment: "all" as string, // assigned, unassigned, all
+
+    // Resigning date
+    resigningDateFrom: null as Date | null,
+    resigningDateTo: null as Date | null,
+  });
   const [rentalDays, setRentalDays] = useState<any>(null);
   const [showOverdueWarning, setShowOverdueWarning] = useState(false);
-  const [overdueAmount, setOverdueAmount] = useState(0);
+  const [overdueCount, setOverdueCount] = useState(0);
   const [overdueDriverName, setOverdueDriverName] = useState("");
   const [isAdmin, setIsAdmin] = useState<boolean>(false);
+  const [canPutDriverOnline, setCanPutDriverOnline] = useState<boolean>(false);
   const [showDocumentWarning, setShowDocumentWarning] = useState(false);
   const [documentWarningDriver, setDocumentWarningDriver] = useState<any>(null);
   const [penaltySummaries, setPenaltySummaries] = useState<
@@ -87,6 +152,7 @@ const AdminDrivers = () => {
   >({});
   const [penaltySummariesLoading, setPenaltySummariesLoading] =
     useState<boolean>(false);
+  const [copiedDriverId, setCopiedDriverId] = useState<string | null>(null);
 
   // Password reset modal state
   const [showPasswordReset, setShowPasswordReset] = useState(false);
@@ -100,6 +166,20 @@ const AdminDrivers = () => {
   const [showLeaveResigningModal, setShowLeaveResigningModal] = useState(false);
   const [selectedDriverForStatus, setSelectedDriverForStatus] =
     useState<any>(null);
+
+  // Resignation reason modal state
+  const [showResignationReasonModal, setShowResignationReasonModal] =
+    useState(false);
+  const [resignationReason, setResignationReason] = useState("");
+
+  // Leave return date modal state
+  const [showLeaveReturnDateModal, setShowLeaveReturnDateModal] =
+    useState(false);
+  const [leaveReturnDate, setLeaveReturnDate] = useState<Date | null>(null);
+
+  // Offline reason modal state
+  const [showOfflineReasonModal, setShowOfflineReasonModal] = useState(false);
+  const [offlineReason, setOfflineReason] = useState("");
 
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
@@ -132,6 +212,7 @@ const AdminDrivers = () => {
   const checkAdminStatus = async () => {
     if (!user) {
       setIsAdmin(false);
+      setCanPutDriverOnline(false);
       return;
     }
     try {
@@ -143,9 +224,15 @@ const AdminDrivers = () => {
 
       if (error) throw error;
       setIsAdmin(data?.role === "admin" || data?.role === "super_admin");
+      setCanPutDriverOnline(
+        data?.role === "admin" ||
+          data?.role === "super_admin" ||
+          data?.role === "manager"
+      );
     } catch (error) {
       console.error("Error checking admin status:", error);
       setIsAdmin(false);
+      setCanPutDriverOnline(false);
     }
   };
 
@@ -199,76 +286,100 @@ const AdminDrivers = () => {
     }
   };
 
-  const checkOverduePayments = async (
-    driverId: string
-  ): Promise<{ amount: number; driverName: string }> => {
+  const getDriverOverdueCount = async (driver: any): Promise<number> => {
+    if (!driver) return 0;
+
     try {
-      // Get driver details and check for overdue payments
-      const { data: driverData, error: driverError } = await supabase
-        .from("users")
+      const today = new Date();
+
+      // Determine start date: last 30 days or from joining date, whichever is later
+      const baseStart = new Date();
+      baseStart.setDate(baseStart.getDate() - 30);
+
+      const joiningDate = driver.joining_date
+        ? new Date(driver.joining_date)
+        : null;
+
+      let startDate = baseStart;
+      if (joiningDate && joiningDate > startDate) {
+        startDate = new Date(
+          joiningDate.getFullYear(),
+          joiningDate.getMonth(),
+          joiningDate.getDate()
+        );
+      }
+
+      const startDateStr = startDate.toISOString().split("T")[0];
+      const endDateStr = today.toISOString().split("T")[0];
+
+      const { data: reports, error } = await supabase
+        .from("fleet_reports")
         .select(
-          "pending_balance, net_balance, name, driver_id, total_penalties"
+          "id, user_id, driver_name, vehicle_number, submission_date, rent_date, shift, rent_paid_status, rent_paid_amount, status, remarks, created_at"
         )
-        .eq("id", driverId)
-        .single();
+        .eq("user_id", driver.id)
+        .gte("rent_date", startDateStr)
+        .lte("rent_date", endDateStr);
 
-      if (driverError) throw driverError;
+      if (error) throw error;
 
-      // Calculate R&F balance from penalty transactions
-      const { data: penaltyData, error: penaltyError } = await supabase
-        .from("driver_penalty_transactions")
-        .select("amount, type")
-        .eq("user_id", driverId);
-
-      let rAndFBalance = 0;
-      if (!penaltyError && penaltyData) {
-        let totalPenalties = 0;
-        let totalPenaltyPaid = 0;
-        let totalRefunds = 0;
-        let totalBonuses = 0;
-
-        penaltyData.forEach((transaction: any) => {
-          const amount = Number(transaction.amount) || 0;
-          switch (transaction.type) {
-            case "penalty":
-            case "due":
-            case "extra_collection":
-              totalPenalties += amount;
-              break;
-            case "penalty_paid":
-              totalPenaltyPaid += amount;
-              break;
-            case "refund":
-              totalRefunds += amount;
-              break;
-            case "bonus":
-              totalBonuses += amount;
-              break;
-          }
+      // Build a map of reports by date (yyyy-MM-dd)
+      const reportsByDate: Record<string, any[]> = {};
+      (reports || []).forEach((report: any) => {
+        if (!report.rent_date) return;
+        const dateStr = report.rent_date;
+        if (!reportsByDate[dateStr]) {
+          reportsByDate[dateStr] = [];
+        }
+        // Attach minimal users info expected by calendar utils
+        reportsByDate[dateStr].push({
+          ...report,
+          users: {
+            joining_date: driver.joining_date,
+            online: driver.online,
+            offline_from_date: driver.offline_from_date,
+            online_from_date: driver.online_from_date,
+          },
         });
+      });
 
-        const totalCredits = totalPenaltyPaid + totalRefunds + totalBonuses;
-        rAndFBalance = totalCredits - totalPenalties;
-      } else {
-        // Fallback to total_penalties if penalty transactions not available
-        rAndFBalance = Number(driverData?.total_penalties ?? 0);
+      let overdueCount = 0;
+      const cursor = new Date(startDate);
+
+      // Iterate each day in the range and apply same logic as calendar:
+      while (cursor <= today) {
+        const dateStr = cursor.toISOString().split("T")[0];
+        const dayReports = reportsByDate[dateStr];
+
+        if (dayReports && dayReports.length > 0) {
+          dayReports.forEach((report) => {
+            const processed = processReportData(report);
+            if (processed.status === "overdue") {
+              overdueCount += 1;
+            }
+          });
+        } else {
+          // No report for this date – use calendar overdue rules for empty days
+          const status = determineOverdueStatus(
+            dateStr,
+            driver.shift || "none",
+            driver.joining_date || undefined,
+            driver.online,
+            driver.offline_from_date || undefined,
+            driver.online_from_date || undefined
+          );
+          if (status === "overdue") {
+            overdueCount += 1;
+          }
+        }
+
+        cursor.setDate(cursor.getDate() + 1);
       }
 
-      // Only show warning if R&F balance is negative (driver owes money)
-      if (rAndFBalance < 0) {
-        const overdueAmount = Math.abs(rAndFBalance);
-        return {
-          amount: overdueAmount,
-          driverName:
-            driverData?.name || driverData?.driver_id || "Unknown Driver",
-        };
-      }
-
-      // If R&F balance is positive or zero, no warning needed
-      return { amount: 0, driverName: "" };
+      return overdueCount;
     } catch (error) {
-      console.error("Error checking overdue payments:", error);
-      return { amount: 0, driverName: "" };
+      console.error("Error checking overdue count:", error);
+      return 0;
     }
   };
 
@@ -283,6 +394,7 @@ const AdminDrivers = () => {
     verificationFilter,
     showLowDeposit,
     showNegativeBalance,
+    advancedFilters,
   ]);
 
   // Debounce search query to avoid too many API calls
@@ -395,7 +507,8 @@ const AdminDrivers = () => {
         .order("name");
 
       // Apply server-side filters
-      if (showOnlineOnly) {
+      // Note: showOnlineOnly is handled separately, but if driverStatus is set, it takes precedence
+      if (showOnlineOnly && advancedFilters.driverStatus === "all") {
         query = query.eq("online", true);
       }
 
@@ -415,17 +528,118 @@ const AdminDrivers = () => {
         query = query.eq("is_verified", isVerified);
       }
 
-      if (showLowDeposit) {
-        query = query.lt("pending_balance", 2500);
+      // Apply advanced server-side filters
+      if (advancedFilters.joiningDateFrom) {
+        query = query.gte(
+          "joining_date",
+          format(advancedFilters.joiningDateFrom, "yyyy-MM-dd")
+        );
+      }
+      if (advancedFilters.joiningDateTo) {
+        query = query.lte(
+          "joining_date",
+          format(advancedFilters.joiningDateTo, "yyyy-MM-dd")
+        );
       }
 
-      // Note: showNegativeBalance filter is applied client-side after fetching penalty summaries
-      // because R&F balance is calculated from penalty transactions
+      // Deposit filters - showLowDeposit takes precedence if no advanced deposit filters
+      if (
+        showLowDeposit &&
+        !advancedFilters.depositMin &&
+        !advancedFilters.depositMax
+      ) {
+        query = query.lt("pending_balance", 2500);
+      } else {
+        if (
+          advancedFilters.depositMin &&
+          advancedFilters.depositMin.trim() !== ""
+        ) {
+          const minDeposit = parseFloat(advancedFilters.depositMin);
+          if (!isNaN(minDeposit)) {
+            query = query.gte("pending_balance", minDeposit);
+          }
+        }
+        if (
+          advancedFilters.depositMax &&
+          advancedFilters.depositMax.trim() !== ""
+        ) {
+          const maxDeposit = parseFloat(advancedFilters.depositMax);
+          if (!isNaN(maxDeposit)) {
+            query = query.lte("pending_balance", maxDeposit);
+          }
+        }
+      }
+
+      if (advancedFilters.driverCategory !== "all") {
+        query = query.eq("driver_category", advancedFilters.driverCategory);
+      }
+
+      if (advancedFilters.driverStatus !== "all") {
+        if (advancedFilters.driverStatus === "online") {
+          query = query.eq("online", true);
+        } else if (advancedFilters.driverStatus === "offline") {
+          query = query.eq("online", false);
+        } else if (advancedFilters.driverStatus === "leave") {
+          query = query.eq("driver_status", "leave");
+        } else if (advancedFilters.driverStatus === "resigning") {
+          query = query.or(
+            "driver_status.eq.resigning,resigning_date.not.is.null"
+          );
+        }
+      }
+
+      if (advancedFilters.vehicleAssignment !== "all") {
+        if (advancedFilters.vehicleAssignment === "assigned") {
+          query = query.not("vehicle_number", "is", null);
+        } else if (advancedFilters.vehicleAssignment === "unassigned") {
+          query = query.is("vehicle_number", null);
+        }
+      }
+
+      if (advancedFilters.resigningDateFrom) {
+        query = query.gte(
+          "resigning_date",
+          format(advancedFilters.resigningDateFrom, "yyyy-MM-dd")
+        );
+      }
+      if (advancedFilters.resigningDateTo) {
+        query = query.lte(
+          "resigning_date",
+          format(advancedFilters.resigningDateTo, "yyyy-MM-dd")
+        );
+      }
+
+      if (
+        advancedFilters.totalTripsMin &&
+        advancedFilters.totalTripsMin.trim() !== ""
+      ) {
+        const minTrips = parseInt(advancedFilters.totalTripsMin);
+        if (!isNaN(minTrips)) {
+          query = query.gte("total_trip", minTrips);
+        }
+      }
+      if (
+        advancedFilters.totalTripsMax &&
+        advancedFilters.totalTripsMax.trim() !== ""
+      ) {
+        const maxTrips = parseInt(advancedFilters.totalTripsMax);
+        if (!isNaN(maxTrips)) {
+          query = query.lte("total_trip", maxTrips);
+        }
+      }
+
+      // Check if we need client-side filtering (R&F balance, document status)
+      // These require calculated values, so we must fetch all matching drivers first
+      const needsClientSideFiltering =
+        showNegativeBalance ||
+        advancedFilters.rAndFBalanceMin ||
+        advancedFilters.rAndFBalanceMax ||
+        advancedFilters.documentStatus !== "all";
 
       let allDrivers;
       let totalCountValue;
 
-      if (showNegativeBalance) {
+      if (needsClientSideFiltering) {
         // When filtering by negative R&F balance, fetch all matching drivers first
         // (without pagination) to calculate R&F balance, then filter and paginate client-side
         const { data, error, count } = await query;
@@ -438,27 +652,73 @@ const AdminDrivers = () => {
         // Fetch penalty summaries for all drivers and get the returned summaries
         const summaries = await fetchPenaltySummaries(allDrivers);
 
-        // Filter by negative R&F balance client-side
-        const filteredDrivers = allDrivers.filter((driver) => {
-          const summary = summaries[driver.id];
-          const fallbackValue = Number(driver?.total_penalties ?? 0);
-          const rAndFValue =
-            summary && typeof summary.netPenalties === "number"
-              ? summary.netPenalties
-              : fallbackValue;
-          return Number.isFinite(rAndFValue) && rAndFValue < 0;
-        });
+        // Apply client-side filters (negative R&F balance, document status, R&F range)
+        let filteredDrivers = allDrivers;
+
+        if (showNegativeBalance) {
+          filteredDrivers = filteredDrivers.filter((driver) => {
+            const summary = summaries[driver.id];
+            const fallbackValue = Number(driver?.total_penalties ?? 0);
+            const rAndFValue =
+              summary && typeof summary.netPenalties === "number"
+                ? summary.netPenalties
+                : fallbackValue;
+            return Number.isFinite(rAndFValue) && rAndFValue < 0;
+          });
+        }
+
+        // Apply R&F balance range filter
+        if (
+          advancedFilters.rAndFBalanceMin ||
+          advancedFilters.rAndFBalanceMax
+        ) {
+          filteredDrivers = filteredDrivers.filter((driver) => {
+            const summary = summaries[driver.id];
+            const fallbackValue = Number(driver?.total_penalties ?? 0);
+            const rAndFValue =
+              summary && typeof summary.netPenalties === "number"
+                ? summary.netPenalties
+                : fallbackValue;
+
+            if (
+              advancedFilters.rAndFBalanceMin &&
+              rAndFValue < parseFloat(advancedFilters.rAndFBalanceMin)
+            ) {
+              return false;
+            }
+            if (
+              advancedFilters.rAndFBalanceMax &&
+              rAndFValue > parseFloat(advancedFilters.rAndFBalanceMax)
+            ) {
+              return false;
+            }
+            return true;
+          });
+        }
+
+        // Apply document status filter
+        if (advancedFilters.documentStatus !== "all") {
+          filteredDrivers = filteredDrivers.filter((driver) => {
+            const docCheck = checkAllDocumentsUploaded(driver);
+            if (advancedFilters.documentStatus === "complete") {
+              return docCheck.allUploaded;
+            } else if (advancedFilters.documentStatus === "incomplete") {
+              return !docCheck.allUploaded;
+            }
+            return true;
+          });
+        }
 
         // Apply client-side pagination
-        const from = (currentPage - 1) * pageSize;
-        const to = from + pageSize;
-        const paginatedDrivers = filteredDrivers.slice(from, to);
+        const pagFrom = (currentPage - 1) * pageSize;
+        const pagTo = pagFrom + pageSize;
+        const paginatedDrivers = filteredDrivers.slice(pagFrom, pagTo);
 
         setDrivers(paginatedDrivers);
         setTotalCount(filteredDrivers.length);
         setTotalPages(Math.ceil(filteredDrivers.length / pageSize));
       } else {
-        // Normal flow: apply pagination server-side
+        // Normal flow: all filters are server-side, apply pagination server-side
         const from = (currentPage - 1) * pageSize;
         const to = from + pageSize - 1;
         query = query.range(from, to);
@@ -736,14 +996,36 @@ const AdminDrivers = () => {
     setIsResettingPassword(true);
 
     try {
-      // Reset password using Supabase Admin API
-      const { error } = await supabase.auth.admin.updateUserById(
-        selectedDriverForReset.id,
-        { password: newPassword }
+      // Get the current session to pass auth token
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      if (!session) {
+        throw new Error("You must be logged in to reset passwords");
+      }
+
+      // Call the edge function to reset password
+      const response = await fetch(
+        `${SUPABASE_URL}/functions/v1/reset-password`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${session.access_token}`,
+            apikey: SUPABASE_ANON_KEY,
+          },
+          body: JSON.stringify({
+            userId: selectedDriverForReset.id,
+            newPassword: newPassword,
+          }),
+        }
       );
 
-      if (error) {
-        throw error;
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || "Failed to reset password");
       }
 
       toast.success(
@@ -793,25 +1075,47 @@ const AdminDrivers = () => {
   ) => {
     if (!selectedDriverForStatus) return;
 
+    // If resigning, show reason popup first
+    if (status === "resigning") {
+      setShowLeaveResigningModal(false);
+      setResignationReason("");
+      setShowResignationReasonModal(true);
+      return;
+    }
+
+    // If leave, show return date popup first
+    if (status === "leave") {
+      setShowLeaveResigningModal(false);
+      setLeaveReturnDate(null);
+      setShowLeaveReturnDateModal(true);
+      return;
+    }
+
+    // For offline, show offline reason modal
+    setShowLeaveResigningModal(false);
+    setOfflineReason("");
+    setShowOfflineReasonModal(true);
+  };
+
+  const handleLeaveReturnDateSubmit = async () => {
+    if (!selectedDriverForStatus) return;
+
+    if (!leaveReturnDate) {
+      toast.error("Please select a return date");
+      return;
+    }
+
     const id = selectedDriverForStatus.id;
     setIsUpdating(id);
-    setShowLeaveResigningModal(false);
+    setShowLeaveReturnDateModal(false);
 
     try {
       const updateData: any = {
         online: false,
         offline_from_date: new Date().toISOString().split("T")[0],
+        driver_status: "leave",
+        leave_return_date: format(leaveReturnDate, "yyyy-MM-dd"),
       };
-
-      if (status === "leave") {
-        updateData.driver_status = "leave";
-      } else if (status === "resigning") {
-        updateData.driver_status = "resigning";
-        updateData.resigning_date = new Date().toISOString().split("T")[0];
-      } else {
-        // Just offline, no status
-        updateData.driver_status = null;
-      }
 
       const { error } = await supabase
         .from("users")
@@ -828,21 +1132,17 @@ const AdminDrivers = () => {
                 online: false,
                 offline_from_date: updateData.offline_from_date,
                 driver_status: updateData.driver_status,
-                resigning_date:
-                  updateData.resigning_date || driver.resigning_date,
+                leave_return_date: updateData.leave_return_date,
               }
             : driver
         )
       );
 
       toast.success(
-        `Driver is now ${
-          status === "leave"
-            ? "on leave"
-            : status === "resigning"
-            ? "resigning"
-            : "offline"
-        }`
+        `Driver is now on leave. Return date: ${format(
+          leaveReturnDate,
+          "dd MMM yyyy"
+        )}`
       );
 
       // Refresh statistics
@@ -853,6 +1153,149 @@ const AdminDrivers = () => {
     } finally {
       setIsUpdating(null);
       setSelectedDriverForStatus(null);
+      setLeaveReturnDate(null);
+    }
+  };
+
+  const handleOfflineReasonSubmit = async () => {
+    if (!selectedDriverForStatus) return;
+
+    if (!offlineReason.trim()) {
+      toast.error("Please provide an offline reason");
+      return;
+    }
+
+    const id = selectedDriverForStatus.id;
+    setIsUpdating(id);
+    setShowOfflineReasonModal(false);
+
+    try {
+      const updateData: any = {
+        online: false,
+        offline_from_date: new Date().toISOString().split("T")[0],
+        driver_status: null, // Just offline, no status
+        vehicle_number: null, // Set vehicle to N/A
+        shift: "none", // Set shift to non-shift (use "none" string, not null)
+      };
+
+      const { error } = await supabase
+        .from("users")
+        .update(updateData)
+        .eq("id", id);
+
+      if (error) throw error;
+
+      // Save offline reason to driver_offline_records if table exists
+      try {
+        await supabase.from("driver_offline_records").insert({
+          user_id: id,
+          offline_date: new Date().toISOString().split("T")[0],
+          notes: offlineReason.trim(),
+        });
+      } catch (offlineRecordError) {
+        // Table might not exist, continue anyway
+        console.log("Could not save offline reason:", offlineRecordError);
+      }
+
+      setDrivers(
+        drivers.map((driver) =>
+          driver.id === id
+            ? {
+                ...driver,
+                online: false,
+                offline_from_date: updateData.offline_from_date,
+                driver_status: updateData.driver_status,
+                vehicle_number: null,
+                shift: "none", // Use "none" string, not null
+              }
+            : driver
+        )
+      );
+
+      toast.success(`Driver is now offline. Vehicle and shift cleared.`);
+
+      // Log activity
+      await logActivity({
+        actionType: "driver_offline",
+        actionCategory: "drivers",
+        description: `Took driver ${selectedDriverForStatus.name} offline - Reason: ${offlineReason} - Vehicle and shift cleared`,
+        metadata: {
+          driver_id: id,
+          driver_name: selectedDriverForStatus.name,
+          offline_reason: offlineReason,
+          offline_date: new Date().toISOString().split("T")[0],
+          vehicle_cleared: true,
+          shift_cleared: true,
+        },
+        pageName: "Admin Drivers",
+      });
+
+      // Refresh statistics
+      fetchStatistics();
+    } catch (error) {
+      console.error("Error updating driver status:", error);
+      toast.error("Failed to update driver status");
+    } finally {
+      setIsUpdating(null);
+      setSelectedDriverForStatus(null);
+      setOfflineReason("");
+    }
+  };
+
+  const handleResignationSubmit = async () => {
+    if (!selectedDriverForStatus) return;
+
+    if (!resignationReason.trim()) {
+      toast.error("Please provide a resignation reason");
+      return;
+    }
+
+    const id = selectedDriverForStatus.id;
+    setIsUpdating(id);
+    setShowResignationReasonModal(false);
+
+    try {
+      const updateData: any = {
+        online: false,
+        offline_from_date: new Date().toISOString().split("T")[0],
+        driver_status: "resigning",
+        resigning_date: new Date().toISOString().split("T")[0],
+        resignation_reason: resignationReason.trim(),
+      };
+
+      const { error } = await supabase
+        .from("users")
+        .update(updateData)
+        .eq("id", id);
+
+      if (error) throw error;
+
+      setDrivers(
+        drivers.map((driver) =>
+          driver.id === id
+            ? {
+                ...driver,
+                online: false,
+                offline_from_date: updateData.offline_from_date,
+                driver_status: updateData.driver_status,
+                resigning_date: updateData.resigning_date,
+                resignation_reason: updateData.resignation_reason,
+              }
+            : driver
+        )
+      );
+
+      toast.success("Driver status updated to resigning");
+
+      // Refresh statistics
+      fetchStatistics();
+    } catch (error) {
+      console.error("Error updating driver status:", error);
+      toast.error("Failed to update driver status");
+    } finally {
+      setIsUpdating(null);
+      setSelectedDriverForStatus(null);
+      setResignationReason("");
     }
   };
 
@@ -860,9 +1303,9 @@ const AdminDrivers = () => {
     id: string,
     currentStatus: boolean | null
   ) => {
-    // Check if user is admin
-    if (!isAdmin) {
-      toast.error("Only admins can change driver online status");
+    // Check if user is admin or manager
+    if (!canPutDriverOnline) {
+      toast.error("Only admins and managers can change driver online status");
       return;
     }
 
@@ -884,8 +1327,34 @@ const AdminDrivers = () => {
       }
     }
 
-    // If trying to take driver offline, show leave/resigning modal
+    // If trying to take driver offline, first check for overdue count
     if (currentStatus) {
+      const overdue = await getDriverOverdueCount(driver);
+      if (overdue > 0) {
+        setOverdueCount(overdue);
+        setOverdueDriverName(
+          driver?.name || driver?.driver_id || "Unknown Driver"
+        );
+        setShowOverdueWarning(true);
+        return; // Block offline action when overdue exists
+      }
+
+      // Check if driver has vehicle and shift assigned
+      const hasVehicle =
+        driver?.vehicle_number && driver.vehicle_number !== "N/A";
+      const hasShift =
+        driver?.shift && driver.shift !== "none" && driver.shift !== null;
+
+      if (hasVehicle || hasShift) {
+        toast.error(
+          `Cannot take driver offline. Please first set:\n- Vehicle to "N/A"\n- Shift to "None"\n\nCurrent: Vehicle = ${
+            driver?.vehicle_number || "N/A"
+          }, Shift = ${driver?.shift || "None"}`
+        );
+        return;
+      }
+
+      // No overdue and no vehicle/shift assigned, show leave/resigning/offline status modal
       setSelectedDriverForStatus(driver);
       setShowLeaveResigningModal(true);
       return; // Don't proceed with offline action yet
@@ -931,6 +1400,26 @@ const AdminDrivers = () => {
 
       toast.success(`Driver is now ${!currentStatus ? "online" : "offline"}`);
 
+      // Log activity
+      const driver = drivers.find((d) => d.id === id);
+      await logActivity({
+        actionType: !currentStatus ? "driver_online" : "driver_offline",
+        actionCategory: "drivers",
+        description: `Brought driver ${driver?.name} ${
+          !currentStatus ? "online" : "offline"
+        }${
+          driver?.vehicle_number ? ` - Vehicle: ${driver.vehicle_number}` : ""
+        }${driver?.shift ? ` - Shift: ${driver.shift}` : ""}`,
+        metadata: {
+          driver_id: id,
+          driver_name: driver?.name,
+          vehicle_number: driver?.vehicle_number,
+          shift: driver?.shift,
+          status: !currentStatus ? "online" : "offline",
+        },
+        pageName: "Admin Drivers",
+      });
+
       // Refresh statistics
       fetchStatistics();
     } catch (error) {
@@ -970,6 +1459,31 @@ const AdminDrivers = () => {
     setCurrentPage(1);
   };
 
+  const getActiveFilterCount = () => {
+    let count = 0;
+    if (searchQuery.trim() !== "") count++;
+    if (shiftFilter !== "all") count++;
+    if (verificationFilter !== "all") count++;
+    if (showOnlineOnly) count++;
+    if (showLowDeposit) count++;
+    if (showNegativeBalance) count++;
+    if (advancedFilters.joiningDateFrom) count++;
+    if (advancedFilters.joiningDateTo) count++;
+    if (advancedFilters.depositMin) count++;
+    if (advancedFilters.depositMax) count++;
+    if (advancedFilters.rAndFBalanceMin) count++;
+    if (advancedFilters.rAndFBalanceMax) count++;
+    if (advancedFilters.driverCategory !== "all") count++;
+    if (advancedFilters.driverStatus !== "all") count++;
+    if (advancedFilters.documentStatus !== "all") count++;
+    if (advancedFilters.totalTripsMin) count++;
+    if (advancedFilters.totalTripsMax) count++;
+    if (advancedFilters.vehicleAssignment !== "all") count++;
+    if (advancedFilters.resigningDateFrom) count++;
+    if (advancedFilters.resigningDateTo) count++;
+    return count;
+  };
+
   const resetFilters = () => {
     setSearchQuery("");
     setShiftFilter("all");
@@ -977,6 +1491,22 @@ const AdminDrivers = () => {
     setShowOnlineOnly(false);
     setShowLowDeposit(false);
     setShowNegativeBalance(false);
+    setAdvancedFilters({
+      joiningDateFrom: null,
+      joiningDateTo: null,
+      depositMin: "",
+      depositMax: "",
+      rAndFBalanceMin: "",
+      rAndFBalanceMax: "",
+      driverCategory: "all",
+      driverStatus: "all",
+      documentStatus: "all",
+      totalTripsMin: "",
+      totalTripsMax: "",
+      vehicleAssignment: "all",
+      resigningDateFrom: null,
+      resigningDateTo: null,
+    });
     setCurrentPage(1);
   };
 
@@ -1184,6 +1714,18 @@ const AdminDrivers = () => {
     };
   };
 
+  const handleCopyDriverId = async (driverId: string) => {
+    try {
+      await navigator.clipboard.writeText(driverId);
+      setCopiedDriverId(driverId);
+      toast.success("Driver ID copied to clipboard");
+      setTimeout(() => setCopiedDriverId(null), 2000);
+    } catch (error) {
+      console.error("Failed to copy:", error);
+      toast.error("Failed to copy Driver ID");
+    }
+  };
+
   const MobileDriverCard = ({ driver }) => {
     const penaltyInfo = getDriverPenaltyDisplay(driver);
     const netInfo = getNetBalanceInfo(driver);
@@ -1195,6 +1737,7 @@ const AdminDrivers = () => {
             <Avatar>
               <AvatarImage src={driver.profile_photo || undefined} />
               <AvatarFallback>{driver.name?.charAt(0) || "U"}</AvatarFallback>
+              <BadgeCheck className="h-4 w-4 text-white bg-green-600 rounded-full" />
             </Avatar>
             <div>
               <h3 className="font-medium">{driver.name}</h3>
@@ -1203,6 +1746,32 @@ const AdminDrivers = () => {
           </div>
 
           <div className="space-y-2">
+            <div className="flex justify-between items-center">
+              <span className="text-sm text-muted-foreground">Driver ID:</span>
+              <div className="flex items-center gap-2">
+                {driver.driver_id ? (
+                  <>
+                    <span className="text-sm font-mono">
+                      {driver.driver_id}
+                    </span>
+                    <button
+                      onClick={() => handleCopyDriverId(driver.driver_id)}
+                      className="p-1 hover:bg-gray-100 rounded transition-colors"
+                      title="Copy Driver ID"
+                    >
+                      {copiedDriverId === driver.driver_id ? (
+                        <Check className="h-3 w-3 text-green-600" />
+                      ) : (
+                        <Copy className="h-3 w-3 text-gray-500" />
+                      )}
+                    </button>
+                  </>
+                ) : (
+                  <span className="text-sm text-gray-400">N/A</span>
+                )}
+              </div>
+            </div>
+
             <div className="flex justify-between">
               <span className="text-sm text-muted-foreground">Vehicle:</span>
               <div className="flex items-center gap-2">
@@ -1262,11 +1831,11 @@ const AdminDrivers = () => {
                   onCheckedChange={() =>
                     toggleOnlineStatus(driver.id, driver.online)
                   }
-                  disabled={isUpdating === driver.id || !isAdmin}
-                  title={!isAdmin ? "Admin only" : ""}
+                  disabled={isUpdating === driver.id || !canPutDriverOnline}
+                  title={!canPutDriverOnline ? "Admin/Manager only" : ""}
                 />
-                {!isAdmin && (
-                  <span className="text-xs text-amber-600">(Admin)</span>
+                {!canPutDriverOnline && (
+                  <span className="text-xs text-amber-600">(Admin/Manager)</span>
                 )}
               </div>
             </div>
@@ -1390,13 +1959,7 @@ const AdminDrivers = () => {
     <AdminLayout title="Drivers Management">
       <Card className="mb-4">
         <CardContent className="p-4">
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-8 gap-4">
-            <div className="flex flex-col items-center">
-              <span className="text-sm font-medium text-gray-500">
-                Total Drivers
-              </span>
-              <span className="text-2xl font-bold">{statistics.total}</span>
-            </div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-4">
             <div className="flex flex-col items-center">
               <span className="text-sm font-medium text-gray-500">
                 Active Drivers
@@ -1407,31 +1970,34 @@ const AdminDrivers = () => {
             </div>
             <div className="flex flex-col items-center">
               <span className="text-sm font-medium text-gray-500">
-                Offline Drivers
+                Total Leave
               </span>
-              <span className="text-2xl font-bold text-red-500">
-                {statistics.offline}
+              <span className="text-2xl font-bold text-orange-500">
+                {statistics.totalLeave}
               </span>
             </div>
-            {/* <div className="flex flex-col items-center">
-              <span className="text-sm font-medium text-gray-500">
-                Total Neg R &amp; P Balance
-              </span>
-              <span className="text-2xl font-bold text-red-500">
-                {statistics.totalNegBalance < 0 ? "-" : ""}₹
-                {Math.abs(statistics.totalNegBalance).toLocaleString("en-IN", {
-                  minimumFractionDigits: 0,
-                  maximumFractionDigits: 0,
-                })}
-              </span>
-            </div> */}
             <div className="flex flex-col items-center">
               <span className="text-sm font-medium text-gray-500">
-                Total Penalties
+                Total Resigning
               </span>
-              <span className="text-2xl font-bold text-red-500">
+              <span className="text-2xl font-bold text-purple-500">
+                {statistics.totalResigning}
+              </span>
+            </div>
+
+            <div className="flex flex-col items-center">
+              <span className="text-sm font-medium text-gray-500">
+                Total Drivers
+              </span>
+              <span className="text-2xl font-bold">{statistics.total}</span>
+            </div>
+            <div className="flex flex-col items-center">
+              <span className="text-sm font-medium text-gray-500">
+                Total Drivers Deposit
+              </span>
+              <span className="text-2xl font-bold text-blue-600">
                 ₹
-                {statistics.totalPenalties.toLocaleString("en-IN", {
+                {statistics.totalDeposit.toLocaleString("en-IN", {
                   minimumFractionDigits: 0,
                   maximumFractionDigits: 0,
                 })}
@@ -1451,16 +2017,38 @@ const AdminDrivers = () => {
             </div>
             <div className="flex flex-col items-center">
               <span className="text-sm font-medium text-gray-500">
-                Total Drivers Deposit
+                Total Penalties
               </span>
-              <span className="text-2xl font-bold text-blue-600">
+              <span className="text-2xl font-bold text-red-500">
                 ₹
-                {statistics.totalDeposit.toLocaleString("en-IN", {
+                {statistics.totalPenalties.toLocaleString("en-IN", {
                   minimumFractionDigits: 0,
                   maximumFractionDigits: 0,
                 })}
               </span>
             </div>
+
+            {/* <div className="flex flex-col items-center">
+              <span className="text-sm font-medium text-gray-500">
+                Offline Drivers
+              </span>
+              <span className="text-2xl font-bold text-red-500">
+                {statistics.offline}
+              </span>
+            </div> */}
+            {/* <div className="flex flex-col items-center">
+              <span className="text-sm font-medium text-gray-500">
+                Total Neg R &amp; P Balance
+              </span>
+              <span className="text-2xl font-bold text-red-500">
+                {statistics.totalNegBalance < 0 ? "-" : ""}₹
+                {Math.abs(statistics.totalNegBalance).toLocaleString("en-IN", {
+                  minimumFractionDigits: 0,
+                  maximumFractionDigits: 0,
+                })}
+              </span>
+            </div> */}
+
             {/* <div className="flex flex-col items-center">
               <span className="text-sm font-medium text-gray-500">
                 Net Balance
@@ -1475,22 +2063,6 @@ const AdminDrivers = () => {
                 ₹{statistics.totalNetBalance.toLocaleString()}
               </span>
             </div> */}
-            <div className="flex flex-col items-center">
-              <span className="text-sm font-medium text-gray-500">
-                Total Leave
-              </span>
-              <span className="text-2xl font-bold text-orange-500">
-                {statistics.totalLeave}
-              </span>
-            </div>
-            <div className="flex flex-col items-center">
-              <span className="text-sm font-medium text-gray-500">
-                Total Resigning
-              </span>
-              <span className="text-2xl font-bold text-purple-500">
-                {statistics.totalResigning}
-              </span>
-            </div>
           </div>
         </CardContent>
       </Card>
@@ -1562,6 +2134,28 @@ const AdminDrivers = () => {
               >
                 <Filter className="h-4 w-4 mr-1" />
                 {showFilters ? "Hide Filters" : "Show Filters"}
+                {getActiveFilterCount() > 0 && (
+                  <Badge
+                    variant="destructive"
+                    className="ml-2 h-5 w-5 p-0 flex items-center justify-center text-xs"
+                  >
+                    {getActiveFilterCount()}
+                  </Badge>
+                )}
+              </Button>
+
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
+                className="flex items-center"
+              >
+                {showAdvancedFilters ? (
+                  <ChevronUp className="h-4 w-4 mr-1" />
+                ) : (
+                  <ChevronDown className="h-4 w-4 mr-1" />
+                )}
+                Advanced Filters
               </Button>
 
               <Button
@@ -1635,6 +2229,402 @@ const AdminDrivers = () => {
               </div>
             </div>
           )}
+
+          {/* Advanced Filters Section */}
+          {showAdvancedFilters && (
+            <div className="mt-6 border-t pt-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold">Advanced Filters</h3>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setAdvancedFilters({
+                      joiningDateFrom: null,
+                      joiningDateTo: null,
+                      depositMin: "",
+                      depositMax: "",
+                      rAndFBalanceMin: "",
+                      rAndFBalanceMax: "",
+                      driverCategory: "all",
+                      driverStatus: "all",
+                      documentStatus: "all",
+                      totalTripsMin: "",
+                      totalTripsMax: "",
+                      vehicleAssignment: "all",
+                      resigningDateFrom: null,
+                      resigningDateTo: null,
+                    });
+                    setCurrentPage(1);
+                  }}
+                  className="text-red-600 hover:text-red-700"
+                >
+                  <X className="h-4 w-4 mr-1" />
+                  Clear Advanced
+                </Button>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {/* Joining Date Range */}
+                <div className="space-y-2">
+                  <Label>Joining Date Range</Label>
+                  <div className="space-y-2">
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button
+                          variant="outline"
+                          className={cn(
+                            "w-full justify-start text-left font-normal",
+                            !advancedFilters.joiningDateFrom &&
+                              "text-muted-foreground"
+                          )}
+                        >
+                          <CalendarIcon className="mr-2 h-4 w-4" />
+                          {advancedFilters.joiningDateFrom ? (
+                            format(
+                              advancedFilters.joiningDateFrom,
+                              "dd MMM yyyy"
+                            )
+                          ) : (
+                            <span>From date</span>
+                          )}
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0" align="start">
+                        <Calendar
+                          mode="single"
+                          selected={
+                            advancedFilters.joiningDateFrom || undefined
+                          }
+                          onSelect={(date) => {
+                            setAdvancedFilters({
+                              ...advancedFilters,
+                              joiningDateFrom: date || null,
+                            });
+                            setCurrentPage(1);
+                          }}
+                          initialFocus
+                        />
+                      </PopoverContent>
+                    </Popover>
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button
+                          variant="outline"
+                          className={cn(
+                            "w-full justify-start text-left font-normal",
+                            !advancedFilters.joiningDateTo &&
+                              "text-muted-foreground"
+                          )}
+                        >
+                          <CalendarIcon className="mr-2 h-4 w-4" />
+                          {advancedFilters.joiningDateTo ? (
+                            format(advancedFilters.joiningDateTo, "dd MMM yyyy")
+                          ) : (
+                            <span>To date</span>
+                          )}
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0" align="start">
+                        <Calendar
+                          mode="single"
+                          selected={advancedFilters.joiningDateTo || undefined}
+                          onSelect={(date) => {
+                            setAdvancedFilters({
+                              ...advancedFilters,
+                              joiningDateTo: date || null,
+                            });
+                            setCurrentPage(1);
+                          }}
+                          initialFocus
+                        />
+                      </PopoverContent>
+                    </Popover>
+                  </div>
+                </div>
+
+                {/* Deposit Range */}
+                <div className="space-y-2">
+                  <Label>Deposit Range (₹)</Label>
+                  <div className="flex gap-2">
+                    <Input
+                      type="number"
+                      placeholder="Min"
+                      value={advancedFilters.depositMin}
+                      onChange={(e) => {
+                        setAdvancedFilters({
+                          ...advancedFilters,
+                          depositMin: e.target.value,
+                        });
+                        setCurrentPage(1);
+                      }}
+                      className="flex-1"
+                    />
+                    <Input
+                      type="number"
+                      placeholder="Max"
+                      value={advancedFilters.depositMax}
+                      onChange={(e) => {
+                        setAdvancedFilters({
+                          ...advancedFilters,
+                          depositMax: e.target.value,
+                        });
+                        setCurrentPage(1);
+                      }}
+                      className="flex-1"
+                    />
+                  </div>
+                </div>
+
+                {/* R&F Balance Range */}
+                <div className="space-y-2">
+                  <Label>R &amp; F Balance Range (₹)</Label>
+                  <div className="flex gap-2">
+                    <Input
+                      type="number"
+                      placeholder="Min"
+                      value={advancedFilters.rAndFBalanceMin}
+                      onChange={(e) => {
+                        setAdvancedFilters({
+                          ...advancedFilters,
+                          rAndFBalanceMin: e.target.value,
+                        });
+                        setCurrentPage(1);
+                      }}
+                      className="flex-1"
+                    />
+                    <Input
+                      type="number"
+                      placeholder="Max"
+                      value={advancedFilters.rAndFBalanceMax}
+                      onChange={(e) => {
+                        setAdvancedFilters({
+                          ...advancedFilters,
+                          rAndFBalanceMax: e.target.value,
+                        });
+                        setCurrentPage(1);
+                      }}
+                      className="flex-1"
+                    />
+                  </div>
+                </div>
+
+                {/* Driver Category */}
+                <div className="space-y-2">
+                  <Label>Driver Category</Label>
+                  <Select
+                    value={advancedFilters.driverCategory}
+                    onValueChange={(value) => {
+                      setAdvancedFilters({
+                        ...advancedFilters,
+                        driverCategory: value,
+                      });
+                      setCurrentPage(1);
+                    }}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Categories</SelectItem>
+                      <SelectItem value="hub_base">Hub Base</SelectItem>
+                      <SelectItem value="salary_base">Salary Base</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Driver Status */}
+                <div className="space-y-2">
+                  <Label>Driver Status</Label>
+                  <Select
+                    value={advancedFilters.driverStatus}
+                    onValueChange={(value) => {
+                      setAdvancedFilters({
+                        ...advancedFilters,
+                        driverStatus: value,
+                      });
+                      setCurrentPage(1);
+                    }}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Status</SelectItem>
+                      <SelectItem value="online">Online</SelectItem>
+                      <SelectItem value="offline">Offline</SelectItem>
+                      <SelectItem value="leave">Leave</SelectItem>
+                      <SelectItem value="resigning">Resigning</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Document Status */}
+                <div className="space-y-2">
+                  <Label>Document Status</Label>
+                  <Select
+                    value={advancedFilters.documentStatus}
+                    onValueChange={(value) => {
+                      setAdvancedFilters({
+                        ...advancedFilters,
+                        documentStatus: value,
+                      });
+                      setCurrentPage(1);
+                    }}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All</SelectItem>
+                      <SelectItem value="complete">Complete</SelectItem>
+                      <SelectItem value="incomplete">Incomplete</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Total Trips Range */}
+                <div className="space-y-2">
+                  <Label>Total Trips Range</Label>
+                  <div className="flex gap-2">
+                    <Input
+                      type="number"
+                      placeholder="Min"
+                      value={advancedFilters.totalTripsMin}
+                      onChange={(e) => {
+                        setAdvancedFilters({
+                          ...advancedFilters,
+                          totalTripsMin: e.target.value,
+                        });
+                        setCurrentPage(1);
+                      }}
+                      className="flex-1"
+                    />
+                    <Input
+                      type="number"
+                      placeholder="Max"
+                      value={advancedFilters.totalTripsMax}
+                      onChange={(e) => {
+                        setAdvancedFilters({
+                          ...advancedFilters,
+                          totalTripsMax: e.target.value,
+                        });
+                        setCurrentPage(1);
+                      }}
+                      className="flex-1"
+                    />
+                  </div>
+                </div>
+
+                {/* Vehicle Assignment */}
+                <div className="space-y-2">
+                  <Label>Vehicle Assignment</Label>
+                  <Select
+                    value={advancedFilters.vehicleAssignment}
+                    onValueChange={(value) => {
+                      setAdvancedFilters({
+                        ...advancedFilters,
+                        vehicleAssignment: value,
+                      });
+                      setCurrentPage(1);
+                    }}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All</SelectItem>
+                      <SelectItem value="assigned">Assigned</SelectItem>
+                      <SelectItem value="unassigned">Unassigned</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Resigning Date Range */}
+                <div className="space-y-2">
+                  <Label>Resigning Date Range</Label>
+                  <div className="space-y-2">
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button
+                          variant="outline"
+                          className={cn(
+                            "w-full justify-start text-left font-normal",
+                            !advancedFilters.resigningDateFrom &&
+                              "text-muted-foreground"
+                          )}
+                        >
+                          <CalendarIcon className="mr-2 h-4 w-4" />
+                          {advancedFilters.resigningDateFrom ? (
+                            format(
+                              advancedFilters.resigningDateFrom,
+                              "dd MMM yyyy"
+                            )
+                          ) : (
+                            <span>From date</span>
+                          )}
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0" align="start">
+                        <Calendar
+                          mode="single"
+                          selected={
+                            advancedFilters.resigningDateFrom || undefined
+                          }
+                          onSelect={(date) => {
+                            setAdvancedFilters({
+                              ...advancedFilters,
+                              resigningDateFrom: date || null,
+                            });
+                            setCurrentPage(1);
+                          }}
+                          initialFocus
+                        />
+                      </PopoverContent>
+                    </Popover>
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button
+                          variant="outline"
+                          className={cn(
+                            "w-full justify-start text-left font-normal",
+                            !advancedFilters.resigningDateTo &&
+                              "text-muted-foreground"
+                          )}
+                        >
+                          <CalendarIcon className="mr-2 h-4 w-4" />
+                          {advancedFilters.resigningDateTo ? (
+                            format(
+                              advancedFilters.resigningDateTo,
+                              "dd MMM yyyy"
+                            )
+                          ) : (
+                            <span>To date</span>
+                          )}
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0" align="start">
+                        <Calendar
+                          mode="single"
+                          selected={
+                            advancedFilters.resigningDateTo || undefined
+                          }
+                          onSelect={(date) => {
+                            setAdvancedFilters({
+                              ...advancedFilters,
+                              resigningDateTo: date || null,
+                            });
+                            setCurrentPage(1);
+                          }}
+                          initialFocus
+                        />
+                      </PopoverContent>
+                    </Popover>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -1668,6 +2658,7 @@ const AdminDrivers = () => {
                         <TableRow>
                           {/* <TableHead className="w-12">Profile</TableHead> */}
                           <TableHead>Name</TableHead>
+                          <TableHead>Driver ID</TableHead>
                           <TableHead>Joining Date</TableHead>
                           <TableHead>Ph No</TableHead>
                           <TableHead>Vehicle</TableHead>
@@ -1687,7 +2678,7 @@ const AdminDrivers = () => {
                         {drivers.length === 0 ? (
                           <TableRow>
                             <TableCell
-                              colSpan={12}
+                              colSpan={13}
                               className="text-center py-8"
                             >
                               No drivers found
@@ -1710,8 +2701,39 @@ const AdminDrivers = () => {
                                   </AvatarFallback>
                                 </Avatar>
                               </TableCell> */}
-                                <TableCell className="font-medium">
+                                <TableCell className="font-medium flex gap-1">
                                   {driver.name}
+                                  <span>
+                                    {driver.is_verified && (
+                                      <BadgeCheck className="h-3 w-3 text-white bg-green-600 rounded-full" />
+                                    )}
+                                  </span>
+                                </TableCell>
+                                <TableCell>
+                                  {driver.driver_id ? (
+                                    <div className="flex items-center gap-2">
+                                      <span className="text-sm font-mono">
+                                        {driver.driver_id}
+                                      </span>
+                                      <button
+                                        onClick={() =>
+                                          handleCopyDriverId(driver.driver_id)
+                                        }
+                                        className="p-1 hover:bg-gray-100 rounded transition-colors"
+                                        title="Copy Driver ID"
+                                      >
+                                        {copiedDriverId === driver.driver_id ? (
+                                          <Check className="h-3 w-3 text-green-600" />
+                                        ) : (
+                                          <Copy className="h-3 w-3 text-gray-500" />
+                                        )}
+                                      </button>
+                                    </div>
+                                  ) : (
+                                    <span className="text-sm text-gray-400">
+                                      N/A
+                                    </span>
+                                  )}
                                 </TableCell>
                                 <TableCell>
                                   {driver.joining_date
@@ -1800,14 +2822,14 @@ const AdminDrivers = () => {
                                         )
                                       }
                                       disabled={
-                                        isUpdating === driver.id || !isAdmin
+                                        isUpdating === driver.id || !canPutDriverOnline
                                       }
                                       className="data-[state=checked]:bg-green-500"
-                                      title={!isAdmin ? "Admin only" : ""}
+                                      title={!canPutDriverOnline ? "Admin/Manager only" : ""}
                                     />
-                                    {!isAdmin && (
+                                    {!canPutDriverOnline && (
                                       <span className="text-xs text-amber-600">
-                                        (Admin)
+                                        (Admin/Manager)
                                       </span>
                                     )}
                                   </div>
@@ -2026,11 +3048,11 @@ const AdminDrivers = () => {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-orange-600">
               <AlertTriangle className="h-5 w-5" />
-              Pending Balance Warning
+              Overdue Reports Found
             </DialogTitle>
             <DialogDescription>
-              This driver has a pending balance. You can still make them
-              offline.
+              This driver has overdue rent submissions. They must be cleared
+              before the driver can be taken offline.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
@@ -2042,43 +3064,31 @@ const AdminDrivers = () => {
               <div className="flex items-center gap-2 text-orange-800 mt-2">
                 <AlertCircle className="h-4 w-4" />
                 <span className="font-medium">
-                  Pending Amount: ₹{overdueAmount.toLocaleString()}
+                  Overdue Count: {overdueCount}
                 </span>
               </div>
               <p className="text-sm text-orange-600 mt-2">
-                This driver has a pending balance. You can still make them
-                offline if needed.
+                Please ensure all overdue reports are submitted and approved
+                before changing this driver to offline / leave / resigning.
               </p>
             </div>
             <div className="text-sm text-gray-600">
-              <p>• The pending balance will remain on their account</p>
-              <p>• They can be made online again later</p>
-              <p>• Balance will be settled when they come back online</p>
+              <p>
+                • Driver will remain online until all overdue days are cleared
+              </p>
+              <p>
+                • You can review their reports in the calendar or cash trip list
+              </p>
             </div>
           </div>
           <DialogFooter className="flex gap-2">
             <Button
               variant="outline"
-              onClick={() => setShowOverdueWarning(false)}
-            >
-              Cancel
-            </Button>
-            <Button
-              variant="destructive"
-              onClick={async () => {
+              onClick={() => {
                 setShowOverdueWarning(false);
-                // Find the driver and proceed with offline action
-                const driverToUpdate = drivers.find(
-                  (driver) =>
-                    driver.name === overdueDriverName ||
-                    driver.id === overdueDriverName
-                );
-                if (driverToUpdate) {
-                  await toggleOnlineStatus(driverToUpdate.id, true);
-                }
               }}
             >
-              Offline Anyway
+              Close
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -2331,6 +3341,262 @@ const AdminDrivers = () => {
               }}
             >
               Cancel
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Leave Return Date Dialog */}
+      <Dialog
+        open={showLeaveReturnDateModal}
+        onOpenChange={setShowLeaveReturnDateModal}
+      >
+        <DialogContent className="sm:max-w-[425px] max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-orange-600">
+              <CalendarIcon className="h-5 w-5" />
+              Set Leave Return Date
+            </DialogTitle>
+            <DialogDescription>
+              Please select the expected return date for{" "}
+              {selectedDriverForStatus?.name || "this driver"}.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
+              <div className="flex items-center gap-2 text-orange-800 mb-2">
+                <AlertCircle className="h-4 w-4" />
+                <span className="font-medium">
+                  Driver: {selectedDriverForStatus?.name || "Unknown"}
+                </span>
+              </div>
+              <p className="text-sm text-orange-600 mt-2">
+                This return date will help you know when to call the driver to
+                come back. You can view all drivers on leave with their return
+                dates in the drivers list.
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="leave-return-date">Expected Return Date *</Label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className={cn(
+                      "w-full justify-start text-left font-normal",
+                      !leaveReturnDate && "text-muted-foreground"
+                    )}
+                  >
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {leaveReturnDate ? (
+                      format(leaveReturnDate, "dd MMM yyyy")
+                    ) : (
+                      <span>Select return date</span>
+                    )}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent
+                  className="w-auto p-0 z-[100]"
+                  align="start"
+                  side="top"
+                  sideOffset={4}
+                  collisionPadding={8}
+                >
+                  <Calendar
+                    mode="single"
+                    selected={leaveReturnDate || undefined}
+                    onSelect={(date) => setLeaveReturnDate(date || null)}
+                    disabled={(date) => date < new Date()}
+                    initialFocus
+                  />
+                </PopoverContent>
+              </Popover>
+              <p className="text-xs text-gray-500">
+                Select the date when the driver is expected to return from
+                leave.
+              </p>
+            </div>
+          </div>
+          <DialogFooter className="flex gap-2">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowLeaveReturnDateModal(false);
+                setLeaveReturnDate(null);
+                setSelectedDriverForStatus(null);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleLeaveReturnDateSubmit}
+              disabled={
+                isUpdating === selectedDriverForStatus?.id || !leaveReturnDate
+              }
+              className="bg-orange-600 hover:bg-orange-700"
+            >
+              {isUpdating === selectedDriverForStatus?.id
+                ? "Saving..."
+                : "Set Leave"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Resignation Reason Dialog */}
+      <Dialog
+        open={showResignationReasonModal}
+        onOpenChange={setShowResignationReasonModal}
+      >
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-purple-600">
+              <Users className="h-5 w-5" />
+              Resignation Reason
+            </DialogTitle>
+            <DialogDescription>
+              Please provide the reason for{" "}
+              {selectedDriverForStatus?.name || "this driver"}'s resignation.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
+              <div className="flex items-center gap-2 text-purple-800 mb-2">
+                <AlertCircle className="h-4 w-4" />
+                <span className="font-medium">
+                  Driver: {selectedDriverForStatus?.name || "Unknown"}
+                </span>
+              </div>
+              <p className="text-sm text-purple-600 mt-2">
+                This reason will be saved in the driver's record for future
+                reference.
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="resignation-reason">Resignation Reason *</Label>
+              <Textarea
+                id="resignation-reason"
+                placeholder="Enter the reason for resignation..."
+                value={resignationReason}
+                onChange={(e) => setResignationReason(e.target.value)}
+                className="min-h-[120px]"
+                required
+              />
+              <p className="text-xs text-gray-500">
+                Please provide a clear reason for the driver's resignation.
+              </p>
+            </div>
+          </div>
+          <DialogFooter className="flex gap-2">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowResignationReasonModal(false);
+                setResignationReason("");
+                setSelectedDriverForStatus(null);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleResignationSubmit}
+              disabled={
+                isUpdating === selectedDriverForStatus?.id ||
+                !resignationReason.trim()
+              }
+              className="bg-purple-600 hover:bg-purple-700"
+            >
+              {isUpdating === selectedDriverForStatus?.id
+                ? "Saving..."
+                : "Save Resignation"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Offline Reason Dialog */}
+      <Dialog
+        open={showOfflineReasonModal}
+        onOpenChange={setShowOfflineReasonModal}
+      >
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-gray-600">
+              <WifiOff className="h-5 w-5" />
+              Offline Reason
+            </DialogTitle>
+            <DialogDescription>
+              Please provide the reason for taking{" "}
+              {selectedDriverForStatus?.name || "this driver"} offline. Vehicle
+              and shift will be set to N/A and Non-shift.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+              <div className="flex items-center gap-2 text-gray-800 mb-2">
+                <AlertCircle className="h-4 w-4" />
+                <span className="font-medium">
+                  Driver: {selectedDriverForStatus?.name || "Unknown"}
+                </span>
+              </div>
+              <div className="flex items-center gap-2 text-gray-800 mt-2">
+                <AlertCircle className="h-4 w-4" />
+                <span className="text-sm">
+                  Vehicle: {selectedDriverForStatus?.vehicle_number || "N/A"} →
+                  N/A
+                </span>
+              </div>
+              <div className="flex items-center gap-2 text-gray-800 mt-2">
+                <AlertCircle className="h-4 w-4" />
+                <span className="text-sm">
+                  Shift: {selectedDriverForStatus?.shift || "None"} → Non-shift
+                </span>
+              </div>
+              <p className="text-sm text-gray-600 mt-2">
+                When a driver goes offline, their vehicle assignment and shift
+                will be automatically cleared.
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="offline-reason">Offline Reason *</Label>
+              <Textarea
+                id="offline-reason"
+                placeholder="Enter the reason for going offline..."
+                value={offlineReason}
+                onChange={(e) => setOfflineReason(e.target.value)}
+                className="min-h-[120px]"
+                required
+              />
+              <p className="text-xs text-gray-500">
+                Please provide a clear reason for taking the driver offline.
+              </p>
+            </div>
+          </div>
+          <DialogFooter className="flex gap-2">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowOfflineReasonModal(false);
+                setOfflineReason("");
+                setSelectedDriverForStatus(null);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleOfflineReasonSubmit}
+              disabled={
+                isUpdating === selectedDriverForStatus?.id ||
+                !offlineReason.trim()
+              }
+              className="bg-gray-600 hover:bg-gray-700"
+            >
+              {isUpdating === selectedDriverForStatus?.id
+                ? "Saving..."
+                : "Take Offline"}
             </Button>
           </DialogFooter>
         </DialogContent>

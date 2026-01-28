@@ -22,6 +22,7 @@ import {
   Target,
   AlertCircle,
   Shield,
+  Calendar1,
 } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import HRLeadsManagement from "@/components/HRLeadsManagement";
@@ -45,6 +46,8 @@ import HRSystemSettings from "@/components/HRSystemSettings";
 import HRDailyHistory from "@/components/HRDailyHistory";
 import HRManipulationMonitor from "@/components/HRManipulationMonitor";
 import HRWorkingHours from "@/components/HRWorkingHours";
+import AdminLeaveManagement from "@/pages/admin/AdminLeaveManagement";
+import HRLeaveManagement from "./HrLeave";
 
 interface HRStats {
   totalLeads: number;
@@ -64,6 +67,7 @@ const HRDashboard: React.FC = () => {
     | "statuses"
     | "calendar"
     | "performance"
+    | "leave management"
     | "enhanced_analytics"
     | "analytics"
     | "live_activity"
@@ -282,6 +286,11 @@ const HRDashboard: React.FC = () => {
           id: "performance",
           label: "Team Performance",
           icon: <BarChart3 className="w-4 h-4" />,
+        },
+        {
+          id: "leave management",
+          label: "Leave Management",
+          icon: <Calendar1 className="w-4 h-4" />,
         },
         {
           id: "daily_history",
@@ -900,6 +909,12 @@ const HRDashboard: React.FC = () => {
               (userRole === "hr_manager" || userRole === "admin") && (
                 <div className="bg-white rounded-lg shadow-lg border border-gray-200 p-6">
                   <HRLiveActivityDashboard />
+                </div>
+              )}
+            {activeTab === "leave management" &&
+              (userRole === "hr_manager" || userRole === "admin") && (
+                <div className="bg-white rounded-lg shadow-lg border border-gray-200 p-6">
+                  <HRLeaveManagement />
                 </div>
               )}
 

@@ -13,15 +13,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import {
-  format,
-  addDays,
-  isBefore,
-  parseISO,
-  startOfWeek,
-  addWeeks,
-  getDay,
-} from "date-fns";
+import { format, addDays, isBefore, parseISO } from "date-fns";
 
 interface LeaveApplication {
   id: string;
@@ -74,26 +66,11 @@ export default function LeaveApplication() {
     }
   };
 
-  // Get the next available Monday (at least 3 days from today)
-  const getNextAvailableMonday = () => {
+  // Calculate minimum allowed start date (at least 3 days from today)
+  const getMinStartDate = () => {
     const today = new Date();
     const minDate = addDays(today, 3); // Minimum 3 days from today
-
-    // Find the next Monday after the minimum date
-    let nextMonday = startOfWeek(minDate, { weekStartsOn: 1 }); // Monday = 1
-
-    // If the next Monday is before the minimum date, move to the following Monday
-    if (isBefore(nextMonday, minDate)) {
-      nextMonday = addWeeks(nextMonday, 1);
-    }
-
-    return nextMonday;
-  };
-
-  // Calculate minimum allowed start date (next available Monday)
-  const getMinStartDate = () => {
-    const nextMonday = getNextAvailableMonday();
-    return format(nextMonday, "yyyy-MM-dd");
+    return format(minDate, "yyyy-MM-dd");
   };
 
   // Calculate maximum allowed start date (for date picker range)
@@ -108,26 +85,6 @@ export default function LeaveApplication() {
     return formData.start_date || getMinStartDate();
   };
 
-  // Check if a date is a Monday
-  const isMonday = (dateString: string) => {
-    const date = parseISO(dateString);
-    return getDay(date) === 1; // Monday = 1
-  };
-
-  // Get all available Monday dates for the next 6 months
-  const getAvailableMondays = () => {
-    const mondays = [];
-    let currentMonday = getNextAvailableMonday();
-    const maxDate = addDays(new Date(), 180);
-
-    while (isBefore(currentMonday, maxDate)) {
-      mondays.push(format(currentMonday, "yyyy-MM-dd"));
-      currentMonday = addWeeks(currentMonday, 1);
-    }
-
-    return mondays;
-  };
-
   // Validate form data
   const validateForm = () => {
     const newErrors: typeof errors = {};
@@ -137,15 +94,12 @@ export default function LeaveApplication() {
       newErrors.start_date = "Start date is required";
     } else {
       const startDate = parseISO(formData.start_date);
-      const minDate = getNextAvailableMonday();
+      const today = new Date();
+      const minDate = addDays(today, 3);
 
       // Check if it's at least 3 days from today
-      if (isBefore(startDate, addDays(new Date(), 3))) {
+      if (isBefore(startDate, minDate)) {
         newErrors.start_date = "Start date must be at least 3 days from today";
-      }
-      // Check if it's a Monday
-      else if (!isMonday(formData.start_date)) {
-        newErrors.start_date = "Start date must be a Monday";
       }
     }
 
@@ -240,9 +194,6 @@ export default function LeaveApplication() {
     }
   };
 
-  const availableMondays = getAvailableMondays();
-  const nextMonday = getNextAvailableMonday();
-
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -260,12 +211,14 @@ export default function LeaveApplication() {
             <CardTitle>Submit Leave Application</CardTitle>
             <div className="space-y-2">
               <p className="text-sm text-gray-600">
-                <strong>Important:</strong> Leave applications can only start on
-                Mondays, and the Monday must be at least 3 days from today.
+                <strong>Important:</strong> Leave applications must start at
+                least 3 days from today.
               </p>
               <p className="text-sm text-gray-600">
-                Next available Monday:{" "}
-                <strong>{format(nextMonday, "EEEE, MMMM d, yyyy")}</strong>
+                Minimum start date:{" "}
+                <strong>
+                  {format(addDays(new Date(), 3), "EEEE, MMMM d, yyyy")}
+                </strong>
               </p>
             </div>
           </CardHeader>
@@ -273,15 +226,11 @@ export default function LeaveApplication() {
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <label className="text-sm font-medium">
-                    Start Date (Mondays Only)
-                  </label>
+                  <label className="text-sm font-medium">Start Date</label>
                   <Input
                     type="date"
                     value={formData.start_date}
                     onChange={handleStartDateChange}
-                    min={getMinStartDate()}
-                    max={getMaxStartDate()}
                     required
                     className={errors.start_date ? "border-red-500" : ""}
                   />
@@ -289,8 +238,7 @@ export default function LeaveApplication() {
                     <p className="text-sm text-red-600">{errors.start_date}</p>
                   )}
                   <p className="text-xs text-gray-500">
-                    Available Mondays: {availableMondays.slice(0, 3).join(", ")}
-                    {availableMondays.length > 3 && "..."}
+                    Select any date at least 3 days from today
                   </p>
                 </div>
                 <div className="space-y-2">
@@ -299,7 +247,6 @@ export default function LeaveApplication() {
                     type="date"
                     value={formData.end_date}
                     onChange={handleEndDateChange}
-                    min={getMinEndDate()}
                     required
                     className={errors.end_date ? "border-red-500" : ""}
                   />

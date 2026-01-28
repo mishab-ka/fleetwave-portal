@@ -123,6 +123,19 @@ const HRLeadsManagement: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState("all");
   const [staffFilter, setStaffFilter] = useState("all");
 
+  // Date filter states for statistics
+  const [startDate, setStartDate] = useState(() => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return today.toISOString().split("T")[0];
+  });
+  const [endDate, setEndDate] = useState(() => {
+    const today = new Date();
+    today.setHours(23, 59, 59, 999);
+    return today.toISOString().split("T")[0];
+  });
+  const [dailyLeadsCount, setDailyLeadsCount] = useState(0);
+
   // Bulk delete states
   const [selectedLeads, setSelectedLeads] = useState<string[]>([]);
   const [showBulkDelete, setShowBulkDelete] = useState(false);
@@ -144,6 +157,10 @@ const HRLeadsManagement: React.FC = () => {
   useEffect(() => {
     filterLeads();
   }, [leads, searchTerm, statusFilter, staffFilter]);
+
+  useEffect(() => {
+    calculateDailyLeadsCount();
+  }, [leads, startDate, endDate]);
 
   // Reset export selection when filtered leads change
   useEffect(() => {
@@ -227,6 +244,48 @@ const HRLeadsManagement: React.FC = () => {
 
     setFilteredLeads(filtered);
     setCurrentPage(1);
+  };
+
+  const calculateDailyLeadsCount = () => {
+    if (!startDate || !endDate) {
+      setDailyLeadsCount(leads.length);
+      return;
+    }
+
+    const start = new Date(startDate);
+    start.setHours(0, 0, 0, 0);
+    
+    const end = new Date(endDate);
+    end.setHours(23, 59, 59, 999);
+
+    const filtered = leads.filter((lead) => {
+      const createdDate = new Date(lead.created_at);
+      return createdDate >= start && createdDate <= end;
+    });
+
+    setDailyLeadsCount(filtered.length);
+  };
+
+  const setDatePreset = (preset: "today" | "week" | "month") => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    const endDateObj = new Date();
+    endDateObj.setHours(23, 59, 59, 999);
+
+    if (preset === "today") {
+      setStartDate(today.toISOString().split("T")[0]);
+      setEndDate(endDateObj.toISOString().split("T")[0]);
+    } else if (preset === "week") {
+      const weekStart = new Date(today);
+      weekStart.setDate(today.getDate() - today.getDay()); // Start of week (Sunday)
+      setStartDate(weekStart.toISOString().split("T")[0]);
+      setEndDate(endDateObj.toISOString().split("T")[0]);
+    } else if (preset === "month") {
+      const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+      setStartDate(monthStart.toISOString().split("T")[0]);
+      setEndDate(endDateObj.toISOString().split("T")[0]);
+    }
   };
 
   const addLead = async () => {
@@ -1068,6 +1127,86 @@ const HRLeadsManagement: React.FC = () => {
           </Button>
         </div>
       </div>
+
+      {/* Daily Leads Statistics */}
+      <Card className="bg-gradient-to-r from-purple-50 to-blue-50 border-purple-200">
+        <CardContent className="p-6">
+          <div className="flex flex-col gap-4">
+            <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+              <div className="flex-1">
+                <h3 className="text-lg font-semibold text-gray-800 mb-1">
+                  Daily Leads Statistics
+                </h3>
+                <p className="text-sm text-gray-600">
+                  Track leads added based on created date
+                </p>
+              </div>
+              
+              <div className="flex items-center gap-3 bg-white px-6 py-3 rounded-lg shadow-sm border border-purple-200">
+                <div className="flex flex-col">
+                  <span className="text-xs text-gray-500 font-medium">Total Leads Added</span>
+                  <span className="text-2xl font-bold text-purple-600">
+                    {dailyLeadsCount}
+                  </span>
+                </div>
+                <UserPlus className="w-8 h-8 text-purple-500" />
+              </div>
+            </div>
+
+            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-sm font-medium text-gray-700">Quick Select:</span>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setDatePreset("today")}
+                  className="bg-white hover:bg-purple-50"
+                >
+                  Today
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setDatePreset("week")}
+                  className="bg-white hover:bg-purple-50"
+                >
+                  This Week
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setDatePreset("month")}
+                  className="bg-white hover:bg-purple-50"
+                >
+                  This Month
+                </Button>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="flex items-center gap-2">
+                  <Label className="text-sm font-medium text-gray-700">From:</Label>
+                  <Input
+                    type="date"
+                    value={startDate}
+                    onChange={(e) => setStartDate(e.target.value)}
+                    className="w-40 bg-white"
+                  />
+                </div>
+                
+                <div className="flex items-center gap-2">
+                  <Label className="text-sm font-medium text-gray-700">To:</Label>
+                  <Input
+                    type="date"
+                    value={endDate}
+                    onChange={(e) => setEndDate(e.target.value)}
+                    className="w-40 bg-white"
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Filters */}
       <Card>

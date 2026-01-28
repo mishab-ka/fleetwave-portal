@@ -90,7 +90,14 @@ const HRCalendar: React.FC = () => {
       });
 
       if (error) throw error;
-      setEvents(data || []);
+      // Filter to only show "conform" status events with joining dates
+      // Exclude all other statuses including "call not picked", "CNP", etc.
+      const conformEvents = (data || []).filter((event) => {
+        const statusLower = (event.status_name || "").toLowerCase().trim();
+        // Only include events with status exactly matching "conform"
+        return statusLower === "conform";
+      });
+      setEvents(conformEvents);
     } catch (error) {
       console.error("Error fetching calendar events:", error);
     }

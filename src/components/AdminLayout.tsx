@@ -32,11 +32,16 @@ import {
   ArrowUpRight,
   Bed,
   TrendingUp,
+  XCircle,
+  Wrench,
+  CheckSquare,
+  Activity,
 } from "lucide-react";
 import { Button } from "./ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "./ui/sheet";
 import { ScrollArea } from "./ui/scroll-area";
 import { toast } from "sonner";
+import { UserRole } from "@/context/AdminContext";
 
 interface AdminLayoutProps {
   children: React.ReactNode;
@@ -48,11 +53,20 @@ interface NavItem {
   icon: React.ReactNode;
   path?: string;
   subItems?: NavItem[];
+  allowedRoles?: UserRole[];
 }
 
 const AdminLayout: React.FC<AdminLayoutProps> = ({ children, title }) => {
   const { signOut } = useAuth();
-  const { isAdmin, loading } = useAdmin();
+  const {
+    isAdmin,
+    isManager,
+    isHR,
+    isAccountant,
+    userRole,
+    hasAccess,
+    loading,
+  } = useAdmin();
   const navigate = useNavigate();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(false);
@@ -60,11 +74,11 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children, title }) => {
   const [isHovered, setIsHovered] = useState(false);
 
   useEffect(() => {
-    if (!loading && !isAdmin) {
+    if (!loading && !isAdmin && !isManager && !isHR && !isAccountant) {
       toast.error("You do not have admin privileges");
       navigate("/");
     }
-  }, [isAdmin, loading, navigate]);
+  }, [isAdmin, isManager, isHR, isAccountant, loading, navigate]);
 
   useEffect(() => {
     // Load sidebar state from localStorage
@@ -106,72 +120,115 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children, title }) => {
     );
   }
 
-  if (!isAdmin) {
+  if (!isAdmin && !isManager && !isHR && !isAccountant) {
     return null;
   }
 
-  const navItems: NavItem[] = [
-    { label: "Dashboard", icon: <LayoutDashboard size={20} />, path: "/admin" },
+  // Define all navigation items with role-based access
+  const allNavItems: NavItem[] = [
+    {
+      label: "Dashboard",
+      icon: <LayoutDashboard size={20} />,
+      allowedRoles: ["admin", "manager", "hr", "accountant"] as UserRole[],
+      subItems: [
+        {
+          label: "Company Overview",
+          icon: <LayoutDashboard size={14} />,
+          path: "/admin",
+          allowedRoles: ["admin", "manager", "hr", "accountant"] as UserRole[],
+        },
+        {
+          label: "Vehicle Performance Overview",
+          icon: <BarChart size={14} />,
+          path: "/admin/vehicle-performance-overview",
+          allowedRoles: ["admin"] as UserRole[],
+        },
+      ],
+    },
     {
       label: "Drivers",
       icon: <Users size={20} />,
       path: "/admin/drivers",
+      allowedRoles: ["admin", "manager"] as UserRole[],
       subItems: [
         {
           label: "Driver Management",
           icon: <Users size={14} />,
           path: "/admin/drivers",
+          allowedRoles: ["admin", "manager"] as UserRole[],
         },
         {
           label: "Driver Performance",
           icon: <BarChart size={14} />,
           path: "/admin/driver-performance",
+          allowedRoles: ["admin"] as UserRole[],
         },
         {
           label: "Uber Acc Audit",
           icon: <UserCheck size={14} />,
           path: "/admin/uber-audit",
+          allowedRoles: ["admin"] as UserRole[],
         },
         {
           label: "Cash Trip Blocking",
           icon: <Ban size={14} />,
           path: "/admin/cash-trip-blocking",
+          allowedRoles: ["admin"] as UserRole[],
         },
         {
           label: "Refund List",
           icon: <ArrowUpRight size={14} />,
           path: "/admin/refund-list",
+          allowedRoles: ["admin"] as UserRole[],
+        },
+        {
+          label: "Refund Requests (R&F)",
+          icon: <ArrowUpRight size={14} />,
+          path: "/admin/refund-requests",
+          allowedRoles: ["admin", "manager"] as UserRole[],
         },
       ],
     },
     {
       label: "Vehicles",
       icon: <Car size={20} />,
+      allowedRoles: ["admin", "manager"] as UserRole[],
       subItems: [
         {
           label: "Vehicle Management",
           icon: <Car size={14} />,
           path: "/admin/vehicles",
+          allowedRoles: ["admin", "manager"] as UserRole[],
         },
         {
           label: "Vehicle Performance",
           icon: <BarChart size={14} />,
           path: "/admin/vehicle-performance",
+          allowedRoles: ["admin"] as UserRole[],
         },
         {
           label: "Vehicle Attendance",
           icon: <KeySquare size={14} />,
           path: "/admin/vehicles-calander",
+          allowedRoles: ["admin"] as UserRole[],
         },
         {
           label: "Vehicle Audit",
           icon: <Gauge size={14} />,
           path: "/admin/AdminVehicleAuditReports",
+          allowedRoles: ["admin", "manager"] as UserRole[],
         },
         {
           label: "Shift Management",
           icon: <CalendarClock size={14} />,
           path: "/admin/Shift",
+          allowedRoles: ["admin", "manager"] as UserRole[],
+        },
+        {
+          label: "Shift Leave Management",
+          icon: <CalendarClock size={14} />,
+          path: "/admin/shift-leave-management",
+          allowedRoles: ["admin", "manager"] as UserRole[],
         },
       ],
     },
@@ -179,51 +236,128 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children, title }) => {
       label: "Finance",
       icon: <DollarSign size={20} />,
       path: "/admin/finance",
+      allowedRoles: ["admin", "accountant"] as UserRole[],
     },
     {
       label: "Accommodation",
       icon: <Home size={20} />,
+      allowedRoles: ["admin"] as UserRole[],
       subItems: [
         {
           label: "Room & Bed Management",
           icon: <Bed size={14} />,
           path: "/admin/room-bed-management",
+          allowedRoles: ["admin"] as UserRole[],
         },
         {
           label: "Monthly Rent Dashboard",
           icon: <TrendingUp size={14} />,
           path: "/admin/monthly-rent-dashboard",
+          allowedRoles: ["admin"] as UserRole[],
         },
       ],
     },
-
-    { label: "Reports", icon: <FileText size={20} />, path: "/admin/reports" },
+    {
+      label: "Reports",
+      icon: <FileText size={20} />,
+      allowedRoles: ["admin", "manager", "accountant"] as UserRole[],
+      subItems: [
+        {
+          label: "Fleet Reports",
+          icon: <FileText size={14} />,
+          path: "/admin/reports",
+          allowedRoles: ["admin"] as UserRole[],
+        },
+        {
+          label: "Manager Reports",
+          icon: <FileText size={14} />,
+          path: "/admin/manager-reports",
+          allowedRoles: ["admin"] as UserRole[],
+        },
+        {
+          label: "Rejected Reports",
+          icon: <XCircle size={14} />,
+          path: "/admin/rejected-reports",
+          allowedRoles: ["admin", "manager", "accountant"] as UserRole[],
+        },
+        {
+          label: "Service Day Adjustments",
+          icon: <Wrench size={14} />,
+          path: "/admin/service-day-adjustments",
+          allowedRoles: ["admin", "manager"] as UserRole[],
+        },
+      ],
+    },
     {
       label: "Rent Calendar",
       icon: <Calendar size={20} />,
       path: "/admin/calendar",
+      allowedRoles: ["admin", "manager"] as UserRole[],
+    },
+    {
+      label: "Task Manager",
+      icon: <CheckSquare size={20} />,
+      path: "/admin/task-manager",
+      allowedRoles: ["admin", "manager"] as UserRole[],
     },
     {
       label: "HR",
       icon: <UserPlus size={20} />,
       path: "/admin/hr",
+      allowedRoles: ["admin", "hr"] as UserRole[],
     },
     {
       label: "Leave Management",
       icon: <CalendarDays size={20} />,
       path: "/admin/leave-management",
+      allowedRoles: ["admin", "hr"] as UserRole[],
+    },
+    {
+      label: "Staff Activity Monitor",
+      icon: <Activity size={20} />,
+      path: "/admin/staff-activity",
+      allowedRoles: ["admin", "manager"] as UserRole[],
     },
     {
       label: "Settings",
       icon: <Settings size={20} />,
       path: "/admin/settings",
+      allowedRoles: ["admin"] as UserRole[],
     },
     {
       label: "WhatsApp",
       icon: <MessageCircle size={20} />,
       path: "/admin/chat",
+      allowedRoles: ["admin"] as UserRole[],
     },
   ];
+
+  // Filter navigation items based on user role
+  const filterNavItems = (items: NavItem[]): NavItem[] => {
+    return items
+      .filter((item) => {
+        if (!item.allowedRoles) return true;
+        return hasAccess(item.allowedRoles);
+      })
+      .map((item) => {
+        if (item.subItems) {
+          const filteredSubItems = filterNavItems(item.subItems);
+          // Only show parent item if it has accessible sub-items or has a direct path
+          if (filteredSubItems.length > 0 || item.path) {
+            return {
+              ...item,
+              subItems:
+                filteredSubItems.length > 0 ? filteredSubItems : undefined,
+            };
+          }
+          return null;
+        }
+        return item;
+      })
+      .filter((item): item is NavItem => item !== null);
+  };
+
+  const navItems = filterNavItems(allNavItems);
 
   const handleLogout = async () => {
     await signOut();
@@ -312,13 +446,22 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children, title }) => {
   }) => (
     <div className="flex flex-col h-full">
       <div className="p-4 border-b flex justify-between items-center">
-        <h2
-          className={`text-xl font-bold text-fleet-purple ${
-            isCollapsed && !isHovered ? "hidden" : "block"
-          }`}
-        >
-          Admin Portal
-        </h2>
+        <div className={isCollapsed && !isHovered ? "hidden" : "block"}>
+          <h2 className="text-xl font-bold text-fleet-purple">
+            {userRole === "admin"
+              ? "Admin Portal"
+              : userRole === "manager"
+              ? "Manager Portal"
+              : userRole === "hr"
+              ? "HR Portal"
+              : userRole === "accountant"
+              ? "Accountant Portal"
+              : "Portal"}
+          </h2>
+          {userRole && (
+            <p className="text-xs text-gray-500 capitalize">{userRole}</p>
+          )}
+        </div>
         <Button
           variant="ghost"
           size="icon"

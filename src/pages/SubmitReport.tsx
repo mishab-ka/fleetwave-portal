@@ -10,7 +10,15 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { FileUp } from "lucide-react";
+import { FileUp, Banknote, Check } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 // import dayjs from "dayjs";
 import WeeklyCalendar from "@/components/ui/weeklycalander";
 import { SalaryBaseReportForm } from "@/components/SalaryBaseReportForm";
@@ -47,12 +55,18 @@ const SubmitReport = () => {
     rent_date: "",
     remarks: "",
   });
-  const [isServiceDay, setIsServiceDay] = useState(false);
 
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [countdown, setCountdown] = useState(5);
   const [existingReportForDate, setExistingReportForDate] = useState<any>(null);
+  const [serviceDayAdjustmentDiscount, setServiceDayAdjustmentDiscount] = useState(0);
+
+  // Paying cash option: checkbox + amount + manager
+  const [payingCash, setPayingCash] = useState(false);
+  const [cashAmount, setCashAmount] = useState("");
+  const [cashManagerId, setCashManagerId] = useState<string>("");
+  const [managers, setManagers] = useState<{ id: string; name: string | null }[]>([]);
 
   // Get admin settings for company earnings calculation
   const {
@@ -93,16 +107,16 @@ const SubmitReport = () => {
             setEnableDepositCollection(data.enable_deposit_collection ?? true);
             setDriverCategory(data.driver_category || "hub_base");
 
-            // Fetch count of only approved reports (excluding leave status) for cutting calculation
-            // Only approved reports should count towards deposit cutting
-            const { count: approvedCount, error: countError } = await supabase
+            // Count reports that count toward the 12 deposit slots: rejected, pending_verification, approved only.
+            // Leave and offline reports do NOT count.
+            const { count: depositSlotCount, error: countError } = await supabase
               .from("fleet_reports")
               .select("*", { count: "exact", head: true })
               .eq("user_id", user.id)
-              .eq("status", "approved");
+              .in("status", ["rejected", "pending_verification", "approved"]);
 
             if (!countError) {
-              setApprovedReportsCount(approvedCount || 0);
+              setApprovedReportsCount(depositSlotCount || 0);
             }
 
             // Only fetch vehicle data if vehicle_number is not null
@@ -141,6 +155,26 @@ const SubmitReport = () => {
     fetchUserData();
   }, [user]);
 
+  // Fetch managers for "paying cash" dropdown
+  useEffect(() => {
+    const fetchManagers = async () => {
+      try {
+        const { data, error } = await supabase
+          .from("users")
+          .select("id, name")
+          .in("role", ["manager", "admin", "super_admin"])
+          .order("name");
+
+        if (error) throw error;
+        setManagers(data || []);
+      } catch (e) {
+        console.warn("Could not fetch managers:", e);
+        setManagers([]);
+      }
+    };
+    fetchManagers();
+  }, []);
+
   // useEffect(() => {
   //   const fetchData = async () => {
   //     if (!formData.vehicle_number) return;
@@ -167,7 +201,7 @@ const SubmitReport = () => {
   // }, [formData.vehicle_number]);
 
   const [copied, setCopied] = useState(false);
-  const upiId = "8590253089@ikwik";
+  const upiId = "9633009315-1@mbkns ";
 
   const handleCopy = async () => {
     try {
@@ -282,39 +316,30 @@ const SubmitReport = () => {
   // Note: Other fee (expenses) is now manually entered by the driver
   // It can include platform fees, fuel costs, maintenance, or any other expenses
 
-  // Calculate deposit cutting based on approved reports and toggle status
+  // Deposit cutting: 12 reports (rejected / pending_verification / approved), ₹250 per report, stop when balance reaches ₹3000.
+  // Leave and offline reports do NOT count toward the 12.
   useEffect(() => {
     if (!userData) return;
 
-    // Only apply deposit cutting if:
-    // 1. Deposit collection is enabled for this driver
-    // 2. Driver has less than 10 approved reports
-    if (enableDepositCollection && approvedReportsCount < 10) {
-      const currentDeposit = userData.pending_balance || 0;
-      const targetDeposit = 2500;
+    const currentDeposit = Number(userData.pending_balance) || 0;
+    const targetDeposit = 3000;
+    const cuttingPerReport = 250;
+    const maxCuttingReports = 12;
 
-      // Stop deposit cutting if driver has already reached ₹2500
-      if (currentDeposit >= targetDeposit) {
-        setDepositCutting(0);
-        return;
-      }
-
-      // Calculate how much deposit is still needed
-      const remainingDeposit = targetDeposit - currentDeposit;
-
-      // Calculate remaining forms: 10 total cutting reports (reports 1-10)
-      // Only approved reports count towards the 10 reports
-      // After 0 approved reports: 10 remaining (reports 1-10)
-      // After 1 approved report: 9 remaining (reports 2-10)
-      // After 5 approved reports: 5 remaining (reports 6-10)
-      const remainingForms = 10 - approvedReportsCount;
-
-      // Calculate daily cutting amount - distribute remaining deposit equally
-      const dailyCutting = remainingDeposit / remainingForms;
-      setDepositCutting(Math.round(dailyCutting));
-    } else {
+    // Stop if: deposit collection off, or already have 12 approved reports, or balance >= 3000
+    if (
+      !enableDepositCollection ||
+      approvedReportsCount >= maxCuttingReports ||
+      currentDeposit >= targetDeposit
+    ) {
       setDepositCutting(0);
+      return;
     }
+
+    // Fixed ₹250 cutting per approved report; cap so balance never exceeds ₹3000
+    const roomLeft = Math.max(0, targetDeposit - currentDeposit);
+    const cutting = Math.min(cuttingPerReport, roomLeft);
+    setDepositCutting(Math.round(cutting));
   }, [userData, approvedReportsCount, enableDepositCollection]);
 
   // Calculate Rent with Penalty and Deposit Cutting
@@ -331,9 +356,9 @@ const SubmitReport = () => {
     // Get daily penalty amount from user data
     const dailyPenaltyAmount = userData.daily_penalty_amount || 0;
 
-    // Calculate total amount including penalty, other fee (expenses), and deposit cutting
+    // Calculate total amount including penalty, other fee (expenses), deposit cutting, and service day adjustment discount
     const totalRentWithExtras =
-      rent + dailyPenaltyAmount + otherFee + depositCutting;
+      rent + dailyPenaltyAmount + otherFee + depositCutting - serviceDayAdjustmentDiscount;
     const amount = tollandEarnings - cashcollect - totalRentWithExtras;
 
     let message = "No payment required";
@@ -367,10 +392,12 @@ const SubmitReport = () => {
     userData,
     depositCutting,
     approvedReportsCount,
+    serviceDayAdjustmentDiscount,
   ]);
   const handleDateSelect = (date: string) => {
     setSelectedDate(date);
     checkExistingReport(date);
+    checkServiceDayAdjustment(date);
   };
 
   const checkExistingReport = async (date: string) => {
@@ -389,9 +416,51 @@ const SubmitReport = () => {
         return;
       }
 
-      setExistingReportForDate(existingReport || null);
+      // Only set existing report if status is NOT "offline"
+      // If status is "offline", allow driver to submit a new report
+      if (
+        existingReport &&
+        existingReport.status?.toLowerCase() !== "offline"
+      ) {
+        setExistingReportForDate(existingReport);
+      } else {
+        setExistingReportForDate(null);
+      }
     } catch (error) {
       console.error("Error checking existing report:", error);
+    }
+  };
+
+  const checkServiceDayAdjustment = async (date: string) => {
+    if (!userData) return;
+
+    try {
+      // Check common_adjustments table for approved adjustments
+      const { data: adjustments, error } = await supabase
+        .from("common_adjustments")
+        .select("amount, category, description")
+        .eq("user_id", userData.id)
+        .eq("adjustment_date", date)
+        .eq("status", "approved");
+
+      if (error && error.code !== "PGRST116") {
+        console.error("Error checking adjustments:", error);
+        setServiceDayAdjustmentDiscount(0);
+        return;
+      }
+
+      if (adjustments && adjustments.length > 0) {
+        // Calculate total adjustment (negative amounts are discounts)
+        const totalDiscount = adjustments.reduce((sum, adj) => {
+          return sum + Math.abs(adj.amount);
+        }, 0);
+        setServiceDayAdjustmentDiscount(totalDiscount);
+      } else {
+        setServiceDayAdjustmentDiscount(0);
+      }
+    } catch (error) {
+      console.error("Error checking adjustments:", error);
+      setServiceDayAdjustmentDiscount(0);
     }
   };
 
@@ -449,6 +518,18 @@ const SubmitReport = () => {
       return;
     }
 
+    if (payingCash) {
+      const amount = Number(cashAmount);
+      if (!cashAmount.trim() || !Number.isFinite(amount) || amount <= 0) {
+        toast.error("Please enter a valid cash amount.");
+        return;
+      }
+      if (!cashManagerId) {
+        toast.error("Please select a manager for cash payment.");
+        return;
+      }
+    }
+
     setSubmitting(true);
 
     try {
@@ -466,7 +547,12 @@ const SubmitReport = () => {
         throw new Error("Failed to check for existing report");
       }
 
-      if (existingReport) {
+      // Allow submission if existing report status is "offline"
+      // Otherwise, block submission if report exists
+      if (
+        existingReport &&
+        existingReport.status?.toLowerCase() !== "offline"
+      ) {
         toast.error(
           `A report for ${selectedDate} has already been submitted. You cannot submit multiple reports for the same date.`
         );
@@ -535,36 +621,63 @@ const SubmitReport = () => {
         vehicleExists: !!vehicleCheck,
       });
 
-      // Insert the fleet report
-      const { error: reportError } = await supabase
-        .from("fleet_reports")
-        .insert({
-          user_id: userData.id,
-          driver_name: userData.name,
-          vehicle_number: vehicleNumber,
-          total_trips: formData.total_trips,
-          total_earnings: formData.total_earnings,
-          shift: ["morning", "night"].includes(userData.shift)
-            ? userData.shift
-            : "morning",
-          rent_date: selectedDate,
-          toll: formData.toll,
-          total_cashcollect: formData.total_cashcollect,
-          other_fee: formData.other_fee,
-          rent_paid_amount:
-            Number(formData.rent_paid) > 0
-              ? -formData.rent_paid
-              : Math.abs(Number(formData.rent_paid)),
-          deposit_cutting_amount: depositCutting, // Save the deposit cutting amount
-          is_service_day: isServiceDay,
-          status: "pending_verification",
-          remarks: formData.remarks,
-          uber_screenshot: uberScreenshotUrl,
-          payment_screenshot: rentScreenshotUrl,
-          submission_date: formattedSubmissionDate,
-        });
+      // Check if there's an existing offline report that needs to be replaced
+      const hasOfflineReport =
+        existingReport && existingReport.status?.toLowerCase() === "offline";
+
+      // Insert or update the fleet report
+      // Use upsert if there's an offline report to replace, otherwise use insert
+      const reportData = {
+        user_id: userData.id,
+        driver_name: userData.name,
+        vehicle_number: vehicleNumber,
+        total_trips: formData.total_trips,
+        total_earnings: formData.total_earnings,
+        shift: ["morning", "night"].includes(userData.shift)
+          ? userData.shift
+          : "morning",
+        rent_date: selectedDate,
+        toll: formData.toll,
+        total_cashcollect: formData.total_cashcollect,
+        other_fee: formData.other_fee,
+        rent_paid_amount:
+          Number(formData.rent_paid) > 0
+            ? -formData.rent_paid
+            : Math.abs(Number(formData.rent_paid)),
+        deposit_cutting_amount: depositCutting, // Save the deposit cutting amount
+        paying_cash: payingCash,
+        cash_amount: payingCash && cashAmount ? Number(cashAmount) : null,
+        cash_manager_id: payingCash && cashManagerId ? cashManagerId : null,
+        is_service_day: false,
+        status: "pending_verification",
+        remarks: formData.remarks,
+        uber_screenshot: uberScreenshotUrl,
+        payment_screenshot: rentScreenshotUrl,
+        submission_date: formattedSubmissionDate,
+      };
+
+      const { error: reportError } = hasOfflineReport
+        ? await supabase.from("fleet_reports").upsert(reportData, {
+              onConflict: "user_id,rent_date",
+            })
+        : await supabase.from("fleet_reports").insert(reportData);
 
       if (reportError) throw reportError;
+
+      // If there was an offline report, delete the corresponding driver_offline_records entry
+      if (hasOfflineReport) {
+        const { error: deleteOfflineError } = await supabase
+          .from("driver_offline_records")
+          .delete()
+          .eq("user_id", userData.id)
+          .eq("offline_date", selectedDate);
+
+        if (deleteOfflineError) {
+          console.error("Error deleting offline record:", deleteOfflineError);
+          // Don't throw error here - report is already submitted successfully
+          // Just log it so the main submission still succeeds
+        }
+      }
 
       // Update user totals
       const newTotalEarnings =
@@ -899,44 +1012,39 @@ const SubmitReport = () => {
               </div>
             </div>
 
-            {/* Service Day Toggle */}
-            <div className="mb-6 p-4 border border-gray-300 rounded-md">
-              <div className="flex items-center justify-between">
-                <div>
-                  <Label
-                    htmlFor="service_day"
-                    className="text-base font-medium"
+            {/* Service Day Adjustment */}
+            {serviceDayAdjustmentDiscount > 0 && (
+              <div className="mb-4 p-4 bg-purple-50 border border-purple-200 rounded-md">
+                <div className="flex items-center gap-2">
+                  <svg
+                    className="w-5 h-5 text-purple-600"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
                   >
-                    Service Day Report
-                  </Label>
-                  <p className="text-sm text-gray-500 mt-1">
-                    Mark this report as a service day (vehicle
-                    servicing/maintenance)
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setIsServiceDay(!isServiceDay)}
-                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
-                    isServiceDay ? "bg-blue-600" : "bg-gray-200"
-                  }`}
-                >
-                  <span
-                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                      isServiceDay ? "translate-x-6" : "translate-x-1"
-                    }`}
-                  />
-                </button>
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
+                    />
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+                    />
+                  </svg>
+                  <span className="font-semibold text-purple-800">
+                    Adjustment Discount: ₹{serviceDayAdjustmentDiscount.toFixed(2)}
+                  </span>
               </div>
-              {isServiceDay && (
-                <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-md">
-                  <p className="text-sm text-blue-700">
-                    ⚙️ This report will be marked as a service day. Service day
-                    reports are tracked separately for maintenance records.
-                  </p>
+                <p className="text-xs text-purple-600 mt-1">
+                  One or more adjustments have been applied to your report for this date.
+                </p>
                 </div>
               )}
-            </div>
+
             {/* Penalty Information */}
             {userData?.daily_penalty_amount > 0 && (
               <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-md">
@@ -995,9 +1103,9 @@ const SubmitReport = () => {
                 </p>
                 <p className="text-xs text-blue-600 mt-1">
                   Current deposit: ₹
-                  {(userData?.pending_balance || 0).toFixed(2)} | Target: ₹2,500
-                  | Remaining: ₹
-                  {(2500 - (userData?.pending_balance || 0)).toFixed(2)}
+                  {(userData?.pending_balance || 0).toFixed(2)} | Target: ₹3,000
+                  (12 approved reports, ₹250 each) | Remaining: ₹
+                  {(3000 - (userData?.pending_balance || 0)).toFixed(2)}
                 </p>
                 <p className="text-xs text-blue-600 mt-1">
                   This amount will be added to your deposit balance.
@@ -1021,6 +1129,64 @@ const SubmitReport = () => {
               >
                 {paymentMessage}
               </p>
+            </div>
+
+            {/* Paying cash option */}
+            <div className="mb-4 p-4 bg-gray-50 border border-gray-200 rounded-md">
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="paying-cash"
+                  checked={payingCash}
+                  onCheckedChange={(checked) => {
+                    setPayingCash(!!checked);
+                    if (!checked) {
+                      setCashAmount("");
+                      setCashManagerId("");
+                    }
+                  }}
+                />
+                <label
+                  htmlFor="paying-cash"
+                  className="text-sm font-medium flex items-center gap-2 cursor-pointer"
+                >
+                  <Banknote className="h-4 w-4 text-green-600" />
+                  Paying by cash
+                </label>
+              </div>
+              {payingCash && (
+                <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="cash-amount">Cash amount (₹)</Label>
+                    <Input
+                      id="cash-amount"
+                      type="number"
+                      min={0}
+                      step={1}
+                      placeholder="Amount"
+                      value={cashAmount}
+                      onChange={(e) => setCashAmount(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="cash-manager">Select manager</Label>
+                    <Select
+                      value={cashManagerId}
+                      onValueChange={setCashManagerId}
+                    >
+                      <SelectTrigger id="cash-manager">
+                        <SelectValue placeholder="Choose manager" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {managers.map((m) => (
+                          <SelectItem key={m.id} value={m.id}>
+                            {m.name || "Unknown"}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Company Earnings Slabs Display */}

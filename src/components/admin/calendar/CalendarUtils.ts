@@ -15,7 +15,8 @@ export type RentStatus =
   | "pending_verification"
   | "leave"
   | "offline"
-  | "not_joined";
+  | "not_joined"
+  | "rejected";
 
 export interface ReportData {
   userId: string;
@@ -28,14 +29,101 @@ export interface ReportData {
   shiftForDate?: string;
   created_at?: string;
   notes?: string;
-  rent_paid_amount?: number; // Added this property
+  rent_paid_amount?: number;
+  hasServiceDayAdjustment?: boolean; // Flag for any adjustment (service day, bonus, penalty, etc) - DEPRECATED, use hasAdjustment
+  hasAdjustment?: boolean; // Flag for any adjustment type (replaces hasServiceDayAdjustment)
 }
 
 // Process report data and determine status
 export const processReportData = (report: any): ReportData => {
-  // Offline user handling
+  // IMPORTANT: Check the report's actual status FIRST before checking user online/offline status
+  // This ensures that if a driver has submitted a real form, the status will be based on the report,
+  // not the user's online/offline status. Real reports have status: pending_verification, approved, rejected, etc.
+  
+  // First, check if this is a real submitted report (has status other than "offline")
+  const reportStatus = report.status?.toLowerCase();
+  const hasRealReport = reportStatus && 
+    reportStatus !== "offline" && 
+    (reportStatus === "pending_verification" || 
+     reportStatus === "approved" || 
+     reportStatus === "rejected" || 
+     reportStatus === "leave");
+
+  // If there's a real submitted report, use its status (don't check user online/offline)
+  if (hasRealReport || (report.created_at && reportStatus && reportStatus !== "offline")) {
+    let status: RentStatus;
+
+    switch (reportStatus) {
+      case "approved":
+        status = "paid"; // Paid
+        break;
+      case "leave":
+        status = "leave";
+        break;
+      case "rejected":
+        status = "rejected";
+        break;
+      case "pending_verification":
+        status = "pending_verification";
+        break;
+      default:
+        status = "pending_verification"; // Submitted but not verified
+    }
+
+    return {
+      date: report.rent_date,
+      userId: report.user_id,
+      driverName: report.driver_name,
+      vehicleNumber: report.vehicle_number,
+      status,
+      shift: report.shift,
+      created_at: report.created_at,
+      rent_paid_amount: report.rent_paid_amount,
+      notes: report.remarks,
+      joiningDate: report.users.joining_date,
+      shiftForDate: report.shift,
+    };
+  }
+
+  // Leave status handling (check remarks)
+  if (report.remarks?.toLowerCase().includes("leave")) {
+    return {
+      date: report.rent_date,
+      userId: report.user_id,
+      driverName: report.driver_name,
+      vehicleNumber: report.vehicle_number,
+      status: "leave" as RentStatus,
+      shift: report.shift,
+      created_at: report.created_at,
+      rent_paid_amount: report.rent_paid_amount,
+      notes: report.remarks,
+      joiningDate: report.users.joining_date,
+      shiftForDate: report.shift,
+    };
+  }
+
+  // Offline status handling - only show offline if the report status is actually "offline"
+  if (
+    reportStatus === "offline" ||
+    report.remarks?.toLowerCase().includes("offline")
+  ) {
+    return {
+      date: report.rent_date,
+      userId: report.user_id,
+      driverName: report.driver_name,
+      vehicleNumber: report.vehicle_number,
+      status: "offline" as RentStatus,
+      shift: report.shift,
+      created_at: report.created_at,
+      rent_paid_amount: report.rent_paid_amount,
+      notes: report.remarks,
+      joiningDate: report.users.joining_date,
+      shiftForDate: report.shift,
+    };
+  }
+
+  // If user is offline and no real report exists, show as offline or leave
   if (!report.users.online) {
-    // Calculate if this should show as "leave" based on offline date
     const rentDate = parseISO(report.rent_date);
     const offlineFromDate = report.users.offline_from_date
       ? parseISO(report.users.offline_from_date)
@@ -58,7 +146,7 @@ export const processReportData = (report: any): ReportData => {
       };
     }
 
-    // Otherwise show as offline
+    // Otherwise show as offline (only if no real report exists)
     return {
       date: report.rent_date,
       userId: report.user_id,
@@ -83,58 +171,6 @@ export const processReportData = (report: any): ReportData => {
   const onlineFromDate = report.users.online_from_date
     ? parseISO(report.users.online_from_date)
     : null;
-
-  // Leave status handling
-  if (report.remarks?.toLowerCase().includes("leave")) {
-    return {
-      date: report.rent_date,
-      userId: report.user_id,
-      driverName: report.driver_name,
-      vehicleNumber: report.vehicle_number,
-      status: "leave" as RentStatus,
-      shift: report.shift,
-      created_at: report.created_at,
-      rent_paid_amount: report.rent_paid_amount,
-      notes: report.remarks,
-      joiningDate: report.users.joining_date,
-      shiftForDate: report.shift,
-    };
-  }
-
-  // IMPORTANT FIX: If a report has a created_at timestamp, it means it was submitted, and its
-  // status should take precedence over deadline calculations
-  if (report.created_at) {
-    // If the report has been submitted, use its status or default to pending_verification
-    let status: RentStatus;
-
-    switch (report.status?.toLowerCase()) {
-      case "approved":
-        status = "paid"; // Paid
-        break;
-      case "leave":
-        status = "leave";
-        break;
-      case "rejected":
-        status = "overdue"; // Optional: you can show rejected differently if needed
-        break;
-      default:
-        status = "pending_verification"; // Submitted but not verified
-    }
-
-    return {
-      date: report.rent_date,
-      userId: report.user_id,
-      driverName: report.driver_name,
-      vehicleNumber: report.vehicle_number,
-      status,
-      shift: report.shift,
-      created_at: report.created_at,
-      rent_paid_amount: report.rent_paid_amount,
-      notes: report.remarks,
-      joiningDate: report.users.joining_date,
-      shiftForDate: report.shift,
-    };
-  }
 
   // For days with no submission, check if it should be marked as overdue
   const currentDate = new Date();
@@ -269,15 +305,19 @@ export const determineOverdueStatus = (
     const deadlineDate = new Date(checkDate);
     deadlineDate.setHours(17, 0, 0, 0); // 5:00 PM
     deadlineTime = deadlineDate;
-  } else if (shift === "night" || shift === "24hr") {
+  } else if (shift === "night" || shift === "24hr" || shift === "24") {
     const nextDay = addDays(new Date(checkDate), 1);
     nextDay.setHours(5, 0, 0, 0); // 5:00 AM
     deadlineTime = nextDay;
-  } else if (shift === "none") {
-    // For drivers with no shift, they don't have deadlines
+  } else if (shift === "none" || shift === null || !shift || shift === "") {
+    // For drivers with no shift, return "not_joined" (no overdue tracking)
     return "not_joined";
   } else {
-    throw new Error("Invalid shift type");
+    // For any other shift type, treat as night shift
+    console.warn(`Unknown shift type: ${shift}, treating as night shift`);
+    const nextDay = addDays(new Date(checkDate), 1);
+    nextDay.setHours(5, 0, 0, 0); // 5:00 AM
+    deadlineTime = nextDay;
   }
 
   // If past deadline time and today is after checkDate
@@ -298,13 +338,22 @@ export const determineOverdueStatus = (
 };
 
 // Get status color for UI
-export const getStatusColor = (status: string) => {
+export const getStatusColor = (status: string, hasAdjustment?: boolean) => {
+  // Apply purple color if adjustment exists AND status is approved/paid
+  if (hasAdjustment && (status === "paid" || status === "approved")) {
+    return "bg-purple-400 text-white border-2 border-purple-600";
+  }
+
+  // Regular status colors (for all other cases, including pending/rejected with adjustments)
   switch (status) {
     case "paid":
+    case "approved":
       return "bg-green-400 text-black";
     case "pending_verification":
       return "bg-yellow-400 text-black";
     case "overdue":
+      return "bg-red-500 text-white";
+    case "rejected":
       return "bg-red-500 text-white";
     case "leave":
       return "bg-blue-500 text-white";
@@ -328,6 +377,8 @@ export const getStatusLabel = (status: string) => {
       return "Pending";
     case "overdue":
       return "Overdue";
+    case "rejected":
+      return "Rejected";
     case "leave":
       return "Leave";
     case "offline":

@@ -21,6 +21,7 @@ import { Switch } from "@/components/ui/switch";
 import { format, isValid, parseISO, differenceInDays } from "date-fns";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
+import { useActivityLogger } from "@/hooks/useActivityLogger";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Card,
@@ -83,6 +84,7 @@ export const DriverDetailsModal = ({
   onDriverUpdate,
 }: DriverDetailsModalProps) => {
   const { user } = useAuth();
+  const { logActivity } = useActivityLogger();
   const [driver, setDriver] = useState<any>(null);
   const [loading, setLoading] = useState<boolean>(false);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
@@ -195,7 +197,7 @@ export const DriverDetailsModal = ({
               room:rooms(*)
             )
           )
-        `
+        `,
         )
         .eq("id", driverId)
         .eq("current_bed_assignment.status", "active")
@@ -206,7 +208,7 @@ export const DriverDetailsModal = ({
 
       setDriver(driverData);
       setIsOnline(driverData.online || false);
-      setSelectedShift(driverData.shift || "");
+      setSelectedShift(driverData.shift || "none");
       setSelectedVehicle(driverData.vehicle_number || "");
       setSelectedCategory(driverData.driver_category || "hub_base");
       setDeposit(driverData.deposit_amount?.toString() || "0");
@@ -236,7 +238,7 @@ export const DriverDetailsModal = ({
           `
           id,
           vehicle_number
-        `
+        `,
         )
         .eq("online", true);
 
@@ -264,7 +266,7 @@ export const DriverDetailsModal = ({
 
       setEnableDepositCollection(enabled);
       toast.success(
-        `Deposit collection ${enabled ? "enabled" : "disabled"} successfully`
+        `Deposit collection ${enabled ? "enabled" : "disabled"} successfully`,
       );
 
       if (onDriverUpdate) {
@@ -382,8 +384,8 @@ export const DriverDetailsModal = ({
         setShowDocumentWarning(true);
         toast.error(
           `Cannot put driver online. Missing documents: ${documentCheck.missing.join(
-            ", "
-          )}`
+            ", ",
+          )}`,
         );
         return;
       }
@@ -446,7 +448,7 @@ export const DriverDetailsModal = ({
       await fetchDriverDetails();
 
       toast.success(
-        `Driver status updated to ${!isOnline ? "Online" : "Offline"}`
+        `Driver status updated to ${!isOnline ? "Online" : "Offline"}`,
       );
 
       if (onDriverUpdate) onDriverUpdate();
@@ -458,76 +460,58 @@ export const DriverDetailsModal = ({
     }
   };
 
-  const handleVehicleChange = async (vehicleNumber: string) => {
-    if (!vehicleNumber || vehicleNumber === selectedVehicle) return;
+  // Validation function for vehicle/shift assignment
+  const validateVehicleShiftAssignment = (
+    vehicle: string | null,
+    shift: string | null,
+  ): { isValid: boolean; error?: string } => {
+    const hasVehicle = vehicle && vehicle !== "No Vehicle";
+    const hasShift = shift && shift !== "none";
 
-    setIsProcessing(true);
+    // Valid combinations:
+    // 1. Both assigned: vehicle + shift
+    // 2. Both not assigned: no vehicle + no shift
 
-    try {
-      const { error: updateError } = await supabase
-        .from("users")
-        .update({
-          vehicle_number: vehicleNumber === "No Vehicle" ? null : vehicleNumber,
-        })
-        .eq("id", driverId);
+    // Invalid: vehicle without shift
+    if (hasVehicle && !hasShift) {
+      return {
+        isValid: false,
+        error:
+          "Cannot assign vehicle without shift. Please assign a shift (morning/night) or remove the vehicle.",
+      };
+    }
 
-      if (updateError) throw updateError;
+    // Invalid: shift without vehicle
+    if (hasShift && !hasVehicle) {
+      return {
+        isValid: false,
+        error:
+          "Cannot assign shift without vehicle. Please assign a vehicle number or set shift to 'none'.",
+      };
+    }
 
+    return { isValid: true };
+  };
+
+  const handleVehicleChange = (vehicleNumber: string) => {
+    // Just update the local state, don't save yet
+    // If removing vehicle, also clear shift
+    if (vehicleNumber === "No Vehicle") {
       setSelectedVehicle(vehicleNumber);
-      toast.success(
-        vehicleNumber === "No Vehicle"
-          ? "Vehicle assignment removed successfully"
-          : `Vehicle assigned successfully: ${vehicleNumber}`
-      );
-
-      if (onDriverUpdate) onDriverUpdate();
-    } catch (error) {
-      console.error("Error assigning vehicle:", error);
-      toast.error("Failed to assign vehicle");
-    } finally {
-      setIsProcessing(false);
+      setSelectedShift("none");
+    } else {
+      setSelectedVehicle(vehicleNumber);
     }
   };
 
-  const handleShiftChange = async (shift: string) => {
-    if (!shift || shift === selectedShift) return;
-
-    setIsProcessing(true);
-
-    try {
-      const today = new Date().toISOString().split("T")[0];
-
-      const { error } = await supabase
-        .from("users")
-        .update({ shift })
-        .eq("id", driverId);
-
-      if (error) throw error;
-
-      // Only insert into shift_history if shift is not "none"
-      if (shift !== "none") {
-        const { error: historyError } = await supabase
-          .from("shift_history")
-          .insert({
-            user_id: driverId,
-            shift,
-            effective_from_date: today,
-          });
-
-        if (historyError) throw historyError;
-      }
-
+  const handleShiftChange = (shift: string) => {
+    // Just update the local state, don't save yet
+    // If removing shift, also clear vehicle
+    if (shift === "none") {
       setSelectedShift(shift);
-      toast.success(
-        `Shift updated to ${shift === "none" ? "No Shift" : shift}`
-      );
-
-      if (onDriverUpdate) onDriverUpdate();
-    } catch (error) {
-      console.error("Error updating shift:", error);
-      toast.error("Failed to update shift");
-    } finally {
-      setIsProcessing(false);
+      setSelectedVehicle("No Vehicle");
+    } else {
+      setSelectedShift(shift);
     }
   };
 
@@ -548,7 +532,7 @@ export const DriverDetailsModal = ({
       toast.success(
         `Driver category updated to ${
           category === "salary_base" ? "Salary Base" : "Hub Base"
-        }`
+        }`,
       );
 
       if (onDriverUpdate) onDriverUpdate();
@@ -561,13 +545,13 @@ export const DriverDetailsModal = ({
   };
 
   const handleDepositChange = async (
-    e: React.ChangeEvent<HTMLInputElement>
+    e: React.ChangeEvent<HTMLInputElement>,
   ) => {
     setDeposit(e.target.value);
   };
 
   const handleTotalTripsChange = async (
-    e: React.ChangeEvent<HTMLInputElement>
+    e: React.ChangeEvent<HTMLInputElement>,
   ) => {
     setTotalTrips(e.target.value);
   };
@@ -580,6 +564,20 @@ export const DriverDetailsModal = ({
         setIsProcessing(false);
         return;
       }
+
+      // Validate vehicle/shift combination before saving
+      const newVehicle =
+        selectedVehicle === "No Vehicle" ? null : selectedVehicle;
+      const newShift = selectedShift; // Keep "none" as string, don't convert to null
+
+      const validation = validateVehicleShiftAssignment(newVehicle, newShift);
+      if (!validation.isValid) {
+        toast.error(validation.error || "Invalid vehicle/shift combination");
+        setIsProcessing(false);
+        return;
+      }
+
+      const today = new Date().toISOString().split("T")[0];
 
       const { error } = await supabase
         .from("users")
@@ -594,12 +592,67 @@ export const DriverDetailsModal = ({
           total_trip: parseFloat(totalTrips) || 0,
           resigning_date: resigningDate || null,
           resignation_reason: resignationReason || null,
+          vehicle_number: newVehicle,
+          shift: newShift,
         })
         .eq("id", driverId);
 
       if (error) throw error;
 
+      // Add shift history if shift is being set (but not for "none")
+      if (newShift && newShift !== "none") {
+        try {
+          await supabase.from("shift_history").insert({
+            user_id: driverId,
+            shift: newShift,
+            effective_from_date: today,
+          });
+        } catch (historyError) {
+          console.log("Could not save shift history:", historyError);
+          // Continue anyway as this is not critical
+        }
+      }
+
       toast.success("Driver information updated successfully");
+
+      // Log activity
+      const changes = [];
+      if (driver.vehicle_number !== newVehicle) {
+        changes.push(
+          `vehicle: ${driver.vehicle_number || "none"} → ${
+            newVehicle || "none"
+          }`,
+        );
+      }
+      if (driver.shift !== newShift) {
+        changes.push(
+          `shift: ${driver.shift || "none"} → ${newShift || "none"}`,
+        );
+      }
+
+      if (changes.length > 0) {
+        await logActivity({
+          actionType: "edit_driver",
+          actionCategory: "drivers",
+          description: `Updated driver ${name} - Changed ${changes.join(", ")}`,
+          metadata: {
+            driver_id: driverId,
+            driver_name: name,
+            old_vehicle: driver.vehicle_number,
+            new_vehicle: newVehicle,
+            old_shift: driver.shift,
+            new_shift: newShift,
+          },
+          oldValue: `Vehicle: ${driver.vehicle_number || "none"}, Shift: ${
+            driver.shift || "none"
+          }`,
+          newValue: `Vehicle: ${newVehicle || "none"}, Shift: ${
+            newShift || "none"
+          }`,
+          pageName: "Driver Details Modal",
+        });
+      }
+
       if (onDriverUpdate) onDriverUpdate();
       onClose();
     } catch (error) {
@@ -842,7 +895,7 @@ export const DriverDetailsModal = ({
                           {driver?.date_of_birth
                             ? format(
                                 new Date(driver.date_of_birth),
-                                "dd MMM yyyy"
+                                "dd MMM yyyy",
                               )
                             : "Not provided"}
                         </span>
@@ -906,7 +959,7 @@ export const DriverDetailsModal = ({
                           {driver?.resigning_date
                             ? format(
                                 new Date(driver.resigning_date),
-                                "dd MMM yyyy"
+                                "dd MMM yyyy",
                               )
                             : "Not set"}
                         </span>
@@ -1203,17 +1256,17 @@ export const DriverDetailsModal = ({
                                 toast.success(
                                   `Cash trip ${
                                     checked ? "blocked" : "unblocked"
-                                  } for ${driver?.name}`
+                                  } for ${driver?.name}`,
                                 );
                                 fetchDriverDetails(); // Refresh data
                                 if (onDriverUpdate) onDriverUpdate();
                               } catch (error) {
                                 console.error(
                                   "Error updating cash trip block:",
-                                  error
+                                  error,
                                 );
                                 toast.error(
-                                  "Failed to update cash trip block status"
+                                  "Failed to update cash trip block status",
                                 );
                               }
                             }}
@@ -1403,7 +1456,7 @@ export const DriverDetailsModal = ({
 
                   <Separator />
 
-                  <div className="flex flex-col gap-1">
+                  {/* <div className="flex flex-col gap-1">
                     <h3 className="text-sm font-medium">Driver Status</h3>
                     <div className="flex items-center space-x-2">
                       <Switch
@@ -1450,7 +1503,7 @@ export const DriverDetailsModal = ({
                         })()}
                       </div>
                     )}
-                  </div>
+                  </div> */}
 
                   <div className="flex flex-col gap-1">
                     <Label htmlFor="shift">Shift</Label>
@@ -1504,8 +1557,8 @@ export const DriverDetailsModal = ({
                             vehicle.vehicle_number
                               .slice(-4) // Extract last 4 digits
                               .toLowerCase()
-                              .includes(searchQuery)
-                          )
+                              .includes(searchQuery),
+                          ),
                         );
                       }}
                     />
@@ -1617,7 +1670,7 @@ export const DriverDetailsModal = ({
                                       <Calendar className="h-4 w-4 text-muted-foreground" />
                                       {format(
                                         new Date(record.rent_date),
-                                        "dd MMM yyyy"
+                                        "dd MMM yyyy",
                                       )}
                                     </div>
                                   </TableCell>
@@ -1630,11 +1683,11 @@ export const DriverDetailsModal = ({
                                         record.status === "approved"
                                           ? "success"
                                           : record.status === "leave"
-                                          ? "default"
-                                          : record.status ===
-                                            "pending_verification"
-                                          ? "pending"
-                                          : "destructive"
+                                            ? "default"
+                                            : record.status ===
+                                                "pending_verification"
+                                              ? "pending"
+                                              : "destructive"
                                       }
                                     >
                                       {record.status}

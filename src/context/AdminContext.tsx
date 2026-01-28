@@ -1,11 +1,17 @@
+import React, { createContext, useContext, useEffect, useState } from "react";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "./AuthContext";
+import { toast } from "sonner";
 
-import React, { createContext, useContext, useEffect, useState } from 'react';
-import { supabase } from '@/integrations/supabase/client';
-import { useAuth } from './AuthContext';
-import { toast } from 'sonner';
+export type UserRole = "admin" | "manager" | "hr" | "accountant" | null;
 
 type AdminContextType = {
   isAdmin: boolean;
+  isManager: boolean;
+  isHR: boolean;
+  isAccountant: boolean;
+  userRole: UserRole;
+  hasAccess: (allowedRoles: UserRole[]) => boolean;
   loading: boolean;
 };
 
@@ -14,12 +20,20 @@ const AdminContext = createContext<AdminContextType | undefined>(undefined);
 export const AdminProvider = ({ children }: { children: React.ReactNode }) => {
   const { user, loading: authLoading } = useAuth();
   const [isAdmin, setIsAdmin] = useState(false);
+  const [isManager, setIsManager] = useState(false);
+  const [isHR, setIsHR] = useState(false);
+  const [isAccountant, setIsAccountant] = useState(false);
+  const [userRole, setUserRole] = useState<UserRole>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const checkAdminStatus = async () => {
       if (!user) {
         setIsAdmin(false);
+        setIsManager(false);
+        setIsHR(false);
+        setIsAccountant(false);
+        setUserRole(null);
         setLoading(false);
         return;
       }
@@ -27,40 +41,60 @@ export const AdminProvider = ({ children }: { children: React.ReactNode }) => {
       try {
         // Get the user from the users table
         const { data, error } = await supabase
-          .from('users')
-          .select('role')
-          .eq('id', user.id)
+          .from("users")
+          .select("role")
+          .eq("id", user.id)
           .single();
 
         if (error) throw error;
 
+        const role = data?.role as UserRole;
+        setUserRole(role);
+
         // Check if user role is admin or the special email
-        const isUserAdmin = data?.role === 'admin' || user.email === 'mishabrock8@gmail.com';
+        const isUserAdmin =
+          role === "admin" || user.email === "mishabrock8@gmail.com";
         setIsAdmin(isUserAdmin);
-        
-        if (!isUserAdmin && user.email === 'mishabrock8@gmail.com') {
+        setIsManager(role === "manager" || isUserAdmin);
+        setIsHR(
+          role === "hr" ||
+            role === "hr_manager" ||
+            role === "hr_staff" ||
+            isUserAdmin
+        );
+        setIsAccountant(role === "accountant" || isUserAdmin);
+
+        if (!isUserAdmin && user.email === "mishabrock8@gmail.com") {
           // Set the user to admin if email is mishabrock8@gmail.com
           const { error: updateError } = await supabase
-            .from('users')
-            .update({ role: 'admin' })
-            .eq('id', user.id);
-            
+            .from("users")
+            .update({ role: "admin" })
+            .eq("id", user.id);
+
           if (updateError) {
-            console.error('Error updating role:', updateError);
+            console.error("Error updating role:", updateError);
           } else {
             setIsAdmin(true);
-            toast.success('Admin role granted');
+            setIsManager(true);
+            setIsHR(true);
+            setIsAccountant(true);
+            setUserRole("admin");
+            toast.success("Admin role granted");
           }
         }
       } catch (error) {
-        console.error('Error checking admin status:', error);
-        
+        console.error("Error checking admin status:", error);
+
         // Special case for mishabrock8@gmail.com
-        if (user.email === 'mishabrock8@gmail.com') {
+        if (user.email === "mishabrock8@gmail.com") {
           setIsAdmin(true);
-          toast.success('Admin access granted');
+          setIsManager(true);
+          setIsHR(true);
+          setIsAccountant(true);
+          setUserRole("admin");
+          toast.success("Admin access granted");
         } else {
-          toast.error('Failed to verify admin privileges');
+          toast.error("Failed to verify admin privileges");
         }
       } finally {
         setLoading(false);
@@ -72,22 +106,30 @@ export const AdminProvider = ({ children }: { children: React.ReactNode }) => {
     }
   }, [user, authLoading]);
 
+  const hasAccess = (allowedRoles: UserRole[]): boolean => {
+    if (!userRole) return false;
+    return allowedRoles.includes(userRole) || isAdmin;
+  };
+
   const value = {
     isAdmin,
+    isManager,
+    isHR,
+    isAccountant,
+    userRole,
+    hasAccess,
     loading,
   };
 
   return (
-    <AdminContext.Provider value={value}>
-      {children}
-    </AdminContext.Provider>
+    <AdminContext.Provider value={value}>{children}</AdminContext.Provider>
   );
 };
 
 export const useAdmin = () => {
   const context = useContext(AdminContext);
   if (context === undefined) {
-    throw new Error('useAdmin must be used within an AdminProvider');
+    throw new Error("useAdmin must be used within an AdminProvider");
   }
   return context;
 };

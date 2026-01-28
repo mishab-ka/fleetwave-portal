@@ -20,6 +20,8 @@ import {
   Save,
   Trash2,
   History,
+  AlertCircle,
+  User,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
@@ -29,6 +31,8 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
+  DialogFooter,
 } from "@/components/ui/dialog";
 
 import { subDays, startOfWeek, endOfWeek, format } from "date-fns";
@@ -62,6 +66,13 @@ const AdminVehicles = () => {
   });
 
   const [showOnlyActive, setShowOnlyActive] = useState(false);
+  const [showAssignedDriversDialog, setShowAssignedDriversDialog] =
+    useState(false);
+  const [assignedDrivers, setAssignedDrivers] = useState<any[]>([]);
+  const [vehicleToDeactivate, setVehicleToDeactivate] = useState<{
+    vehicle_number: string;
+    currentStatus: boolean | null;
+  } | null>(null);
 
   useEffect(() => {
     fetchVehicles();
@@ -174,6 +185,40 @@ const AdminVehicles = () => {
     vehicle_number: string,
     currentStatus: boolean | null
   ) => {
+    // If trying to deactivate (set to inactive), check for assigned drivers
+    if (currentStatus === true) {
+      try {
+        // Fetch drivers assigned to this vehicle
+        const { data: drivers, error: driversError } = await supabase
+          .from("users")
+          .select("id, name, driver_id, phone_number, online")
+          .eq("vehicle_number", vehicle_number)
+          .eq("role", "user");
+
+        if (driversError) throw driversError;
+
+        // If there are assigned drivers, show warning dialog
+        if (drivers && drivers.length > 0) {
+          setAssignedDrivers(drivers);
+          setVehicleToDeactivate({ vehicle_number, currentStatus });
+          setShowAssignedDriversDialog(true);
+          return;
+        }
+      } catch (error) {
+        console.error("Error checking assigned drivers:", error);
+        toast.error("Failed to check assigned drivers");
+        return;
+      }
+    }
+
+    // If activating or no drivers assigned, proceed with status update
+    await performStatusUpdate(vehicle_number, currentStatus);
+  };
+
+  const performStatusUpdate = async (
+    vehicle_number: string,
+    currentStatus: boolean | null
+  ) => {
     try {
       const { error } = await supabase
         .from("vehicles")
@@ -197,13 +242,53 @@ const AdminVehicles = () => {
     }
   };
 
+  const handleDeactivateAnyway = async () => {
+    if (vehicleToDeactivate) {
+      await performStatusUpdate(
+        vehicleToDeactivate.vehicle_number,
+        vehicleToDeactivate.currentStatus
+      );
+      setShowAssignedDriversDialog(false);
+      setAssignedDrivers([]);
+      setVehicleToDeactivate(null);
+    }
+  };
+
   const addNewVehicle = async () => {
+    // Validate vehicle number
+    if (!newVehicleData.vehicle_number.trim()) {
+      toast.error("Vehicle number is required");
+      return;
+    }
+
     setIsSaving(true);
 
     try {
+      // Check if vehicle already exists
+      const { data: existingVehicle, error: checkError } = await supabase
+        .from("vehicles")
+        .select("vehicle_number")
+        .eq(
+          "vehicle_number",
+          newVehicleData.vehicle_number.toUpperCase().trim()
+        )
+        .maybeSingle();
+
+      if (checkError) throw checkError;
+
+      if (existingVehicle) {
+        toast.error(
+          `Vehicle ${newVehicleData.vehicle_number.toUpperCase()} already exists!`
+        );
+        setIsSaving(false);
+        return;
+      }
+
+      // Insert new vehicle
       const { error } = await supabase.from("vehicles").insert([
         {
           ...newVehicleData,
+          vehicle_number: newVehicleData.vehicle_number.toUpperCase().trim(),
           deposit: Number(newVehicleData.deposit),
           total_trips: Number(newVehicleData.total_trips),
         },
@@ -213,12 +298,25 @@ const AdminVehicles = () => {
 
       toast.success("New vehicle added successfully!");
       setAddingNewVehicle(false);
+      setNewVehicleData({
+        vehicle_number: "",
+        fleet_name: "",
+        deposit: 0,
+        total_trips: 0,
+      });
 
       // Refresh the vehicles list
       fetchVehicles();
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error adding vehicle:", error);
-      toast.error("Failed to add new vehicle.");
+      if (error.code === "23505") {
+        // Unique constraint violation
+        toast.error(
+          `Vehicle ${newVehicleData.vehicle_number.toUpperCase()} already exists!`
+        );
+      } else {
+        toast.error(error.message || "Failed to add new vehicle.");
+      }
     } finally {
       setIsSaving(false);
     }
@@ -671,6 +769,105 @@ const AdminVehicles = () => {
               </Button>
             </div>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Assigned Drivers Warning Dialog */}
+      <Dialog
+        open={showAssignedDriversDialog}
+        onOpenChange={setShowAssignedDriversDialog}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-orange-600">
+              <AlertCircle className="h-5 w-5" />
+              Drivers Assigned to Vehicle
+            </DialogTitle>
+            <DialogDescription>
+              The following driver(s) are currently assigned to this vehicle.
+              Please unassign the vehicle from these drivers before deactivating
+              it.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
+              <div className="flex items-center gap-2 text-orange-800 mb-2">
+                <Car className="h-4 w-4" />
+                <span className="font-medium">
+                  Vehicle: {vehicleToDeactivate?.vehicle_number}
+                </span>
+              </div>
+              <p className="text-sm text-orange-600 mt-2">
+                You need to remove the vehicle assignment from the driver(s)
+                listed below before deactivating this vehicle.
+              </p>
+            </div>
+
+            <div className="max-h-64 overflow-y-auto">
+              <div className="space-y-2">
+                {assignedDrivers.map((driver) => (
+                  <div
+                    key={driver.id}
+                    className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="h-10 w-10 rounded-full bg-purple-100 flex items-center justify-center">
+                        <User className="h-5 w-5 text-purple-600" />
+                      </div>
+                      <div>
+                        <p className="font-medium text-gray-900">
+                          {driver.name || "Unknown"}
+                        </p>
+                        <div className="flex gap-3 text-sm text-gray-500">
+                          {driver.driver_id && (
+                            <span>ID: {driver.driver_id}</span>
+                          )}
+                          {driver.phone_number && (
+                            <span>Phone: {driver.phone_number}</span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                    <Badge
+                      variant={driver.online ? "success" : "secondary"}
+                      className="ml-2"
+                    >
+                      {driver.online ? "Online" : "Offline"}
+                    </Badge>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+              <p className="text-sm text-blue-800">
+                <strong>Note:</strong> Go to the Drivers section and unassign
+                the vehicle from these drivers, or set their vehicle number to
+                "No Vehicle" before deactivating this vehicle.
+              </p>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowAssignedDriversDialog(false);
+                setAssignedDrivers([]);
+                setVehicleToDeactivate(null);
+              }}
+            >
+              Cancel
+            </Button>
+            {/* <Button
+              variant="destructive"
+              onClick={handleDeactivateAnyway}
+              className="bg-orange-600 hover:bg-orange-700"
+            >
+              Deactivate Anyway
+            </Button> */}
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </AdminLayout>

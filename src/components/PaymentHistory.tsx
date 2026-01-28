@@ -472,14 +472,13 @@ const PaymentHistory = () => {
                               : "text-red-500"
                           }`}
                         >
-                          ₹
                           {(record.rent_paid_amount > 0
-                            ? -record.rent_paid_amount
-                            : Math.abs(record.rent_paid_amount)
+                            ? `₹${-record.rent_paid_amount}`
+                            : "refund"
                           ).toLocaleString()}
                         </TableCell>
                         <TableCell className="whitespace-nowrap text-blue-600">
-                          ₹{(record.platform_fee || 0).toLocaleString()}
+                          {(record.platform_fee || 0).toLocaleString()}
                         </TableCell>
                       </TableRow>
                     ))}

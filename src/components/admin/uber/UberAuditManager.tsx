@@ -9,6 +9,7 @@ import {
   isSameDay,
 } from "date-fns";
 import { supabase } from "@/integrations/supabase/client";
+import { useActivityLogger } from "@/hooks/useActivityLogger";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -47,6 +48,7 @@ import {
   Receipt,
   Share2,
   Plus,
+  Gift,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Label } from "@/components/ui/label";
@@ -120,6 +122,7 @@ interface ReportSummary {
     status: string;
     rent_paid_amount: number;
     deposit_cutting_amount: number;
+    vehicle_number?: string;
   }>;
 }
 
@@ -142,6 +145,7 @@ interface PenaltyTransaction {
 }
 
 export function UberAuditManager() {
+  const { logActivity } = useActivityLogger();
   const [audits, setAudits] = useState<UberAudit[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedWeek, setSelectedWeek] = useState(
@@ -173,6 +177,9 @@ export function UberAuditManager() {
     useState<PenaltyType>("penalty");
   const [transactionDescription, setTransactionDescription] = useState("");
   const [currentDriverPenalties, setCurrentDriverPenalties] = useState(0);
+  const [serviceDayAdjustments, setServiceDayAdjustments] = useState<any[]>([]);
+  const [reportServiceDayAdjustments, setReportServiceDayAdjustments] =
+    useState<any[]>([]);
 
   useEffect(() => {
     if (!adminLoading && !isAdmin) {
@@ -541,9 +548,22 @@ export function UberAuditManager() {
     }
   };
 
-  const getCalendarRowColor = (status: string) => {
+  const getCalendarRowColor = (
+    status: string,
+    hasAdjustment?: boolean
+  ) => {
+    // Only apply purple color if ANY adjustment exists AND status is approved
+    if (
+      hasAdjustment &&
+      (status === "approved" || status === "paid")
+    ) {
+      return "bg-purple-400 hover:bg-purple-500 border-2 border-purple-600";
+    }
+
+    // Regular status colors (for all other cases, including pending/rejected with adjustment)
     switch (status) {
       case "approved":
+      case "paid":
         return "bg-green-400 hover:bg-green-500";
       case "pending_verification":
         return "bg-yellow-400 hover:bg-yellow-500";
@@ -640,6 +660,9 @@ export function UberAuditManager() {
       const weekStartDate = new Date(weekEndDate);
       weekStartDate.setDate(weekEndDate.getDate() - 6);
 
+      const weekStartStr = weekStartDate.toISOString().split("T")[0];
+      const weekEndStr = weekEndDate.toISOString().split("T")[0];
+
       // Fetch all reports for this user in the selected week
       const { data: reports, error } = await supabase
         .from("fleet_reports")
@@ -654,15 +677,36 @@ export function UberAuditManager() {
           total_trips,
           status,
           rent_paid_amount,
-          deposit_cutting_amount
+          deposit_cutting_amount,
+          vehicle_number
         `
         )
         .eq("user_id", userId)
-        .gte("rent_date", weekStartDate.toISOString().split("T")[0])
-        .lte("rent_date", weekEndDate.toISOString().split("T")[0])
+        .not("status", "eq", "offline")
+        .not("status", "eq", "leave")
+        // .eq("status", "approved")
+        // .eq("status", "rejected")
+        .gte("rent_date", weekStartStr)
+        .lte("rent_date", weekEndStr)
         .order("rent_date", { ascending: true });
 
       if (error) throw error;
+
+      // Fetch all adjustments for this week (both approved and applied)
+      const { data: adjustments, error: adjError } = await supabase
+        .from("common_adjustments")
+        .select("*")
+        .eq("user_id", userId)
+        .in("status", ["approved", "applied"]) // Include both statuses
+        .gte("adjustment_date", weekStartStr)
+        .lte("adjustment_date", weekEndStr);
+
+      if (adjError) {
+        console.error("Error fetching adjustments:", adjError);
+      }
+
+      console.log(`UberAudit ReportSummary: Fetched ${adjustments?.length || 0} adjustments (approved or applied)`);
+      setReportServiceDayAdjustments(adjustments || []);
 
       if (!reports || reports.length === 0) {
         setReportSummary({
@@ -684,8 +728,7 @@ export function UberAuditManager() {
           total_earnings: acc.total_earnings + (report.total_earnings || 0),
           total_cashcollect:
             acc.total_cashcollect + (report.total_cashcollect || 0),
-          total_other_fee:
-            acc.total_other_fee + (report.other_fee || 0),
+          total_other_fee: acc.total_other_fee + (report.other_fee || 0),
           total_toll: acc.total_toll + (report.toll || 0),
           total_trips: acc.total_trips + (report.total_trips || 0),
         }),
@@ -713,6 +756,7 @@ export function UberAuditManager() {
           status: report.status,
           rent_paid_amount: report.rent_paid_amount || 0,
           deposit_cutting_amount: report.deposit_cutting_amount || 0,
+          vehicle_number: report.vehicle_number,
         })),
       };
 
@@ -790,6 +834,9 @@ export function UberAuditManager() {
       const weekStartDate = new Date(weekEndDate);
       weekStartDate.setDate(weekEndDate.getDate() - 6);
 
+      const weekStartStr = weekStartDate.toISOString().split("T")[0];
+      const weekEndStr = weekEndDate.toISOString().split("T")[0];
+
       // Fetch reports for the week
       const { data: reports, error } = await supabase
         .from("fleet_reports")
@@ -809,13 +856,44 @@ export function UberAuditManager() {
         `
         )
         .eq("user_id", userId)
-        .gte("rent_date", weekStartDate.toISOString().split("T")[0])
-        .lte("rent_date", weekEndDate.toISOString().split("T")[0])
+        .gte("rent_date", weekStartStr)
+        .lte("rent_date", weekEndStr)
         .order("rent_date", { ascending: true });
 
       if (error) throw error;
 
-      setCalendarData(reports || []);
+      // Fetch all adjustments for this week (both approved and applied)
+      const { data: adjustments, error: adjError } = await supabase
+        .from("common_adjustments")
+        .select("*")
+        .eq("user_id", userId)
+        .in("status", ["approved", "applied"]) // Include both statuses
+        .gte("adjustment_date", weekStartStr)
+        .lte("adjustment_date", weekEndStr);
+
+      if (adjError) {
+        console.error("Error fetching adjustments:", adjError);
+      }
+
+      console.log(`UberAudit: Fetched ${adjustments?.length || 0} adjustments for ${userId} (approved or applied)`);
+      setServiceDayAdjustments(adjustments || []);
+
+      // Add hasAdjustment flag to each report
+      const reportsWithAdjustments = (reports || []).map((report) => {
+        const hasAdjustment = (adjustments || []).some(
+          (adj) => adj.adjustment_date === report.rent_date
+        );
+        if (hasAdjustment) {
+          console.log(`UberAudit: Report has adjustment on ${report.rent_date}`);
+        }
+        return {
+          ...report,
+          hasServiceDayAdjustment: hasAdjustment, // Keep old name for compatibility
+          hasAdjustment, // Add new flag too
+        };
+      });
+
+      setCalendarData(reportsWithAdjustments);
     } catch (error) {
       console.error("Error fetching calendar data:", error);
       toast({
@@ -1015,12 +1093,51 @@ export function UberAuditManager() {
   const handleSubmit = async () => {
     if (!selectedAudit) return;
 
+    // Check for pending or rejected reports
+    if (reportSummary && reportSummary.reports) {
+      const hasPendingOrRejected = reportSummary.reports.some((report) => {
+        const status = report.status?.toLowerCase();
+        return status === "pending_verification" || status === "rejected";
+      });
+
+      if (hasPendingOrRejected) {
+        toast({
+          title: "Cannot Submit Audit",
+          description:
+            "Please clear all pending or rejected reports before submitting the audit.",
+          variant: "destructive",
+        });
+        return;
+      }
+    }
+
     try {
       await updateAuditStatus(
         selectedAudit.user_id,
         tempStatus,
         tempDescription
       );
+
+      // Log activity
+      const driverData = audits.find(
+        (a) => a.user_id === selectedAudit.user_id
+      );
+      await logActivity({
+        actionType: "submit_audit",
+        actionCategory: "audit",
+        description: `Submitted weekly audit for driver ${
+          driverData?.user?.name || "Unknown"
+        } - Week ending ${selectedWeek} - Status: ${tempStatus}`,
+        metadata: {
+          user_id: selectedAudit.user_id,
+          driver_name: driverData?.user?.name,
+          week_ending: selectedWeek,
+          audit_status: tempStatus,
+          description: tempDescription,
+        },
+        pageName: "Uber Audit Manager",
+      });
+
       setIsModalOpen(false);
       setSelectedAudit(null);
     } catch (error) {
@@ -1383,57 +1500,159 @@ export function UberAuditManager() {
                         <h4 className="font-semibold">Financial Summary</h4>
                       </div>
                       <div className="space-y-2 text-sm">
+                        {/* Weekly Rent: 700 * number of approved reports */}
                         <div className="flex justify-between">
-                          <span>Weekly Rent </span>
+                          <span>Weekly Rent (700 × approved reports)</span>
                           <span className="font-medium">
                             ₹
-                            {reportSummary.reports.filter(
-                              (report) =>
-                                report.status?.toLowerCase() !== "leave"
-                            ).length * 700}
+                            {(() => {
+                              // Count only approved reports
+                              const approvedReports = reportSummary.reports.filter(
+                                (report) => report.status?.toLowerCase() === "approved"
+                              );
+                              return approvedReports.length * 700;
+                            })()}
                           </span>
                         </div>
-                        {/* <div className="flex justify-between">
-                          <span>Cash Collected:</span>
-                          <span className="font-medium">
-                            ₹{reportSummary.total_cashcollect}
-                          </span>
-                        </div> */}
-                        {/* <div className="flex justify-between">
-                          <span>Other Fee / Expenses:</span>
-                          <span className="font-medium">
-                            ₹{reportSummary.total_other_fee}
-                          </span>
-                        </div>
+
+                        {/* Deposit Cutting */}
                         <div className="flex justify-between">
-                          <span>Toll Charges:</span>
-                          <span className="font-medium">
-                            ₹{reportSummary.total_toll}
-                          </span>
-                        </div> */}
-                        <div className="flex justify-between">
-                          <span>Deposite Cutting:</span>
+                          <span>Deposit Cutting:</span>
                           <span className="font-medium">
                             ₹
                             {reportSummary.reports.reduce((acc, report) => {
-                              const amount =
-                                Number(report.deposit_cutting_amount) || 0;
+                              const amount = Number(report.deposit_cutting_amount) || 0;
                               return acc + (amount > 0 ? amount : 0);
                             }, 0)}
                           </span>
                         </div>
 
+                        {/* Total Adjustments */}
+                        <div className="flex justify-between">
+                          <span>Total Adjustments:</span>
+                          <span className="font-semibold text-purple-600">
+                            ₹
+                            {(() => {
+                              // Sum of all adjustment amounts
+                              return reportServiceDayAdjustments.reduce((sum, adj) => {
+                                return sum + Math.abs(adj.amount || 0);
+                              }, 0);
+                            })()}
+                          </span>
+                        </div>
+
+                        {/* Final Pay: Weekly Rent + Deposit Cutting - Total Adjustments */}
+                        <div className="flex justify-between border-t pt-2">
+                          <span className="font-semibold">Final Pay:</span>
+                          <span className="font-semibold text-blue-600">
+                            ₹
+                            {(() => {
+                              // 1. Weekly Rent (700 * approved reports)
+                              const approvedReports = reportSummary.reports.filter(
+                                (report) => report.status?.toLowerCase() === "approved"
+                              );
+                              const weeklyRent = approvedReports.length * 700;
+
+                              // 2. Deposit Cutting
+                              const depositCutting = reportSummary.reports.reduce((acc, report) => {
+                                const amount = Number(report.deposit_cutting_amount) || 0;
+                                return acc + (amount > 0 ? amount : 0);
+                              }, 0);
+
+                              // 3. Total Adjustments
+                              const totalAdjustments = reportServiceDayAdjustments.reduce((sum, adj) => {
+                                return sum + Math.abs(adj.amount || 0);
+                              }, 0);
+
+                              // Formula: Weekly Rent + Deposit Cutting - Total Adjustments
+                              return weeklyRent + depositCutting - totalAdjustments;
+                            })()}
+                          </span>
+                        </div>
+
+                        {/* Cash at Bank */}
                         <div className="flex justify-between">
                           <span>Cash at Bank:</span>
                           <span className="font-bold text-green-600">
                             ₹
                             {reportSummary.reports.reduce((acc, report) => {
-                              const amount =
-                                Number(report.rent_paid_amount) || 0;
+                              const amount = Number(report.rent_paid_amount) || 0;
                               return acc + (amount > 0 ? amount : 0);
                             }, 0)}
                           </span>
                         </div>
+
+                        {/* Difference: Final Pay - Cash at Bank */}
+                        <div className="flex justify-between border-t pt-2">
+                          <span className="font-semibold">Difference:</span>
+                          <span
+                            className={`font-bold text-lg ${
+                              (() => {
+                                // Calculate Final Pay
+                                const approvedReports = reportSummary.reports.filter(
+                                  (report) => report.status?.toLowerCase() === "approved"
+                                );
+                                const weeklyRent = approvedReports.length * 700;
+                                const depositCutting = reportSummary.reports.reduce((acc, report) => {
+                                  const amount = Number(report.deposit_cutting_amount) || 0;
+                                  return acc + (amount > 0 ? amount : 0);
+                                }, 0);
+                                const totalAdjustments = reportServiceDayAdjustments.reduce((sum, adj) => {
+                                  return sum + Math.abs(adj.amount || 0);
+                                }, 0);
+                                const finalPay = weeklyRent + depositCutting - totalAdjustments;
+
+                                // Calculate Cash at Bank
+                                const cashAtBank = reportSummary.reports.reduce((acc, report) => {
+                                  const amount = Number(report.rent_paid_amount) || 0;
+                                  return acc + (amount > 0 ? amount : 0);
+                                }, 0);
+
+                                // Calculate Difference
+                                const difference = finalPay - cashAtBank;
+
+                                // REVERSED: Negative (company owes) = RED, Positive (driver owes) = GREEN
+                                return difference < 0 ? "text-red-600" : difference > 0 ? "text-green-600" : "text-gray-600";
+                              })()
+                            }`}
+                          >
+                            {(() => {
+                              // Calculate Final Pay
+                              const approvedReports = reportSummary.reports.filter(
+                                (report) => report.status?.toLowerCase() === "approved"
+                              );
+                              const weeklyRent = approvedReports.length * 700;
+                              const depositCutting = reportSummary.reports.reduce((acc, report) => {
+                                const amount = Number(report.deposit_cutting_amount) || 0;
+                                return acc + (amount > 0 ? amount : 0);
+                              }, 0);
+                              const totalAdjustments = reportServiceDayAdjustments.reduce((sum, adj) => {
+                                return sum + Math.abs(adj.amount || 0);
+                              }, 0);
+                              const finalPay = weeklyRent + depositCutting - totalAdjustments;
+
+                              // Calculate Cash at Bank
+                              const cashAtBank = reportSummary.reports.reduce((acc, report) => {
+                                const amount = Number(report.rent_paid_amount) || 0;
+                                return acc + (amount > 0 ? amount : 0);
+                              }, 0);
+
+                              // Calculate Difference
+                              const difference = finalPay - cashAtBank;
+
+                              // Format with sign
+                              if (difference > 0) {
+                                return `+₹${difference.toLocaleString()}`;
+                              } else if (difference < 0) {
+                                return `-₹${Math.abs(difference).toLocaleString()}`;
+                              } else {
+                                return "₹0";
+                              }
+                            })()}
+                          </span>
+                        </div>
+
+                        
                       </div>
                     </div>
 
@@ -1477,7 +1696,7 @@ export function UberAuditManager() {
                         <div className="flex items-center gap-2 mb-2">
                           <Receipt className="h-4 w-4 text-blue-600" />
                           <p className="text-sm text-blue-600 font-medium">
-                            Total Reports
+                            Total WorkingDays
                           </p>
                         </div>
                         <p className="text-2xl font-bold text-blue-900">
@@ -1662,7 +1881,10 @@ export function UberAuditManager() {
                             const dayData = getStatusForDay(day);
                             const isToday = isSameDay(day, new Date());
                             const rowColor = dayData
-                              ? getCalendarRowColor(dayData.status)
+                              ? getCalendarRowColor(
+                                  dayData.status,
+                                  dayData.hasAdjustment || dayData.hasServiceDayAdjustment
+                                )
                               : "bg-gray-50 hover:bg-gray-100";
 
                             return (
@@ -1890,6 +2112,390 @@ export function UberAuditManager() {
                   </div>
                 </div>
               )}
+
+              {/* Weekly Audit / Refund Buttons */}
+              {(() => {
+                          // Check if reportSummary exists
+                          if (!reportSummary || !reportSummary.reports) {
+                            return null;
+                          }
+
+                          // Calculate working days and total trips
+                          const approvedReports = reportSummary.reports.filter(
+                            (report) => report.status?.toLowerCase() === "approved"
+                          );
+                          const workingDays = approvedReports.length;
+                          const totalTrips = approvedReports.reduce(
+                            (sum, report) => sum + (Number(report.total_trips) || 0),
+                            0
+                          );
+                          const requiredTrips = workingDays * 10;
+                          const tripsShortfall = requiredTrips - totalTrips;
+
+                          // Find reports with less than 10 trips (for display)
+                          const incompleteDays = approvedReports.filter((report) => {
+                            const trips = Number(report.total_trips) || 0;
+                            return trips < 10;
+                          });
+
+                          // Case 1: Trips less than required - Show Weekly Audit (Refund + Penalty)
+                          if (totalTrips < requiredTrips && workingDays > 0) {
+                            const penaltyAmount = workingDays * 100;
+                            const refundAmount = workingDays * 100; // Same as penalty amount
+                            
+                            return (
+                              <div className="mt-3 p-3 bg-orange-50 border border-orange-200 rounded-lg">
+                                <div className="flex items-start justify-between gap-2">
+                                  <div className="flex-1">
+                                    <div className="flex items-center gap-2 mb-1">
+                                      <AlertCircle className="h-4 w-4 text-orange-600" />
+                                      <span className="text-sm font-semibold text-orange-900">
+                                        Weekly Audit - Trips Shortfall
+                                      </span>
+                                    </div>
+                                    <div className="text-xs text-orange-700 space-y-1 mb-2">
+                                      <div className="flex justify-between">
+                                        <span>Working Days:</span>
+                                        <span className="font-medium">{workingDays} days</span>
+                                      </div>
+                                      <div className="flex justify-between">
+                                        <span>Required Trips:</span>
+                                        <span className="font-medium">{requiredTrips} trips</span>
+                                      </div>
+                                      <div className="flex justify-between">
+                                        <span>Completed Trips:</span>
+                                        <span className="font-medium">{totalTrips} trips</span>
+                                      </div>
+                                      <div className="flex justify-between border-t border-orange-300 pt-1">
+                                        <span className="font-semibold">Shortfall:</span>
+                                        <span className="font-semibold text-red-600">{tripsShortfall} trips</span>
+                                      </div>
+                                    </div>
+                                    {incompleteDays.length > 0 && (
+                                      <div className="text-xs text-orange-600 space-y-1 mb-2">
+                                        <p className="font-medium">{incompleteDays.length} day(s) with &lt;10 trips:</p>
+                                        {incompleteDays.slice(0, 3).map((report) => (
+                                          <div key={report.id} className="flex justify-between">
+                                            <span>{format(new Date(report.rent_date), "MMM dd")}</span>
+                                            <span className="font-medium">{report.total_trips} trips</span>
+                                          </div>
+                                        ))}
+                                        {incompleteDays.length > 3 && (
+                                          <div className="text-orange-500 italic">
+                                            +{incompleteDays.length - 3} more day(s)
+                                          </div>
+                                        )}
+                                      </div>
+                                    )}
+                                    <div className="border-t border-orange-300 pt-2 mt-2 text-xs text-orange-800">
+                                      <p className="font-semibold mb-1">Transactions to be added:</p>
+                                      <div className="flex justify-between">
+                                        <span>• Refund to Driver:</span>
+                                        <span className="text-green-600 font-medium">+₹{refundAmount}</span>
+                                      </div>
+                                      <div className="flex justify-between">
+                                        <span>• Penalty from Driver:</span>
+                                        <span className="text-red-600 font-medium">-₹{penaltyAmount}</span>
+                                      </div>
+                                      <div className="flex justify-between border-t border-orange-300 pt-1 mt-1">
+                                        <span className="font-semibold">Net to Driver:</span>
+                                        <span className={`font-semibold ${
+                                          (refundAmount - penaltyAmount) > 0 ? "text-green-600" : 
+                                          (refundAmount - penaltyAmount) < 0 ? "text-red-600" : "text-gray-600"
+                                        }`}>
+                                          {refundAmount - penaltyAmount > 0 ? "+" : ""}₹{refundAmount - penaltyAmount}
+                                        </span>
+                                      </div>
+                                    </div>
+                                  </div>
+                                  <Button
+                                    size="sm"
+                                    variant="default"
+                                    className="shrink-0 bg-orange-600 hover:bg-orange-700"
+                                    onClick={async () => {
+                                      if (!selectedAudit) return;
+                                      
+                                      try {
+                                        // Get current user
+                                        const { data: { user }, error: userError } = await supabase.auth.getUser();
+                                        if (userError || !user) {
+                                          toast({
+                                            title: "Error",
+                                            description: "Failed to get user information",
+                                            variant: "destructive",
+                                          });
+                                          return;
+                                        }
+
+                                        // Calculate week range
+                                        const weekEndDate = new Date(selectedWeek);
+                                        const weekStartDate = new Date(weekEndDate);
+                                        weekStartDate.setDate(weekEndDate.getDate() - 6);
+                                        const weekStartStr = weekStartDate.toISOString().split("T")[0];
+                                        const weekEndStr = weekEndDate.toISOString().split("T")[0];
+                                        const weekRangeStr = `${format(weekStartDate, "dd MMM")} - ${format(weekEndDate, "dd MMM yyyy")}`;
+
+                                        // 1. Add REFUND transaction
+                                        const { data: refundTx, error: refundError } = await supabase
+                                          .from("driver_penalty_transactions")
+                                          .insert({
+                                            user_id: selectedAudit.user_id,
+                                            amount: refundAmount,
+                                            type: "refund",
+                                            description: `Weekly Audit - Refund (${weekRangeStr}, ${totalTrips} trips completed, ${workingDays} working days)`,
+                                            created_by: user.id,
+                                          })
+                                          .select("id")
+                                          .single();
+
+                                        if (refundError) throw refundError;
+
+                                        const refundTxId = refundTx?.id;
+
+                                        // 2. Add PENALTY transaction
+                                        const { data: penaltyTx, error: penaltyError } = await supabase
+                                          .from("driver_penalty_transactions")
+                                          .insert({
+                                            user_id: selectedAudit.user_id,
+                                            amount: penaltyAmount,
+                                            type: "penalty",
+                                            description: `Weekly Audit - Missing Trips Completed (${weekRangeStr}, ${workingDays} working days, ${totalTrips}/${requiredTrips} trips)`,
+                                            created_by: user.id,
+                                          })
+                                          .select("id")
+                                          .single();
+
+                                        if (penaltyError) throw penaltyError;
+
+                                        const penaltyTxId = penaltyTx?.id;
+
+                                        // 3. Get all approved reports for this week with vehicle numbers
+                                        const { data: reports, error: reportsError } = await supabase
+                                          .from("fleet_reports")
+                                          .select("vehicle_number, rent_date")
+                                          .eq("user_id", selectedAudit.user_id)
+                                          .eq("status", "approved")
+                                          .gte("rent_date", weekStartStr)
+                                          .lte("rent_date", weekEndStr);
+
+                                        if (reportsError) throw reportsError;
+
+                                        if (!reports || reports.length === 0) {
+                                          console.log("No approved reports found for transaction distribution");
+                                          toast({
+                                            title: "Transactions Added to R/F",
+                                            description: "Refund and penalty added but not distributed to vehicles (no approved reports)",
+                                          });
+                                          await fetchPenaltyTransactions(selectedAudit.user_id);
+                                          return;
+                                        }
+
+                                        // 4. Count days per vehicle
+                                        const vehicleDaysMap = new Map<string, number>();
+                                        reports.forEach((report) => {
+                                          if (report.vehicle_number) {
+                                            const currentCount = vehicleDaysMap.get(report.vehicle_number) || 0;
+                                            vehicleDaysMap.set(report.vehicle_number, currentCount + 1);
+                                          }
+                                        });
+
+                                        const totalDays = Array.from(vehicleDaysMap.values()).reduce((sum, days) => sum + days, 0);
+
+                                        if (totalDays === 0) {
+                                          console.log("Total days is 0, cannot distribute transactions");
+                                          toast({
+                                            title: "Transactions Added to R/F",
+                                            description: "Refund and penalty added but not distributed to vehicles",
+                                          });
+                                          await fetchPenaltyTransactions(selectedAudit.user_id);
+                                          return;
+                                        }
+
+                                        // 5. Get driver name
+                                        const driverName = selectedAudit.user.name;
+
+                                        // 6. Distribute ONLY penalty to vehicle_transactions (Penalty Income only, no refund expense)
+                                        const transactionsToInsert: any[] = [];
+
+                                        // Add penalty transactions (income for vehicles - they receive from driver)
+                                        Array.from(vehicleDaysMap.entries()).forEach(([vehicleNumber, days]) => {
+                                          const proportionalPenalty = (days / totalDays) * penaltyAmount;
+                                          const roundedPenalty = Math.round(proportionalPenalty * 100) / 100;
+
+                                          transactionsToInsert.push({
+                                            vehicle_number: vehicleNumber,
+                                            transaction_type: "income",
+                                            amount: roundedPenalty,
+                                            description: `Driver Penalty: ${driverName} - Missing Trips Penalty (${days} day${days > 1 ? "s" : ""}) [PENALTY_TX_ID:${penaltyTxId}]`,
+                                            transaction_date: weekStartStr,
+                                            created_by: user.id,
+                                          });
+                                        });
+
+                                        const { error: vehicleTxError } = await supabase
+                                          .from("vehicle_transactions")
+                                          .insert(transactionsToInsert);
+
+                                        if (vehicleTxError) {
+                                          console.error("Error creating vehicle transactions:", vehicleTxError);
+                                          throw vehicleTxError;
+                                        }
+
+                                        // Success!
+                                        const netAmount = refundAmount - penaltyAmount;
+                                        toast({
+                                          title: "Weekly Audit Completed",
+                                          description: `R/F: Refund +₹${refundAmount}, Penalty -₹${penaltyAmount} (Net: ₹${netAmount}). Penalty distributed to vehicles.`,
+                                        });
+
+                                        // Refresh penalty transactions to update balance
+                                        await fetchPenaltyTransactions(selectedAudit.user_id);
+                                      } catch (error) {
+                                        console.error("Error adding penalty:", error);
+                                        toast({
+                                          title: "Error",
+                                          description: "Failed to add penalty",
+                                          variant: "destructive",
+                                        });
+                                      }
+                                    }}
+                                  >
+                                    <div className="text-center leading-tight">
+                                      <div className="flex items-center gap-1 justify-center mb-1">
+                                        <AlertCircle className="h-3 w-3" />
+                                        <span className="text-xs font-semibold">Process Weekly Audit</span>
+                                      </div>
+                                      <div className="text-[10px] space-y-0.5">
+                                        <div className="text-green-200">Refund: +₹{refundAmount}</div>
+                                        <div className="text-red-200">Penalty: -₹{penaltyAmount}</div>
+                                      </div>
+                                    </div>
+                                  </Button>
+                                </div>
+                              </div>
+                            );
+                          }
+
+                          // Case 2: Trips >= required - Show Refund Only Button
+                          if (totalTrips >= requiredTrips && workingDays > 0) {
+                            const refundAmount = workingDays * 100;
+
+                            return (
+                              <div className="mt-3 p-3 bg-green-50 border border-green-200 rounded-lg">
+                                <div className="flex items-start justify-between gap-2">
+                                  <div className="flex-1">
+                                    <div className="flex items-center gap-2 mb-1">
+                                      <CheckCircle2 className="h-4 w-4 text-green-600" />
+                                      <span className="text-sm font-semibold text-green-900">
+                                        Target Achieved - Refund Available
+                                      </span>
+                                    </div>
+                                    <div className="text-xs text-green-700 space-y-1 mb-2">
+                                      <div className="flex justify-between">
+                                        <span>Working Days:</span>
+                                        <span className="font-medium">{workingDays} days</span>
+                                      </div>
+                                      <div className="flex justify-between">
+                                        <span>Required Trips:</span>
+                                        <span className="font-medium">{requiredTrips} trips</span>
+                                      </div>
+                                      <div className="flex justify-between">
+                                        <span>Completed Trips:</span>
+                                        <span className="font-medium text-green-600">{totalTrips} trips</span>
+                                      </div>
+                                      <div className="flex justify-between border-t border-green-300 pt-1">
+                                        <span className="font-semibold">Excess:</span>
+                                        <span className="font-semibold text-green-600">+{totalTrips - requiredTrips} trips</span>
+                                      </div>
+                                    </div>
+                                    <div className="border-t border-green-300 pt-2 mt-2 text-xs text-green-800">
+                                      <p className="font-semibold mb-1">Refund to be added:</p>
+                                      <div className="flex justify-between">
+                                        <span>• Refund Amount:</span>
+                                        <span className="text-green-600 font-medium">+₹{refundAmount}</span>
+                                      </div>
+                                      <p className="text-[10px] text-green-600 mt-1">
+                                        (₹100 × {workingDays} working days)
+                                      </p>
+                                    </div>
+                                  </div>
+                                  <Button
+                                    size="sm"
+                                    variant="default"
+                                    className="shrink-0 bg-green-600 hover:bg-green-700"
+                                    onClick={async () => {
+                                      if (!selectedAudit) return;
+                                      
+                                      try {
+                                        // Get current user
+                                        const { data: { user }, error: userError } = await supabase.auth.getUser();
+                                        if (userError || !user) {
+                                          toast({
+                                            title: "Error",
+                                            description: "Failed to get user information",
+                                            variant: "destructive",
+                                          });
+                                          return;
+                                        }
+
+                                        // Calculate week range
+                                        const weekEndDate = new Date(selectedWeek);
+                                        const weekStartDate = new Date(weekEndDate);
+                                        weekStartDate.setDate(weekEndDate.getDate() - 6);
+                                        const weekStartStr = weekStartDate.toISOString().split("T")[0];
+                                        const weekEndStr = weekEndDate.toISOString().split("T")[0];
+                                        const weekRangeStr = `${format(weekStartDate, "dd MMM")} - ${format(weekEndDate, "dd MMM yyyy")}`;
+
+                                        // Add REFUND transaction only (no penalty for completed target)
+                                        const { data: refundTx, error: refundError } = await supabase
+                                          .from("driver_penalty_transactions")
+                                          .insert({
+                                            user_id: selectedAudit.user_id,
+                                            amount: refundAmount,
+                                            type: "refund",
+                                            description: `Target Achieved - Refund (${weekRangeStr}, ${totalTrips} trips completed, ${workingDays} working days, ${totalTrips - requiredTrips} excess trips)`,
+                                            created_by: user.id,
+                                          })
+                                          .select("id")
+                                          .single();
+
+                                        if (refundError) throw refundError;
+
+                                        // Success! (No vehicle transactions for target achievement refund)
+                                        toast({
+                                          title: "Refund Added",
+                                          description: `₹${refundAmount} refund added for target achievement`,
+                                        });
+
+                                        // Refresh penalty transactions to update balance
+                                        await fetchPenaltyTransactions(selectedAudit.user_id);
+                                      } catch (error) {
+                                        console.error("Error adding refund:", error);
+                                        toast({
+                                          title: "Error",
+                                          description: "Failed to add refund",
+                                          variant: "destructive",
+                                        });
+                                      }
+                                    }}
+                                  >
+                                    <div className="text-center leading-tight">
+                                      <div className="flex items-center gap-1 justify-center mb-1">
+                                        <Gift className="h-3 w-3" />
+                                        <span className="text-xs font-semibold">Add Refund</span>
+                                      </div>
+                                      <div className="text-[10px]">
+                                        ₹{refundAmount}
+                                      </div>
+                                    </div>
+                                  </Button>
+                                </div>
+                              </div>
+                            );
+                          }
+
+                          return null;
+                        })()}
 
               {/* Transaction History */}
               {penaltyTransactions.length > 0 && (

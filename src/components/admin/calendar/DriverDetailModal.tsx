@@ -32,10 +32,19 @@ interface DriverDetailModalProps {
     shift: string,
     date: string
   ) => void;
+  onMarkAsOffline?: (
+    driverId: string,
+    driverName: string,
+    vehicleNumber: string,
+    shift: string,
+    date: string,
+    notes?: string
+  ) => void;
 }
 
 export const DriverDetailModal = ({
   onMarkAsLeave,
+  onMarkAsOffline,
   isOpen,
   onClose,
   driverData,
@@ -44,6 +53,8 @@ export const DriverDetailModal = ({
   const [isBalanceModalOpen, setIsBalanceModalOpen] = useState(false);
   const [description, setDescription] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showOfflineModal, setShowOfflineModal] = useState(false);
+  const [offlineNotes, setOfflineNotes] = useState("");
 
   if (!driverData) return null;
 
@@ -154,6 +165,7 @@ export const DriverDetailModal = ({
                       ? "pending"
                       : (driverData.status as any)
                   }
+                  hasAdjustment={driverData.hasServiceDayAdjustment}
                 />
                 <span>for {driverData.date}</span>
               </div>
@@ -244,20 +256,37 @@ export const DriverDetailModal = ({
                   variant="outline"
                 />
 
-                <Button
-                  onClick={() =>
-                    onMarkAsLeave?.(
-                      driverData.userId,
-                      driverData.driverName,
-                      driverData.vehicleNumber || "",
-                      driverData.shift,
-                      driverData.date
-                    )
-                  }
-                  variant="secondary"
-                >
-                  Mark as Leave
-                </Button>
+                {/* Show Mark as Leave and Mark as Offline only for not_joined (no shift) and overdue statuses */}
+                {(driverData.status === "not_joined" ||
+                  driverData.status === "overdue") && (
+                  <>
+                    {/* <Button
+                      onClick={() =>
+                        onMarkAsLeave?.(
+                          driverData.userId,
+                          driverData.driverName,
+                          driverData.vehicleNumber || "",
+                          driverData.shift,
+                          driverData.date
+                        )
+                      }
+                      variant="secondary"
+                      className="bg-blue-600 hover:bg-blue-700 text-white"
+                    >
+                      Mark as Leave
+                    </Button> */}
+                    <Button
+                      onClick={() => {
+                        setOfflineNotes("");
+                        setShowOfflineModal(true);
+                      }}
+                      variant="outline"
+                      className="bg-gray-600 hover:bg-gray-700 text-white border-gray-600"
+                    >
+                      Mark as Offline
+                    </Button>
+                  </>
+                )}
 
                 {(driverData.status === "approved" ||
                   driverData.status === "pending_verification") &&
@@ -353,6 +382,83 @@ export const DriverDetailModal = ({
                 className="bg-blue-600 hover:bg-blue-700"
               >
                 {isSubmitting ? "Adding..." : "Add to Balance"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Mark as Offline Modal */}
+      <Dialog open={showOfflineModal} onOpenChange={setShowOfflineModal}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Mark as Offline</DialogTitle>
+            <DialogDescription>
+              Mark {driverData.driverName} as offline for{" "}
+              {format(parseISO(driverData.date), "PP")}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="p-3 bg-gray-50 rounded-lg">
+              <div className="text-sm text-gray-600 mb-2">Driver Details:</div>
+              <div className="space-y-1 text-sm">
+                <div>
+                  <strong>Driver:</strong> {driverData.driverName}
+                </div>
+                <div>
+                  <strong>Date:</strong>{" "}
+                  {format(parseISO(driverData.date), "PP")}
+                </div>
+                <div>
+                  <strong>Shift:</strong> {driverData.shift || "N/A"}
+                </div>
+                <div>
+                  <strong>Vehicle:</strong> {driverData.vehicleNumber || "N/A"}
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="offline-notes">Notes (Optional)</Label>
+              <Textarea
+                id="offline-notes"
+                placeholder="Enter notes for this offline record..."
+                value={offlineNotes}
+                onChange={(e) => setOfflineNotes(e.target.value)}
+                rows={3}
+              />
+              <p className="text-xs text-gray-500">
+                Add any additional notes about why the driver is offline
+              </p>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-4">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setShowOfflineModal(false);
+                  setOfflineNotes("");
+                }}
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={() => {
+                  onMarkAsOffline?.(
+                    driverData.userId,
+                    driverData.driverName,
+                    driverData.vehicleNumber || "",
+                    driverData.shift,
+                    driverData.date,
+                    offlineNotes.trim() || undefined
+                  );
+                  setShowOfflineModal(false);
+                  setOfflineNotes("");
+                }}
+                className="bg-gray-600 hover:bg-gray-700 text-white"
+              >
+                Mark as Offline
               </Button>
             </div>
           </div>

@@ -21,10 +21,13 @@ import {
   DollarSign,
   Home,
   Bed,
+  Phone,
+  Users,
 } from "lucide-react";
 import { format } from "date-fns";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Link } from "react-router-dom";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -63,6 +66,22 @@ const UserProfile = () => {
   const [isPhotoModalOpen, setIsPhotoModalOpen] = useState(false);
   const [selectedPhotos, setSelectedPhotos] = useState<string[]>([]);
   const [penaltyTransactions, setPenaltyTransactions] = useState([]);
+
+  // Refund request (R&F balance payout request) - driver side
+  const [refundRequestOpen, setRefundRequestOpen] = useState(false);
+  const [refundRequestAmount, setRefundRequestAmount] = useState<string>("");
+  const [refundRequestNotes, setRefundRequestNotes] = useState<string>("");
+  const [refundRequestSubmitting, setRefundRequestSubmitting] = useState(false);
+  const [pendingRefundRequest, setPendingRefundRequest] = useState<{
+    id: string;
+    requested_at: string;
+    amount: number;
+  } | null>(null);
+
+  // Driver partner(s) on same vehicle (from shift assignment)
+  const [partnerDrivers, setPartnerDrivers] = useState<
+    { id: string; name: string | null; phone_number: string; shift: string | null }[]
+  >([]);
 
   useEffect(() => {
     const fetchUserProfile = async () => {
@@ -133,6 +152,54 @@ const UserProfile = () => {
     fetchUserProfile();
     fetchAccommodationInfo();
   }, [user]);
+
+  // Fetch driver partner(s) on same vehicle (same vehicle_number, exclude self)
+  useEffect(() => {
+    const fetchPartnerDrivers = async () => {
+      if (!user?.id || !profileData?.vehicle_number) {
+        setPartnerDrivers([]);
+        return;
+      }
+      try {
+        const { data, error } = await supabase
+          .from("users")
+          .select("id, name, phone_number, shift")
+          .eq("vehicle_number", profileData.vehicle_number)
+          .neq("id", user.id);
+
+        if (error) throw error;
+        setPartnerDrivers(data || []);
+      } catch (e) {
+        console.warn("Could not fetch partner drivers:", e);
+        setPartnerDrivers([]);
+      }
+    };
+    fetchPartnerDrivers();
+  }, [user?.id, profileData?.vehicle_number]);
+
+  const fetchPendingRefundRequest = async () => {
+    if (!user?.id) return;
+    try {
+      const { data, error } = await supabase
+        .from("driver_refund_requests")
+        .select("id, requested_at, amount")
+        .eq("driver_id", user.id)
+        .eq("status", "pending")
+        .order("requested_at", { ascending: false })
+        .limit(1);
+
+      if (error) throw error;
+      setPendingRefundRequest(data && data.length > 0 ? (data[0] as any) : null);
+    } catch (e) {
+      console.warn("Unable to load pending refund request:", e);
+      setPendingRefundRequest(null);
+    }
+  };
+
+  useEffect(() => {
+    fetchPendingRefundRequest();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]);
 
   const fetchPenaltyHistory = async () => {
     if (!user) return;
@@ -412,6 +479,54 @@ const UserProfile = () => {
     setSelectedPhotos(photos);
     setIsPhotoModalOpen(true);
   };
+
+  const openRefundRequest = () => {
+    if (penaltySummary.netPenalties <= 0) return;
+    setRefundRequestAmount(String(Math.floor(penaltySummary.netPenalties)));
+    setRefundRequestNotes("");
+    setRefundRequestOpen(true);
+  };
+
+  const submitRefundRequest = async () => {
+    if (!user?.id) {
+      toast.error("You must be logged in");
+      return;
+    }
+    const amountNum = Number(refundRequestAmount);
+    if (!Number.isFinite(amountNum) || amountNum <= 0) {
+      toast.error("Enter a valid amount");
+      return;
+    }
+    if (amountNum > penaltySummary.netPenalties) {
+      toast.error("Amount cannot exceed your refund balance");
+      return;
+    }
+    if (pendingRefundRequest) {
+      toast.error("You already have a pending refund request");
+      return;
+    }
+
+    try {
+      setRefundRequestSubmitting(true);
+      const { error } = await supabase.from("driver_refund_requests").insert({
+        driver_id: user.id,
+        amount: amountNum,
+        status: "pending",
+        requested_by: user.id,
+        notes: refundRequestNotes.trim() || null,
+      });
+
+      if (error) throw error;
+      toast.success("Refund request submitted");
+      setRefundRequestOpen(false);
+      await fetchPendingRefundRequest();
+    } catch (e) {
+      console.error("Error submitting refund request:", e);
+      toast.error("Failed to submit refund request");
+    } finally {
+      setRefundRequestSubmitting(false);
+    }
+  };
   return (
     <div className="space-y-6">
       <Card>
@@ -497,6 +612,39 @@ const UserProfile = () => {
                         )}`
                       : formatCurrency(penaltySummary.netPenalties)}
                   </p>
+
+                  {penaltySummary.netPenalties > 0 && (
+                    <div className="mt-3">
+                      <Button
+                        size="sm"
+                        onClick={openRefundRequest}
+                        className="bg-green-600 hover:bg-green-700"
+                        disabled={!!pendingRefundRequest}
+                        title={
+                          pendingRefundRequest
+                            ? "A pending refund request already exists"
+                            : ""
+                        }
+                      >
+                        Request Refund
+                      </Button>
+
+                      {pendingRefundRequest && (
+                        <p className="text-xs text-gray-500 mt-2">
+                          Pending request: ₹
+                          {Number(pendingRefundRequest.amount).toLocaleString(
+                            "en-IN"
+                          )}{" "}
+                          (requested{" "}
+                          {format(
+                            new Date(pendingRefundRequest.requested_at),
+                            "dd MMM yyyy"
+                          )}
+                          )
+                        </p>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 {/* <div className="p-4 bg-gray-50 rounded-lg">
@@ -552,6 +700,45 @@ const UserProfile = () => {
                     {profileData.shift || "Not assigned"}
                   </p>
                 </div>
+
+                {/* Driver partner(s) on same vehicle */}
+                {profileData.vehicle_number && (
+                  <div className="p-4 bg-gray-50 rounded-lg md:col-span-2 lg:col-span-3">
+                    <div className="flex items-center gap-2 text-sm font-medium text-gray-500 mb-2">
+                      <Users className="h-4 w-4" />
+                      Driver Partner(s) – same vehicle
+                    </div>
+                    {partnerDrivers.length > 0 ? (
+                      <div className="space-y-3">
+                        {partnerDrivers.map((partner) => (
+                          <div
+                            key={partner.id}
+                            className="flex flex-wrap items-center gap-3 rounded-md border border-gray-200 bg-white p-3 text-sm"
+                          >
+                            <span className="font-semibold">
+                              {partner.name || "Unknown"}
+                            </span>
+                            {partner.phone_number && (
+                              <span className="flex items-center gap-1 text-gray-600">
+                                <Phone className="h-3.5 w-3.5" />
+                                {partner.phone_number}
+                              </span>
+                            )}
+                            {partner.shift && (
+                              <Badge variant="outline" className="capitalize">
+                                {partner.shift}
+                              </Badge>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-sm text-gray-500">
+                        No partner assigned on this vehicle
+                      </p>
+                    )}
+                  </div>
+                )}
 
                 {accommodationInfo && (
                   <>
@@ -939,6 +1126,66 @@ const UserProfile = () => {
             >
               Close
             </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Refund Request Modal */}
+      <Dialog open={refundRequestOpen} onOpenChange={setRefundRequestOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Request Refund (R&F)</DialogTitle>
+            <DialogDescription>
+              You can request a payout only when your R&F balance is positive.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="rounded-md bg-gray-50 p-3 text-sm">
+              <div className="text-gray-500">Available refund balance</div>
+              <div className="text-lg font-semibold text-green-700">
+                {formatCurrency(penaltySummary.netPenalties)}
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="refund-request-amount">Amount</Label>
+              <Input
+                id="refund-request-amount"
+                type="number"
+                min={1}
+                value={refundRequestAmount}
+                onChange={(e) => setRefundRequestAmount(e.target.value)}
+                placeholder="Enter amount"
+              />
+              <p className="text-xs text-gray-500">
+                Amount must be ≤ your current refund balance.
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="refund-request-notes">Notes (optional)</Label>
+              <Textarea
+                id="refund-request-notes"
+                value={refundRequestNotes}
+                onChange={(e) => setRefundRequestNotes(e.target.value)}
+                rows={3}
+                placeholder="Any details for the team..."
+              />
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2">
+              <Button
+                variant="outline"
+                onClick={() => setRefundRequestOpen(false)}
+                disabled={refundRequestSubmitting}
+              >
+                Cancel
+              </Button>
+              <Button onClick={submitRefundRequest} disabled={refundRequestSubmitting}>
+                {refundRequestSubmitting ? "Submitting..." : "Submit Request"}
+              </Button>
+            </div>
           </div>
         </DialogContent>
       </Dialog>

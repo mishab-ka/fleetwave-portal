@@ -43,8 +43,16 @@ import PartTimeLeads from "./pages/parttime/PartTimeLeads";
 import AdminPartTimeLeads from "./pages/admin/AdminPartTimeLeads";
 import AdminCashTripBlocking from "./pages/admin/AdminCashTripBlocking";
 import AdminRefundList from "./pages/admin/AdminRefundList";
+import AdminRefundRequests from "./pages/admin/AdminRefundRequests";
 import HRMobileView from "./components/HRMobileView";
 import ManagerPortal from "./pages/manager/ManagerPortal";
+import ShiftLeaveManagement from "./pages/admin/ShiftLeaveManagement";
+import ManagerReports from "./pages/admin/ManagerReports";
+import ManagerRejectedReports from "./pages/admin/ManagerRejectedReports";
+import CommonAdjustments from "./pages/admin/CommonAdjustments";
+import AdminTaskManager from "./pages/admin/AdminTaskManager";
+import VehiclePerformanceOverview from "./pages/admin/VehiclePerformanceOverview";
+import StaffActivityMonitor from "./pages/admin/StaffActivityMonitor";
 
 // Create a new query client instance
 const queryClient = new QueryClient({
@@ -79,6 +87,10 @@ const App = () => (
                   <Route path="/ocr-test" element={<OCRTestComponent />} />
                   {/* Admin Routes */}
                   <Route path="/admin" element={<AdminDashboard />} />
+                  <Route
+                    path="/admin/vehicle-performance-overview"
+                    element={<VehiclePerformanceOverview />}
+                  />
                   <Route path="/admin/drivers" element={<AdminDrivers />} />
                   <Route path="/admin/vehicles" element={<AdminVehicles />} />
                   <Route path="/admin/reports" element={<AdminReports />} />
@@ -159,12 +171,44 @@ const App = () => (
                     element={<AdminRefundList />}
                   />
                   <Route
+                    path="/admin/refund-requests"
+                    element={<AdminRefundRequests />}
+                  />
+                  <Route
                     path="/admin/room-bed-management"
                     element={<RoomBedManagementPage />}
                   />
                   <Route
                     path="/admin/monthly-rent-dashboard"
                     element={<MonthlyRentDashboardPage />}
+                  />
+                  <Route
+                    path="/admin/shift-leave-management"
+                    element={<ShiftLeaveManagement />}
+                  />
+                  <Route
+                    path="/admin/manager-reports"
+                    element={<ManagerReports />}
+                  />
+                  <Route
+                    path="/admin/rejected-reports"
+                    element={<ManagerRejectedReports />}
+                  />
+                  <Route
+                    path="/admin/service-day-adjustments"
+                    element={<CommonAdjustments />}
+                  />
+                  <Route
+                    path="/admin/common-adjustments"
+                    element={<CommonAdjustments />}
+                  />
+                  <Route
+                    path="/admin/task-manager"
+                    element={<AdminTaskManager />}
+                  />
+                  <Route
+                    path="/admin/staff-activity"
+                    element={<StaffActivityMonitor />}
                   />
                   {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
                   <Route path="*" element={<NotFound />} />

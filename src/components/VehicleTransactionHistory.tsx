@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   Dialog,
   DialogContent,
@@ -46,6 +46,7 @@ interface VehicleTransactionHistoryProps {
     startDate: string;
     endDate: string;
   };
+  onTransactionChange?: () => void;
 }
 
 const VehicleTransactionHistory: React.FC<VehicleTransactionHistoryProps> = ({
@@ -53,6 +54,7 @@ const VehicleTransactionHistory: React.FC<VehicleTransactionHistoryProps> = ({
   onOpenChange,
   vehicleNumber,
   dateRange,
+  onTransactionChange,
 }) => {
   const {
     transactions,
@@ -71,6 +73,10 @@ const VehicleTransactionHistory: React.FC<VehicleTransactionHistoryProps> = ({
     transactionCount: 0,
   });
 
+  const [localTransactions, setLocalTransactions] = useState<
+    VehicleTransaction[]
+  >([]);
+
   const [isAddingTransaction, setIsAddingTransaction] = useState(false);
   const [editingTransaction, setEditingTransaction] =
     useState<VehicleTransaction | null>(null);
@@ -85,25 +91,60 @@ const VehicleTransactionHistory: React.FC<VehicleTransactionHistoryProps> = ({
 
   // Load transactions when dialog opens or date range changes
   useEffect(() => {
-    if (open && vehicleNumber) {
-      loadTransactions();
+    if (!open || !vehicleNumber) {
+      return;
     }
-  }, [open, vehicleNumber, dateRange]);
 
-  const loadTransactions = async () => {
-    await getVehicleTransactions(
-      vehicleNumber,
-      dateRange?.startDate,
-      dateRange?.endDate
-    );
+    const loadTransactions = async () => {
+      try {
+        console.log("=== Loading Transactions ===");
+        console.log("Vehicle Number:", vehicleNumber);
+        console.log("Date Range:", dateRange);
+        console.log("Start Date:", dateRange?.startDate);
+        console.log("End Date:", dateRange?.endDate);
 
-    const summaryData = await getTransactionSummary(
-      vehicleNumber,
-      dateRange?.startDate,
-      dateRange?.endDate
-    );
-    setSummary(summaryData);
-  };
+        // If dateRange is provided, use it; otherwise fetch all transactions for this vehicle
+        const fetchedTransactions = await getVehicleTransactions(
+          vehicleNumber,
+          dateRange?.startDate,
+          dateRange?.endDate
+        );
+
+        console.log("=== Transaction Results ===");
+        console.log("Fetched transactions array:", fetchedTransactions);
+        console.log(
+          "Number of transactions:",
+          fetchedTransactions?.length || 0
+        );
+        if (fetchedTransactions && fetchedTransactions.length > 0) {
+          console.log(
+            "Transaction dates:",
+            fetchedTransactions.map((t) => t.transaction_date)
+          );
+        }
+
+        // Update local transactions state
+        setLocalTransactions(fetchedTransactions || []);
+
+        const summaryData = await getTransactionSummary(
+          vehicleNumber,
+          dateRange?.startDate,
+          dateRange?.endDate
+        );
+        console.log("Transaction summary:", summaryData);
+        setSummary(summaryData);
+
+        // Also check the transactions state from the hook
+        console.log("Transactions from hook state:", transactions);
+      } catch (error) {
+        console.error("Error loading transactions:", error);
+        toast.error("Failed to load transaction history");
+      }
+    };
+
+    loadTransactions();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, vehicleNumber, dateRange?.startDate, dateRange?.endDate]);
 
   const resetForm = () => {
     setFormData({
@@ -132,7 +173,23 @@ const VehicleTransactionHistory: React.FC<VehicleTransactionHistoryProps> = ({
       });
 
       resetForm();
-      loadTransactions(); // Reload to update summary
+      // Reload transactions
+      const fetchedTransactions = await getVehicleTransactions(
+        vehicleNumber,
+        dateRange?.startDate,
+        dateRange?.endDate
+      );
+      setLocalTransactions(fetchedTransactions || []);
+      const summaryData = await getTransactionSummary(
+        vehicleNumber,
+        dateRange?.startDate,
+        dateRange?.endDate
+      );
+      setSummary(summaryData);
+      // Notify parent component to refresh vehicle performance
+      if (onTransactionChange) {
+        onTransactionChange();
+      }
     } catch (error) {
       console.error("Error adding transaction:", error);
     }
@@ -153,7 +210,23 @@ const VehicleTransactionHistory: React.FC<VehicleTransactionHistoryProps> = ({
       });
 
       resetForm();
-      loadTransactions(); // Reload to update summary
+      // Reload transactions
+      const fetchedTransactions = await getVehicleTransactions(
+        vehicleNumber,
+        dateRange?.startDate,
+        dateRange?.endDate
+      );
+      setLocalTransactions(fetchedTransactions || []);
+      const summaryData = await getTransactionSummary(
+        vehicleNumber,
+        dateRange?.startDate,
+        dateRange?.endDate
+      );
+      setSummary(summaryData);
+      // Notify parent component to refresh vehicle performance
+      if (onTransactionChange) {
+        onTransactionChange();
+      }
     } catch (error) {
       console.error("Error updating transaction:", error);
     }
@@ -163,7 +236,23 @@ const VehicleTransactionHistory: React.FC<VehicleTransactionHistoryProps> = ({
     if (window.confirm("Are you sure you want to delete this transaction?")) {
       try {
         await deleteTransaction(id);
-        loadTransactions(); // Reload to update summary
+        // Reload transactions
+        const fetchedTransactions = await getVehicleTransactions(
+          vehicleNumber,
+          dateRange?.startDate,
+          dateRange?.endDate
+        );
+        setLocalTransactions(fetchedTransactions || []);
+        const summaryData = await getTransactionSummary(
+          vehicleNumber,
+          dateRange?.startDate,
+          dateRange?.endDate
+        );
+        setSummary(summaryData);
+        // Notify parent component to refresh vehicle performance
+        if (onTransactionChange) {
+          onTransactionChange();
+        }
       } catch (error) {
         console.error("Error deleting transaction:", error);
       }
@@ -190,10 +279,14 @@ const VehicleTransactionHistory: React.FC<VehicleTransactionHistoryProps> = ({
           <DialogTitle>Transaction History - {vehicleNumber}</DialogTitle>
           <DialogDescription>
             Detailed income and expense history for this vehicle
-            {dateRange && (
+            {dateRange ? (
               <span className="block mt-1 text-sm">
                 Period: {format(new Date(dateRange.startDate), "MMM dd, yyyy")}{" "}
                 - {format(new Date(dateRange.endDate), "MMM dd, yyyy")}
+              </span>
+            ) : (
+              <span className="block mt-1 text-sm text-blue-600">
+                Showing all transactions (no date filter)
               </span>
             )}
           </DialogDescription>
@@ -386,17 +479,33 @@ const VehicleTransactionHistory: React.FC<VehicleTransactionHistoryProps> = ({
                     <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-600 mx-auto"></div>
                   </TableCell>
                 </TableRow>
-              ) : transactions.length === 0 ? (
+              ) : (!localTransactions || localTransactions.length === 0) &&
+                (!transactions || transactions.length === 0) ? (
                 <TableRow>
                   <TableCell
                     colSpan={5}
                     className="text-center py-8 text-gray-500"
                   >
-                    No transactions found for this period
+                    <div>No transactions found</div>
+                    <div className="text-xs mt-2 space-y-1">
+                      {vehicleNumber && <div>Vehicle: {vehicleNumber}</div>}
+                      {dateRange && (
+                        <div>
+                          Date Range: {dateRange.startDate} to{" "}
+                          {dateRange.endDate}
+                        </div>
+                      )}
+                      <div className="text-xs text-blue-600 mt-2">
+                        Check browser console for transaction details
+                      </div>
+                    </div>
                   </TableCell>
                 </TableRow>
               ) : (
-                transactions.map((transaction) => (
+                (localTransactions.length > 0
+                  ? localTransactions
+                  : transactions
+                ).map((transaction) => (
                   <TableRow key={transaction.id}>
                     <TableCell>
                       {format(

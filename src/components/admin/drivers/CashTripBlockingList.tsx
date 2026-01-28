@@ -87,9 +87,8 @@ const CashTripBlockingList = () => {
     averageOverdueDays: 0,
   });
   const [searchTerm, setSearchTerm] = useState("");
-  const [statusFilter, setStatusFilter] = useState<string>("all");
   const [shiftFilter, setShiftFilter] = useState<string>("all");
-  const [sortBy, setSortBy] = useState<string>("name");
+  const [sortBy, setSortBy] = useState<string>("priority");
 
   useEffect(() => {
     fetchDrivers();
@@ -97,7 +96,7 @@ const CashTripBlockingList = () => {
 
   useEffect(() => {
     filterAndSortDrivers();
-  }, [drivers, searchTerm, statusFilter, shiftFilter, sortBy]);
+  }, [drivers, searchTerm, shiftFilter, sortBy]);
 
   const fetchDrivers = async () => {
     try {
@@ -233,7 +232,11 @@ const CashTripBlockingList = () => {
   };
 
   const filterAndSortDrivers = () => {
+    // Only show overdue users
     let filtered = drivers.filter((driver) => {
+      // Must be overdue
+      if (driver.status !== "overdue") return false;
+
       const matchesSearch =
         driver.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
         driver.vehicle_number
@@ -241,17 +244,26 @@ const CashTripBlockingList = () => {
           .includes(searchTerm.toLowerCase()) ||
         driver.phone_number.includes(searchTerm);
 
-      const matchesStatus =
-        statusFilter === "all" || driver.status === statusFilter;
       const matchesShift =
         shiftFilter === "all" || driver.shift === shiftFilter;
 
-      return matchesSearch && matchesStatus && matchesShift;
+      return matchesSearch && matchesShift;
     });
 
-    // Sort drivers
+    // Sort drivers by priority (most overdue first)
     filtered.sort((a, b) => {
       switch (sortBy) {
+        case "priority":
+          // Primary: Sort by overdue count (most overdue reports first)
+          if (b.overdue_count !== a.overdue_count) {
+            return b.overdue_count - a.overdue_count;
+          }
+          // Secondary: Sort by total overdue amount (highest first)
+          if (b.total_overdue_amount !== a.total_overdue_amount) {
+            return b.total_overdue_amount - a.total_overdue_amount;
+          }
+          // Tertiary: Sort by days since last submission (longest first)
+          return b.days_since_last_submission - a.days_since_last_submission;
         case "name":
           return a.name.localeCompare(b.name);
         case "overdue_amount":
@@ -260,8 +272,6 @@ const CashTripBlockingList = () => {
           return b.days_since_last_submission - a.days_since_last_submission;
         case "overdue_count":
           return b.overdue_count - a.overdue_count;
-        case "status":
-          return a.status.localeCompare(b.status);
         default:
           return 0;
       }
@@ -361,8 +371,7 @@ const CashTripBlockingList = () => {
             Cash Trip Blocking List
           </h2>
           <p className="text-muted-foreground">
-            Manage drivers who are blocked from cash trips due to overdue
-            payments or missing submissions
+            Manage overdue drivers - sorted by priority (most overdue first)
           </p>
         </div>
         <Button onClick={fetchDrivers} variant="outline">
@@ -456,7 +465,7 @@ const CashTripBlockingList = () => {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="relative">
               <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
               <Input
@@ -467,18 +476,6 @@ const CashTripBlockingList = () => {
               />
             </div>
 
-            <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger>
-                <SelectValue placeholder="Filter by status" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Status</SelectItem>
-                <SelectItem value="blocked">Blocked</SelectItem>
-                <SelectItem value="overdue">Overdue</SelectItem>
-                <SelectItem value="no_submission">No Submission</SelectItem>
-                <SelectItem value="active">Active</SelectItem>
-              </SelectContent>
-            </Select>
 
             <Select value={shiftFilter} onValueChange={setShiftFilter}>
               <SelectTrigger>
@@ -498,13 +495,13 @@ const CashTripBlockingList = () => {
                 <SelectValue placeholder="Sort by" />
               </SelectTrigger>
               <SelectContent>
+                <SelectItem value="priority">Priority (Most Overdue First)</SelectItem>
                 <SelectItem value="name">Name</SelectItem>
                 <SelectItem value="overdue_amount">Overdue Amount</SelectItem>
                 <SelectItem value="days_since_submission">
                   Days Since Submission
                 </SelectItem>
                 <SelectItem value="overdue_count">Overdue Count</SelectItem>
-                <SelectItem value="status">Status</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -519,7 +516,7 @@ const CashTripBlockingList = () => {
             Drivers ({filteredDrivers.length})
           </CardTitle>
           <CardDescription>
-            Click the toggle to block/unblock drivers from cash trips
+            Showing only overdue drivers. Click the toggle to block/unblock drivers from cash trips
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -527,7 +524,7 @@ const CashTripBlockingList = () => {
             <div className="text-center py-8">
               <AlertTriangle className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
               <p className="text-muted-foreground">
-                No drivers found matching the criteria
+                No overdue drivers found
               </p>
             </div>
           ) : (

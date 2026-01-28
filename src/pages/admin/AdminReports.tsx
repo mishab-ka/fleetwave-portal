@@ -3,6 +3,7 @@ import AdminLayout from "@/components/AdminLayout";
 import { supabase } from "@/integrations/supabase/client";
 import { useAdminSettings } from "@/hooks/useAdminSettings";
 import { useAuth } from "@/context/AuthContext";
+import { useActivityLogger } from "@/hooks/useActivityLogger";
 import { format } from "date-fns";
 import {
   Dialog,
@@ -80,6 +81,10 @@ interface Report {
   other_fee: number;
   driver_phone: string;
   deposit_cutting_amount: number;
+  paying_cash?: boolean;
+  cash_amount?: number | null;
+  cash_manager_id?: string | null;
+  cash_manager?: { name: string | null } | null;
   cng_expense: number;
   km_runned: number;
   is_service_day: boolean;
@@ -143,6 +148,7 @@ const AdminReports = () => {
     calculateCompanyEarnings24hr,
   } = useAdminSettings();
   const { user } = useAuth();
+  const { logActivity } = useActivityLogger();
   const [reports, setReports] = useState<Report[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
@@ -187,7 +193,12 @@ const AdminReports = () => {
   const [balanceDescription, setBalanceDescription] = useState("");
   const [isBalanceSubmitting, setIsBalanceSubmitting] = useState(false);
   const [balanceAmount, setBalanceAmount] = useState<string>("");
+  const [managerNames, setManagerNames] = useState<Record<string, string>>({});
   const [balanceType, setBalanceType] = useState<"due" | "refund">("due");
+  const [serviceDayAdjustments, setServiceDayAdjustments] = useState<any[]>([]);
+  
+  // Track which report is currently being processed to prevent duplicate clicks
+  const [processingReportId, setProcessingReportId] = useState<string | null>(null);
 
   // Statistics state - single state that responds to filters
   const [statistics, setStatistics] = useState({
@@ -206,6 +217,7 @@ const AdminReports = () => {
   useEffect(() => {
     fetchReports();
     fetchStatistics();
+    fetchServiceDayAdjustments();
     setupRealtimeUpdates();
   }, [
     currentPage,
@@ -215,6 +227,16 @@ const AdminReports = () => {
     serviceDayFilter,
     weekOffset,
   ]);
+
+  // Log page view
+  useEffect(() => {
+    logActivity({
+      actionType: "view_page",
+      actionCategory: "reports",
+      description: "Viewed Admin Reports page",
+      pageName: "Admin Reports",
+    });
+  }, []);
 
   // Debounce search query to avoid too many API calls
   useEffect(() => {
@@ -259,6 +281,27 @@ const AdminReports = () => {
       }
     };
     fetchVehicles();
+  }, []);
+
+  // Fetch manager names for "paying cash" display
+  useEffect(() => {
+    const fetchManagers = async () => {
+      try {
+        const { data, error } = await supabase
+          .from("users")
+          .select("id, name")
+          .in("role", ["manager", "admin", "super_admin"]);
+        if (error) throw error;
+        const map: Record<string, string> = {};
+        (data || []).forEach((u) => {
+          map[u.id] = u.name || "—";
+        });
+        setManagerNames(map);
+      } catch (e) {
+        console.warn("Could not fetch managers:", e);
+      }
+    };
+    fetchManagers();
   }, []);
 
   const fetchReports = async () => {
@@ -347,6 +390,46 @@ const AdminReports = () => {
       toast.error("Failed to load reports data");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchServiceDayAdjustments = async () => {
+    try {
+      // Fetch from new common_adjustments table (include both approved and applied)
+      let query = supabase
+        .from("common_adjustments")
+        .select("*")
+        .in("status", ["approved", "applied"]); // Include both statuses
+
+      // Apply date filters to match the reports filter
+      if (dateFilter === "today") {
+        const today = new Date();
+        const todayStr = formatDateLocal(today);
+        query = query.eq("adjustment_date", todayStr);
+      } else if (dateFilter === "week") {
+        const weekDates = getWeekDates(weekOffset);
+        query = query
+          .gte("adjustment_date", weekDates.startStr)
+          .lte("adjustment_date", weekDates.endStr);
+      } else if (dateFilter === "custom") {
+        if (dateRange.start) {
+          const startDate = formatDateLocal(dateRange.start);
+          query = query.gte("adjustment_date", startDate);
+        }
+        if (dateRange.end) {
+          const endDate = formatDateLocal(dateRange.end);
+          query = query.lte("adjustment_date", endDate);
+        }
+      }
+
+      const { data, error } = await query;
+
+      if (error) throw error;
+      console.log(`AdminReports: Fetched ${data?.length || 0} adjustments (approved or applied)`);
+      setServiceDayAdjustments(data || []);
+    } catch (error) {
+      console.error("Error fetching adjustments:", error);
+      setServiceDayAdjustments([]);
     }
   };
 
@@ -558,8 +641,7 @@ const AdminReports = () => {
       const trips = Number(r.total_trips) || 0;
       const depositCutting = Number(r.deposit_cutting_amount) || 0; // Use saved deposit cutting amount
       const rent = computeCompanyRent(trips, r.shift);
-      const amount =
-        earnings + toll - cash - rent - otherFee - depositCutting;
+      const amount = earnings + toll - cash - rent - otherFee - depositCutting;
       // Store with same convention as SubmitReport
       return amount > 0 ? -amount : Math.abs(amount);
     },
@@ -602,8 +684,7 @@ const AdminReports = () => {
       const trips = Number(r.total_trips) || 0;
       const depositCutting = Number(r.deposit_cutting_amount) || 0; // Use saved deposit cutting amount
       const rent = computeCompanyRent(trips, r.shift);
-      const amount =
-        earnings + toll - cash - rent - otherFee - depositCutting;
+      const amount = earnings + toll - cash - rent - otherFee - depositCutting;
       if (amount > 0)
         return `Tawaaq pays ₹${Math.abs(amount).toLocaleString()}`;
       if (amount < 0)
@@ -614,11 +695,19 @@ const AdminReports = () => {
   );
 
   const updateReportStatus = async (id: string, newStatus: string) => {
+    // Prevent duplicate clicks - if already processing this report, return early
+    if (processingReportId === id) {
+      return;
+    }
+
     try {
+      setProcessingReportId(id); // Mark as processing
+      
       // Get the report details first
       const report = reports.find((r) => r.id === id);
       if (!report) {
         toast.error("Report not found");
+        setProcessingReportId(null);
         return;
       }
 
@@ -638,6 +727,115 @@ const AdminReports = () => {
               created_at: report.rent_date,
             })
           );
+        }
+
+        // Apply adjustments to other_fee and mark them as applied
+        const { data: adjustments, error: adjError } = await supabase
+          .from("common_adjustments")
+          .select("*")
+          .eq("user_id", report.user_id)
+          .eq("adjustment_date", report.rent_date)
+          .eq("status", "approved");
+
+        if (!adjError && adjustments && adjustments.length > 0) {
+          // Calculate total adjustment amount to add to vehicle_performance.other_expenses
+          const totalAdjustmentAmount = adjustments.reduce((sum, adj) => {
+            return sum + Math.abs(adj.amount);
+          }, 0);
+
+          // Get vehicle_number from adjustment (adjustments are vehicle-based)
+          const vehicleNumber = adjustments[0].vehicle_number;
+          
+          if (vehicleNumber) {
+            // Calculate date for vehicle_performance lookup
+            const reportDate = report.rent_date;
+            
+            // Try to find existing vehicle_performance record
+            const { data: vpData, error: vpError } = await supabase
+              .from("vehicle_performance")
+              .select("id, other_expenses")
+              .eq("vehicle_number", vehicleNumber)
+              .eq("date", reportDate)
+              .single();
+
+            if (vpData) {
+              // Update existing record
+              const currentOtherExpenses = Number(vpData.other_expenses) || 0;
+              const newOtherExpenses = currentOtherExpenses + totalAdjustmentAmount;
+              
+              await supabase
+                .from("vehicle_performance")
+                .update({ other_expenses: newOtherExpenses })
+                .eq("id", vpData.id);
+              
+              console.log(`Updated vehicle_performance for ${vehicleNumber} on ${reportDate}: other_expenses = ${newOtherExpenses}`);
+            } else if (!vpError || vpError.code === 'PGRST116') {
+              // PGRST116 = no rows returned, which is fine - we'll create a new record
+              // Create new vehicle_performance record with adjustment
+              const { error: insertError } = await supabase
+                .from("vehicle_performance")
+                .insert({
+                  vehicle_number: vehicleNumber,
+                  date: reportDate,
+                  other_expenses: totalAdjustmentAmount,
+                  // Add required fields with defaults
+                  total_trips: 0,
+                  total_earnings: 0,
+                  total_rent: 0,
+                  additional_income: 0,
+                  expenses: 0,
+                  profit_loss: -totalAdjustmentAmount, // Negative because it's an expense
+                  worked_days: 0,
+                  avg_trips_per_day: 0,
+                  avg_earnings_per_day: 0,
+                  rent_slab: "",
+                  performance_status: "break_even",
+                  working_days_multiplier: 1,
+                  exact_working_days: 0,
+                });
+              
+              if (insertError) {
+                console.error(`Error creating vehicle_performance record for ${vehicleNumber}:`, insertError);
+              } else {
+                console.log(`Created new vehicle_performance record for ${vehicleNumber} on ${reportDate} with adjustment: ${totalAdjustmentAmount}`);
+              }
+            } else {
+              console.error(`Error fetching vehicle_performance for ${vehicleNumber}:`, vpError);
+            }
+
+            // Create vehicle_transaction entries for each adjustment with their descriptions
+            for (const adjustment of adjustments) {
+              const adjustmentAmount = Math.abs(adjustment.amount);
+              const description = adjustment.description || `Adjustment for ${report.driver_name}`;
+              
+              const { error: txError } = await supabase
+                .from("vehicle_transactions")
+                .insert({
+                  vehicle_number: vehicleNumber,
+                  transaction_type: "expense",
+                  amount: adjustmentAmount,
+                  description: `${description} (Applied on report verification)`,
+                  transaction_date: reportDate,
+                  created_by: user?.id,
+                });
+
+              if (txError) {
+                console.error(`Error creating vehicle transaction for adjustment ${adjustment.id}:`, txError);
+              } else {
+                console.log(`Created vehicle transaction for adjustment: ${description} - ₹${adjustmentAmount}`);
+              }
+            }
+          } else {
+            console.warn("Adjustment has no vehicle_number, skipping vehicle_performance update");
+          }
+
+          // Mark adjustments as applied
+          for (const adjustment of adjustments) {
+            await supabase.rpc("apply_adjustment_to_report", {
+              p_adjustment_id: adjustment.id,
+              p_report_id: report.id,
+            });
+          }
         }
 
         // 2. ₹100 transaction
@@ -779,9 +977,30 @@ const AdminReports = () => {
       );
 
       toast.success(`Report marked as ${newStatus}`);
+      
+      // Log activity
+      await logActivity({
+        actionType: newStatus === "approved" ? "approve_report" : "reject_report",
+        actionCategory: "reports",
+        description: `${newStatus === "approved" ? "Approved" : "Rejected"} report for driver ${report.driver_name} (${report.vehicle_number}) on ${report.rent_date} - ${report.shift} shift - Earnings: ₹${report.total_earnings}`,
+        metadata: {
+          report_id: id,
+          driver_name: report.driver_name,
+          driver_id: report.user_id,
+          vehicle_number: report.vehicle_number,
+          rent_date: report.rent_date,
+          shift: report.shift,
+          total_earnings: report.total_earnings,
+          total_trips: report.total_trips,
+          status: newStatus,
+        },
+        pageName: "Admin Reports",
+      });
     } catch (error) {
       console.error("Error updating report:", error);
       toast.error("Failed to update report status");
+    } finally {
+      setProcessingReportId(null); // Clear processing state
     }
   };
 
@@ -841,7 +1060,22 @@ const AdminReports = () => {
     if (!selectedReport) return;
 
     try {
-      // Step 1: Delete the report
+      // Step 1: First, unlink any adjustments that are applied to this report
+      const { error: unlinkError } = await supabase
+        .from("common_adjustments")
+        .update({ 
+          applied_to_report: null,
+          status: 'approved', // Reset status back to approved (not applied)
+          applied_at: null
+        })
+        .eq("applied_to_report", selectedReport.id);
+
+      if (unlinkError) {
+        console.error("Error unlinking adjustments:", unlinkError);
+        throw unlinkError;
+      }
+
+      // Step 2: Delete the report
       const { error: deleteError } = await supabase
         .from("fleet_reports")
         .delete()
@@ -849,7 +1083,7 @@ const AdminReports = () => {
 
       if (deleteError) throw deleteError;
 
-      // Step 2: Fetch the current vehicle's total_trips
+      // Step 3: Fetch the current vehicle's total_trips
       const { data: vehicleData, error: vehicleError } = await supabase
         .from("vehicles")
         .select("total_trips")
@@ -864,7 +1098,7 @@ const AdminReports = () => {
         0
       );
 
-      // Step 3: Update the vehicle's trip count
+      // Step 4: Update the vehicle's trip count
       const { error: updateError } = await supabase
         .from("vehicles")
         .update({ total_trips: newTripCount })
@@ -872,7 +1106,7 @@ const AdminReports = () => {
 
       if (updateError) throw updateError;
 
-      // Step 4: Update local state
+      // Step 5: Update local state
       setReports((prev) =>
         prev.filter((report) => report.id !== selectedReport.id)
       );
@@ -1798,7 +2032,7 @@ const AdminReports = () => {
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center justify-between mb-4">
                 <h2 className="text-xl font-semibold text-gray-800">
                   Recent Reports
                 </h2>
@@ -1814,6 +2048,25 @@ const AdminReports = () => {
                     <RefreshCcw className="h-4 w-4" />
                   </button>
                 </span>
+              </div>
+              
+              {/* Adjustment Legend */}
+              <div className="mb-4 p-3 bg-gray-50 border border-gray-200 rounded-lg">
+                <div className="flex items-center gap-4 flex-wrap text-xs">
+                  <span className="font-semibold text-gray-700">Adjustment Indicators:</span>
+                  <div className="flex items-center gap-2">
+                    <div className="w-4 h-4 bg-purple-100 border-2 border-purple-500 rounded"></div>
+                    <span className="text-gray-600">Pending Adjustment (Not Applied)</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="w-4 h-4 bg-blue-100 border-2 border-blue-500 rounded"></div>
+                    <span className="text-gray-600">Applied Adjustment (Verified)</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="inline-flex items-center justify-center w-5 h-5 bg-purple-500 text-white rounded-full text-[10px] font-bold">N</span>
+                    <span className="text-gray-600">Number shows adjustment count & amount</span>
+                  </div>
+                </div>
               </div>
               <div className="min-w-full overflow-hidden">
                 <div className="max-h-[300px] overflow-y-auto">
@@ -1834,6 +2087,7 @@ const AdminReports = () => {
                         <TableHead className="min-w-[50px]">C C</TableHead>
                         <TableHead className="min-w-[50px]">OF</TableHead>
                         <TableHead className="min-w-[50px]">RPA</TableHead>
+                        <TableHead className="min-w-[90px]">Cash</TableHead>
                         <TableHead className="min-w-[50px]">DAE</TableHead>
                         <TableHead className="min-w-[50px]">S S</TableHead>
                         <TableHead className="min-w-[50px]">Status</TableHead>
@@ -1851,174 +2105,238 @@ const AdminReports = () => {
                           </TableCell>
                         </TableRow>
                       ) : (
-                        reports.map((report, index) => (
-                          <TableRow key={report.id} className="text-sm">
-                            <TableCell className="font-medium">
-                              {index + 1}
-                            </TableCell>
-                            <TableCell className="whitespace-nowrap">
-                              {format(
-                                new Date(report.submission_date),
-                                "d MMM yyyy, hh:mm a"
-                              )}
-                            </TableCell>
-                            <TableCell className="font-medium">
-                              {report.driver_name}
-                            </TableCell>
-                            <TableCell>{report.vehicle_number}</TableCell>
-                            <TableCell>{report.total_trips}</TableCell>
-                            <TableCell className="font-bold">
-                              ₹{report.total_earnings.toLocaleString()}
-                            </TableCell>
-                            <TableCell className="font-bold">
-                              ₹{report.toll}
-                            </TableCell>
-                            <TableCell className="font-bold">
-                              ₹{report.total_cashcollect.toLocaleString()}
-                            </TableCell>
-                            <TableCell>
-                              ₹{report.other_fee?.toLocaleString() || "0"}
-                            </TableCell>
-                            <TableCell
-                              className={`whitespace-nowrap ${
-                                report.rent_paid_amount < 0
-                                  ? "text-red-500 font-bold"
-                                  : "text-green-500 font-bold"
+                        reports.map((report, index) => {
+                          // Check if this report has any adjustment
+                          const reportAdjustments = serviceDayAdjustments.filter(
+                            (adj) =>
+                              adj.user_id === report.user_id &&
+                              adj.adjustment_date === report.rent_date
+                          );
+                          
+                          const hasAdjustment = reportAdjustments.length > 0;
+                          const appliedAdjustments = reportAdjustments.filter(
+                            (adj) => adj.status === "applied" && adj.applied_to_report === report.id
+                          );
+                          const pendingAdjustments = reportAdjustments.filter(
+                            (adj) => adj.status === "approved"
+                          );
+                          
+                          const totalAdjustmentAmount = reportAdjustments.reduce(
+                            (sum, adj) => sum + Math.abs(adj.amount),
+                            0
+                          );
+
+                          return (
+                            <TableRow
+                              key={report.id}
+                              className={`text-sm ${
+                                hasAdjustment
+                                  ? appliedAdjustments.length > 0
+                                    ? "bg-blue-100 hover:bg-blue-200"
+                                    : "bg-purple-100 hover:bg-purple-200"
+                                  : ""
                               }`}
                             >
-                              ₹{report.rent_paid_amount.toLocaleString()}
-                            </TableCell>
-                            <TableCell className="text-yellow-600">
-                              ₹
-                              {report.total_earnings -
-                                report.other_fee -
-                                600}
-                            </TableCell>
-
-                            <TableCell>
-                              <div className="flex space-x-1">
-                                {report.uber_screenshot ? (
-                                  <CheckCircle className="h-4 w-4 text-green-500" />
-                                ) : (
-                                  <XCircle className="h-4 w-4 text-red-500" />
+                              <TableCell className="font-medium">
+                                {index + 1}
+                              </TableCell>
+                              <TableCell className="whitespace-nowrap">
+                                {format(
+                                  new Date(report.submission_date),
+                                  "d MMM yyyy, hh:mm a"
                                 )}
-                                {report.payment_screenshot ? (
-                                  <CheckCircle className="h-4 w-4 text-green-500" />
+                              </TableCell>
+                              <TableCell className="font-medium">
+                                {report.driver_name}
+                              </TableCell>
+                              <TableCell>{report.vehicle_number}</TableCell>
+                              <TableCell>{report.total_trips}</TableCell>
+                              <TableCell className="font-bold">
+                                ₹{report.total_earnings.toLocaleString()}
+                              </TableCell>
+                              <TableCell className="font-bold">
+                                ₹{report.toll}
+                              </TableCell>
+                              <TableCell className="font-bold">
+                                ₹{report.total_cashcollect.toLocaleString()}
+                              </TableCell>
+                              <TableCell>
+                                ₹{report.other_fee?.toLocaleString() || "0"}
+                              </TableCell>
+                              <TableCell
+                                className={`whitespace-nowrap ${
+                                  report.rent_paid_amount < 0
+                                    ? "text-red-500 font-bold"
+                                    : "text-green-500 font-bold"
+                                }`}
+                              >
+                                ₹{report.rent_paid_amount.toLocaleString()}
+                              </TableCell>
+                              <TableCell className="whitespace-nowrap text-sm">
+                                {report.paying_cash && report.cash_amount != null ? (
+                                  <span className="text-green-700 font-medium">
+                                    ₹{Number(report.cash_amount).toLocaleString()}
+                                    {report.cash_manager_id && (
+                                      <span className="text-muted-foreground font-normal">
+                                        {" "}({managerNames[report.cash_manager_id] ?? "—"})
+                                      </span>
+                                    )}
+                                  </span>
                                 ) : (
-                                  <XCircle className="h-4 w-4 text-red-500" />
+                                  "—"
                                 )}
-                              </div>
-                            </TableCell>
-                            <TableCell>
-                              {getStatusBadge(report.status)}
-                            </TableCell>
-                            <TableCell className="text-center">
-                              {report.is_service_day && (
-                                <span
-                                  className="inline-flex items-center justify-center w-6 h-6 bg-orange-100 text-orange-600 rounded-full text-xs font-bold"
-                                  title="Service Day"
-                                >
-                                  ⚙️
-                                </span>
-                              )}
-                            </TableCell>
-                            <TableCell>
-                              <div className="flex justify-end space-x-1">
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => {
-                                    setSelectedReport(report);
-                                    setIsModalOpen(true);
-                                  }}
-                                >
-                                  <Eye className="h-4 w-4" />
-                                </Button>
+                              </TableCell>
+                              <TableCell className="text-yellow-600">
+                                ₹
+                                {report.total_earnings - report.other_fee - 600}
+                              </TableCell>
 
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  className="text-green-600  sm:inline-flex"
-                                  onClick={() =>
-                                    updateReportStatus(report.id, "approved")
-                                  }
-                                  disabled={report.status === "approved"}
-                                >
-                                  <CheckCircle className="h-4 w-4" />
-                                </Button>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  className="text-red-600  sm:inline-flex"
-                                  onClick={() =>
-                                    updateReportStatus(report.id, "rejected")
-                                  }
-                                  disabled={report.status === "rejected"}
-                                >
-                                  <XCircle className="h-4 w-4" />
-                                </Button>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  className="text-purple-600 hover:text-purple-700"
-                                  onClick={() =>
-                                    handleOpenAdjustmentModal(report)
-                                  }
-                                  title="Add Adjustment"
-                                >
-                                  <DollarSign className="h-4 w-4" />
-                                </Button>
-                                {(report.status === "approved" ||
-                                  report.status === "pending_verification") &&
-                                  report.rent_paid_amount !== undefined && (
-                                    <Button
-                                      variant="ghost"
-                                      size="sm"
-                                      className="text-blue-600 hover:text-blue-700"
-                                      onClick={() =>
-                                        handleOpenBalanceModal(report)
-                                      }
-                                      title="Add to Penalty Transactions"
-                                    >
-                                      <Wallet className="h-4 w-4" />
-                                    </Button>
+                              <TableCell>
+                                <div className="flex space-x-1">
+                                  {report.uber_screenshot ? (
+                                    <CheckCircle className="h-4 w-4 text-green-500" />
+                                  ) : (
+                                    <XCircle className="h-4 w-4 text-red-500" />
                                   )}
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  className={`text-blue-600 sm:inline-flex`}
-                                  onClick={async () => {
-                                    const { data, error } = await supabase
-                                      .from("users")
-                                      .select("phone_number")
-                                      .eq("id", report.user_id)
-                                      .single();
+                                  {report.payment_screenshot ? (
+                                    <CheckCircle className="h-4 w-4 text-green-500" />
+                                  ) : (
+                                    <XCircle className="h-4 w-4 text-red-500" />
+                                  )}
+                                </div>
+                              </TableCell>
+                              <TableCell>
+                                {getStatusBadge(report.status)}
+                              </TableCell>
+                              <TableCell className="text-center">
+                                {hasAdjustment && (
+                                  <div className="flex flex-col items-center gap-1">
+                                    {/* <span
+                                      className={`inline-flex items-center justify-center w-7 h-7 rounded-full text-xs font-bold shadow-sm ${
+                                        appliedAdjustments.length > 0
+                                          ? "bg-blue-500 text-white"
+                                          : "bg-purple-500 text-white"
+                                      }`}
+                                      title={
+                                        appliedAdjustments.length > 0
+                                          ? `${appliedAdjustments.length} Applied Adjustment(s) - ₹${totalAdjustmentAmount}`
+                                          : `${pendingAdjustments.length} Pending Adjustment(s) - ₹${totalAdjustmentAmount}`
+                                      }
+                                    >
+                                      {reportAdjustments.length}
+                                    </span> */}
+                                    <span className="text-[10px] font-semibold text-gray-700">
+                                      ₹{totalAdjustmentAmount}
+                                    </span>
+                                  </div>
+                                )}
+                              </TableCell>
+                              <TableCell>
+                                <div className="flex justify-end space-x-1">
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => {
+                                      setSelectedReport(report);
+                                      setIsModalOpen(true);
+                                    }}
+                                  >
+                                    <Eye className="h-4 w-4" />
+                                  </Button>
 
-                                    if (error || !data?.phone_number) {
-                                      console.error(
-                                        "Failed to get driver phone"
-                                      );
-                                      return;
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="text-green-600  sm:inline-flex"
+                                    onClick={() =>
+                                      updateReportStatus(report.id, "approved")
                                     }
+                                    disabled={report.status === "approved" || processingReportId === report.id}
+                                  >
+                                    {processingReportId === report.id ? (
+                                      <div className="h-4 w-4 rounded-full border-2 border-t-transparent border-green-600 animate-spin"></div>
+                                    ) : (
+                                      <CheckCircle className="h-4 w-4" />
+                                    )}
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="text-red-600  sm:inline-flex"
+                                    onClick={() =>
+                                      updateReportStatus(report.id, "rejected")
+                                    }
+                                    disabled={report.status === "rejected" || processingReportId === report.id}
+                                  >
+                                    {processingReportId === report.id ? (
+                                      <div className="h-4 w-4 rounded-full border-2 border-t-transparent border-red-600 animate-spin"></div>
+                                    ) : (
+                                      <XCircle className="h-4 w-4" />
+                                    )}
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="text-purple-600 hover:text-purple-700"
+                                    onClick={() =>
+                                      handleOpenAdjustmentModal(report)
+                                    }
+                                    title="Add Adjustment"
+                                  >
+                                    <DollarSign className="h-4 w-4" />
+                                  </Button>
+                                  {(report.status === "approved" ||
+                                    report.status === "pending_verification") &&
+                                    report.rent_paid_amount !== undefined && (
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        className="text-blue-600 hover:text-blue-700"
+                                        onClick={() =>
+                                          handleOpenBalanceModal(report)
+                                        }
+                                        title="Add to Penalty Transactions"
+                                      >
+                                        <Wallet className="h-4 w-4" />
+                                      </Button>
+                                    )}
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className={`text-blue-600 sm:inline-flex`}
+                                    onClick={async () => {
+                                      const { data, error } = await supabase
+                                        .from("users")
+                                        .select("phone_number")
+                                        .eq("id", report.user_id)
+                                        .single();
 
-                                    const driverPhone = data.phone_number;
+                                      if (error || !data?.phone_number) {
+                                        console.error(
+                                          "Failed to get driver phone"
+                                        );
+                                        return;
+                                      }
 
-                                    const message = encodeURIComponent(
-                                      `OverDue slip 🧾\nDriver: ${report.driver_name}\nVehicle: ${report.vehicle_number}\nShift: ${report.shift}\nPhone: ${driverPhone}\nRent Date: ${report.rent_date}\nOverdue Amount: ${report.rent_paid_amount}`
-                                    );
+                                      const driverPhone = data.phone_number;
 
-                                    window.open(
-                                      `https://wa.me/?text=${message}`,
-                                      "_blank"
-                                    );
-                                  }}
-                                >
-                                  <Share2 className="h-4 w-4" />
-                                </Button>
-                              </div>
-                            </TableCell>
-                          </TableRow>
-                        ))
+                                      const message = encodeURIComponent(
+                                        `OverDue slip 🧾\nDriver: ${report.driver_name}\nVehicle: ${report.vehicle_number}\nShift: ${report.shift}\nPhone: ${driverPhone}\nRent Date: ${report.rent_date}\nOverdue Amount: ${report.rent_paid_amount}`
+                                      );
+
+                                      window.open(
+                                        `https://wa.me/?text=${message}`,
+                                        "_blank"
+                                      );
+                                    }}
+                                  >
+                                    <Share2 className="h-4 w-4" />
+                                  </Button>
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })
                       )}
                     </TableBody>
                   </Table>
@@ -2095,12 +2413,12 @@ const AdminReports = () => {
       )}
 
       <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
-        <DialogContent className="border-border/50 max-w-2xl">
+        <DialogContent className="border-border/50 max-w-5xl">
           <DialogHeader>
             <DialogTitle>Report Details</DialogTitle>
           </DialogHeader>
-          <div className="space-y-6">
-            <div className="grid grid-cols-2 gap-4">
+          <div className="space-y-10">
+            <div className="grid grid-cols-3 gap-4">
               <div className="space-y-2">
                 <label>Vehicle Number</label>
                 <Select
@@ -2168,6 +2486,22 @@ const AdminReports = () => {
                     }
                   />
                 </div>
+                <div className="space-y-2">
+                <label>Other Fee / Expenses (₹)</label>
+                <Input
+                  type="number"
+                  value={selectedReport?.other_fee}
+                  onChange={(e) =>
+                    updateSelectedReportField(
+                      "other_fee",
+                      Number(e.target.value)
+                    )
+                  }
+                />
+                <p className="text-xs text-gray-500">
+                  Platform fee, fuel, maintenance, or any other expenses
+                </p>
+              </div>
               </div>
               <div className="space-y-2">
                 <label>Total Earnings</label>
@@ -2214,22 +2548,7 @@ const AdminReports = () => {
                   }
                 />
               </div>
-              <div className="space-y-2">
-                <label>Other Fee / Expenses (₹)</label>
-                <Input
-                  type="number"
-                  value={selectedReport?.other_fee}
-                  onChange={(e) =>
-                    updateSelectedReportField(
-                      "other_fee",
-                      Number(e.target.value)
-                    )
-                  }
-                />
-                <p className="text-xs text-gray-500">
-                  Platform fee, fuel, maintenance, or any other expenses
-                </p>
-              </div>
+              
               <div className="space-y-2">
                 <label>Rent Paid Amount (Auto)</label>
                 <Input
@@ -2305,6 +2624,128 @@ const AdminReports = () => {
                   }
                 />
               </div>
+
+              {/* Adjustment Information */}
+              {(() => {
+                // Get adjustments for this report
+                const reportAdjustments = serviceDayAdjustments.filter(
+                  (adj) =>
+                    adj.user_id === selectedReport?.user_id &&
+                    adj.adjustment_date === selectedReport?.rent_date
+                );
+
+                const appliedAdjs = reportAdjustments.filter(
+                  (adj) => adj.status === "applied" && adj.applied_to_report === selectedReport?.id
+                );
+                const pendingAdjs = reportAdjustments.filter(
+                  (adj) => adj.status === "approved"
+                );
+
+                if (reportAdjustments.length > 0) {
+                  const totalAmount = reportAdjustments.reduce(
+                    (sum, adj) => sum + Math.abs(adj.amount),
+                    0
+                  );
+
+                  return (
+                    <div className={`space-y-2 p-4 border-2 rounded-lg ${
+                      appliedAdjs.length > 0
+                        ? "bg-blue-50 border-blue-300"
+                        : "bg-purple-50 border-purple-300"
+                    }`}>
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-2">
+                          <span className="text-2xl">💰</span>
+                          <label className={`font-semibold ${
+                            appliedAdjs.length > 0 ? "text-blue-900" : "text-purple-900"
+                          }`}>
+                            {appliedAdjs.length > 0
+                              ? "Adjustments (Applied to Report)"
+                              : "Adjustments (Pending Application)"}
+                          </label>
+                        </div>
+                        {/* <span className={`text-sm font-bold px-3 py-1 rounded-full ${
+                          appliedAdjs.length > 0
+                            ? "bg-blue-200 text-blue-900"
+                            : "bg-purple-200 text-purple-900"
+                        }`}>
+                          {reportAdjustments.length} Adjustment{reportAdjustments.length > 1 ? "s" : ""}
+                        </span> */}
+                      </div>
+
+                      {appliedAdjs.length > 0 && (
+                        <div className="text-xs text-blue-700 bg-blue-100 p-2 rounded-md mb-2">
+                          ✓ These adjustments have been applied and added to Vehicle Performance "Other Expense"
+                        </div>
+                      )}
+
+                      {pendingAdjs.length > 0 && (
+                        <div className="text-xs text-purple-700 bg-purple-100 p-2 rounded-md mb-2">
+                          ⏳ These adjustments will be applied when you verify this report
+                        </div>
+                      )}
+
+                      <div className="space-y-2">
+                        {reportAdjustments.map((adj) => (
+                          <div
+                            key={adj.id}
+                            className={`p-3 bg-white rounded-md border-2 ${
+                              adj.status === "applied"
+                                ? "border-blue-200"
+                                : "border-purple-200"
+                            }`}
+                          >
+                            <div className="flex items-center justify-between mb-2">
+                              <div className="flex items-center gap-2">
+                                <span className="text-sm font-medium text-gray-900 capitalize">
+                                  {adj.category.replace(/_/g, " ")}
+                                </span>
+                                <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${
+                                  adj.status === "applied"
+                                    ? "bg-blue-100 text-blue-700"
+                                    : "bg-purple-100 text-purple-700"
+                                }`}>
+                                  {adj.status === "applied" ? "Applied" : "Pending"}
+                                </span>
+                              </div>
+                              <span className="text-lg font-bold text-red-600">
+                                ₹{Math.abs(adj.amount).toFixed(0)}
+                              </span>
+                            </div>
+                            {adj.description && (
+                              <p className="text-sm text-gray-700 mb-1">
+                                📝 {adj.description}
+                              </p>
+                            )}
+                            {adj.vehicle_number && (
+                              <p className="text-xs text-gray-500">
+                                🚗 Vehicle: {adj.vehicle_number}
+                              </p>
+                            )}
+                          </div>
+                        ))}
+                        <div className={`flex items-center justify-between p-3 rounded-md ${
+                          appliedAdjs.length > 0
+                            ? "bg-blue-100"
+                            : "bg-purple-100"
+                        }`}>
+                          <span className={`font-semibold ${
+                            appliedAdjs.length > 0 ? "text-blue-900" : "text-purple-900"
+                          }`}>
+                            Total Adjustment Amount:
+                          </span>
+                          <span className={`text-lg font-bold ${
+                            appliedAdjs.length > 0 ? "text-blue-900" : "text-purple-900"
+                          }`}>
+                            ₹{totalAmount.toFixed(0)}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                }
+                return null;
+              })()}
             </div>
 
             <div className="space-y-4">

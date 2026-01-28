@@ -7,12 +7,15 @@ import {
   Sun,
   UserMinus,
   UserX,
+  XCircle,
 } from "lucide-react";
 
 type RentStatus =
   | "paid"
   | "overdue"
   | "pending"
+  | "pending_verification"
+  | "rejected"
   | "leave"
   | "offline"
   | "not_joined";
@@ -21,12 +24,18 @@ interface RentStatusBadgeProps {
   status: RentStatus;
   className?: string;
   showText?: boolean;
+  hasAdjustment?: boolean; // Flag for adjustment
 }
 
 const statusConfig = {
   paid: {
     icon: Check,
     bg: "bg-green-300 text-green-700 border-green-200",
+    text: "Paid",
+  },
+  paid_with_adjustment: {
+    icon: Check,
+    bg: "bg-purple-300 text-purple-700 border-purple-200",
     text: "Paid",
   },
   overdue: {
@@ -38,6 +47,16 @@ const statusConfig = {
     icon: Clock,
     bg: "bg-yellow-100 text-yellow-700 border-yellow-200",
     text: "Pending",
+  },
+  pending_verification: {
+    icon: Clock,
+    bg: "bg-yellow-100 text-yellow-700 border-yellow-200",
+    text: "Pending",
+  },
+  rejected: {
+    icon: XCircle,
+    bg: "bg-orange-100 text-orange-700 border-orange-200",
+    text: "Rejected",
   },
   leave: {
     icon: Sun,
@@ -60,8 +79,11 @@ export const RentStatusBadge = ({
   status,
   className,
   showText = true,
+  hasAdjustment = false,
 }: RentStatusBadgeProps) => {
-  const config = statusConfig[status] || statusConfig.not_joined;
+  // Use purple variant if paid/approved with adjustment
+  const effectiveStatus = (status === "paid" && hasAdjustment) ? "paid_with_adjustment" : status;
+  const config = statusConfig[effectiveStatus] || statusConfig.not_joined;
   const IconComponent = config.icon;
 
   return (

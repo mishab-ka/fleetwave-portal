@@ -24,12 +24,21 @@ import {
   AlertTriangle,
   CheckCircle,
   DollarSign,
+  Share2,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useAuth } from "@/context/AuthContext";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { startOfWeek, addDays, format } from "date-fns";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Table,
   TableBody,
@@ -63,7 +72,8 @@ type PenaltyType =
   | "bonus"
   | "refund"
   | "due"
-  | "extra_collection";
+  | "extra_collection"
+  | "insurance_claim_charge";
 
 interface PenaltyTransaction {
   id: string;
@@ -74,6 +84,8 @@ interface PenaltyTransaction {
   created_at: string;
   created_by: string;
 }
+
+type RefundRequestStatus = "pending" | "approved" | "rejected";
 
 export const PenaltyManagement = ({
   driverId,
@@ -87,6 +99,9 @@ export const PenaltyManagement = ({
   const [amount, setAmount] = useState<string>("");
   const [description, setDescription] = useState<string>("");
   const [penaltyType, setPenaltyType] = useState<PenaltyType>("penalty");
+  const [transactionDate, setTransactionDate] = useState<string>(
+    new Date().toISOString().split("T")[0]
+  );
   const [isAdding, setIsAdding] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [selectedTransaction, setSelectedTransaction] =
@@ -96,10 +111,27 @@ export const PenaltyManagement = ({
   const [newPenalties, setNewPenalties] = useState<string>("");
   const [editPenaltyReason, setEditPenaltyReason] = useState<string>("");
   const [editDate, setEditDate] = useState<string>("");
+  const [driverInfo, setDriverInfo] = useState<{
+    name: string;
+    phone_number: string | null;
+  } | null>(null);
+
+  // Refund request (R&F balance payout request)
+  const [refundRequestOpen, setRefundRequestOpen] = useState(false);
+  const [refundRequestAmount, setRefundRequestAmount] = useState<string>("");
+  const [refundRequestNotes, setRefundRequestNotes] = useState<string>("");
+  const [refundRequestSubmitting, setRefundRequestSubmitting] = useState(false);
+  const [pendingRefundRequest, setPendingRefundRequest] = useState<{
+    id: string;
+    status: RefundRequestStatus;
+    requested_at: string;
+    amount: number;
+  } | null>(null);
 
   useEffect(() => {
     if (driverId) {
       fetchTransactions();
+      fetchDriverInfo();
     }
   }, [driverId]);
 
@@ -127,6 +159,265 @@ export const PenaltyManagement = ({
     }
   };
 
+  const fetchDriverInfo = async () => {
+    try {
+      const { data, error } = await supabase
+        .from("users")
+        .select("name, driver_id, phone_number")
+        .eq("id", driverId)
+        .single();
+
+      if (error) throw error;
+
+      setDriverInfo({
+        name: data?.name || data?.driver_id || "Driver",
+        phone_number: data?.phone_number || null,
+      });
+    } catch (error) {
+      console.error("Error fetching driver info:", error);
+    }
+  };
+
+  // Get week date range for a given date (Monday to Sunday)
+  // Ensures the date is parsed correctly to avoid timezone issues
+  const getWeekRange = (dateInput: Date | string) => {
+    let date: Date;
+    if (typeof dateInput === "string") {
+      // Parse date string as local date (YYYY-MM-DD format)
+      const [year, month, day] = dateInput.split("-").map(Number);
+      date = new Date(year, month - 1, day);
+    } else {
+      date = dateInput;
+    }
+
+    const weekStart = startOfWeek(date, { weekStartsOn: 1 }); // Monday = 1
+    const weekEnd = addDays(weekStart, 6); // Sunday
+
+    // Format as YYYY-MM-DD to ensure consistent date comparison
+    const formatDate = (d: Date) => {
+      const year = d.getFullYear();
+      const month = String(d.getMonth() + 1).padStart(2, "0");
+      const day = String(d.getDate()).padStart(2, "0");
+      return `${year}-${month}-${day}`;
+    };
+
+    return {
+      startDate: formatDate(weekStart),
+      endDate: formatDate(weekEnd),
+    };
+  };
+
+  // Get current week date range (Monday to Sunday)
+  const getCurrentWeekRange = () => {
+    return getWeekRange(new Date());
+  };
+
+  // Distribute penalty to vehicles the driver ran in a specific week
+  const distributePenaltyToVehicles = async (
+    penaltyAmount: number,
+    penaltyDescription: string,
+    transactionDate?: string,
+    penaltyTransactionId?: string
+  ) => {
+    try {
+      // Use transaction date if provided, otherwise use current date
+      // Pass the date string directly to avoid timezone issues
+      const dateForWeek =
+        transactionDate || new Date().toISOString().split("T")[0];
+      const weekRange = getWeekRange(dateForWeek);
+
+      // Get all fleet reports for this driver in the week of the selected date
+      // Only count APPROVED reports - each approved report = 1 working day
+      const { data: reports, error: reportsError } = await supabase
+        .from("fleet_reports")
+        .select("vehicle_number, rent_date, status, id")
+        .eq("user_id", driverId)
+        .gte("rent_date", weekRange.startDate)
+        .lte("rent_date", weekRange.endDate)
+        .eq("status", "approved");
+
+      if (reportsError) {
+        console.error("Error fetching fleet reports:", reportsError);
+        throw reportsError;
+      }
+
+      console.log(`Week range: ${weekRange.startDate} to ${weekRange.endDate}`);
+      console.log(`Total reports fetched: ${reports?.length || 0}`);
+      console.log(
+        "All reports:",
+        reports?.map((r) => ({
+          vehicle: r.vehicle_number,
+          date: r.rent_date,
+          status: r.status,
+          id: r.id,
+        }))
+      );
+
+      if (!reports || reports.length === 0) {
+        console.log(
+          `No approved reports found for this driver in the week of ${
+            transactionDate || "selected date"
+          }`
+        );
+        toast.info(
+          `No vehicles found for the driver in the week of ${
+            transactionDate || "selected date"
+          }. Penalty not distributed to vehicles.`
+        );
+        return; // No vehicles to distribute to
+      }
+
+      // Count days (approved reports) per vehicle
+      // Each approved report represents 1 day the vehicle was run
+      // IMPORTANT: We're counting ALL approved reports, not unique dates
+      const vehicleDaysMap = new Map<string, number>();
+
+      console.log(
+        `Processing ${reports.length} approved reports for penalty distribution`
+      );
+
+      reports.forEach((report) => {
+        const vehicleNumber = report.vehicle_number;
+        const rentDate = report.rent_date;
+
+        // Double-check: Only count reports within the week range
+        // This ensures we don't count reports from outside the selected week
+        if (
+          vehicleNumber &&
+          vehicleNumber.trim() !== "" &&
+          rentDate >= weekRange.startDate &&
+          rentDate <= weekRange.endDate
+        ) {
+          const currentDays = vehicleDaysMap.get(vehicleNumber) || 0;
+          vehicleDaysMap.set(vehicleNumber, currentDays + 1);
+          console.log(
+            `Report ${
+              report.id
+            }: Vehicle ${vehicleNumber} - Date: ${rentDate}, Status: ${
+              report.status
+            }, Count: ${currentDays + 1}`
+          );
+        } else {
+          console.log(
+            `Skipping report ${report.id}: Vehicle ${vehicleNumber} - Date: ${rentDate} (outside week range ${weekRange.startDate} to ${weekRange.endDate})`
+          );
+        }
+      });
+
+      // Log the days count per vehicle
+      console.log(
+        "Vehicle days distribution:",
+        Array.from(vehicleDaysMap.entries())
+          .map(([v, d]) => `${v}: ${d} days`)
+          .join(", ")
+      );
+
+      if (vehicleDaysMap.size === 0) {
+        console.log(
+          `No vehicles found for this driver in the week of ${
+            transactionDate || "selected date"
+          }`
+        );
+        toast.info(
+          `No vehicles found for the driver in the week of ${
+            transactionDate || "selected date"
+          }. Penalty not distributed to vehicles.`
+        );
+        return;
+      }
+
+      // Calculate total days across all vehicles (sum of all approved reports)
+      const totalDays = Array.from(vehicleDaysMap.values()).reduce(
+        (sum, days) => sum + days,
+        0
+      );
+
+      console.log(`Total approved reports (days): ${totalDays}`);
+      console.log(`Penalty amount to distribute: ₹${penaltyAmount}`);
+
+      if (totalDays === 0) {
+        console.log("Total days is 0, cannot distribute penalty");
+        return;
+      }
+
+      // Get driver name for description
+      const { data: driverData } = await supabase
+        .from("users")
+        .select("name, driver_id")
+        .eq("id", driverId)
+        .single();
+
+      const driverName = driverData?.name || driverData?.driver_id || "Driver";
+
+      // Create vehicle transactions for each vehicle
+      // Distribute penalty proportionally based on days each vehicle was run
+      // Include penalty transaction ID in description for accurate matching
+      const penaltyTxId = penaltyTransactionId || `TEMP_${Date.now()}`;
+      const transactionsToInsert = Array.from(vehicleDaysMap.entries()).map(
+        ([vehicleNumber, days]) => {
+          // Calculate proportional amount: (days / totalDays) * penaltyAmount
+          const proportionalAmount = (days / totalDays) * penaltyAmount;
+          const roundedAmount = Math.round(proportionalAmount * 100) / 100; // Round to 2 decimal places
+
+          console.log(
+            `Vehicle ${vehicleNumber}: ${days} days / ${totalDays} total days = ${(
+              (days / totalDays) *
+              100
+            ).toFixed(2)}% → ₹${roundedAmount}`
+          );
+
+          return {
+            vehicle_number: vehicleNumber,
+            transaction_type: "income",
+            amount: roundedAmount,
+            description: `Driver Penalty: ${driverName} - ${
+              penaltyDescription || "Penalty"
+            } (${days} day${
+              days > 1 ? "s" : ""
+            }) [PENALTY_TX_ID:${penaltyTxId}]`,
+            // Use week start date (Monday) so all transactions for the week have the same date
+            // This ensures they appear in the correct week in VehiclePerformance
+            transaction_date: weekRange.startDate,
+            created_by: user?.id,
+          };
+        }
+      );
+
+      const { error: vehicleTxError } = await supabase
+        .from("vehicle_transactions")
+        .insert(transactionsToInsert);
+
+      if (vehicleTxError) {
+        console.error("Error creating vehicle transactions:", vehicleTxError);
+        throw vehicleTxError;
+      }
+
+      // Create summary message showing distribution
+      const distributionSummary = transactionsToInsert
+        .map(
+          (tx) =>
+            `${tx.vehicle_number}: ₹${tx.amount} (${
+              tx.description.match(/\((\d+) day/)?.[1] || "0"
+            } day${
+              tx.description.match(/\((\d+) day/)?.[1] === "1" ? "" : "s"
+            })`
+        )
+        .join(", ");
+
+      console.log(
+        `Penalty ₹${penaltyAmount} distributed proportionally across ${vehicleDaysMap.size} vehicles (${totalDays} total days): ${distributionSummary}`
+      );
+
+      toast.success(
+        `Penalty ₹${penaltyAmount} distributed to ${vehicleDaysMap.size} vehicle(s) based on ${totalDays} working days`
+      );
+    } catch (error) {
+      console.error("Error distributing penalty to vehicles:", error);
+      // Don't throw error - penalty was already added, just log the distribution failure
+      toast.error("Penalty added but failed to distribute to vehicles");
+    }
+  };
+
   const handleAddTransaction = async () => {
     if (!amount || parseFloat(amount) <= 0 || !penaltyType) {
       toast.error("Please enter a valid amount and select a transaction type");
@@ -142,11 +433,18 @@ export const PenaltyManagement = ({
         ? 0
         : penaltyType === "penalty" ||
           penaltyType === "due" ||
-          penaltyType === "extra_collection"
+          penaltyType === "extra_collection" ||
+          penaltyType === "insurance_claim_charge"
         ? numericAmount
         : -numericAmount;
 
-      const { error: txError } = await supabase
+      // Insert penalty transaction and get the ID
+      // Use the selected transaction date for created_at
+      const transactionDateTime = transactionDate
+        ? new Date(transactionDate + "T00:00:00")
+        : new Date();
+
+      const { data: insertedTx, error: txError } = await supabase
         .from("driver_penalty_transactions")
         .insert({
           user_id: driverId,
@@ -154,9 +452,16 @@ export const PenaltyManagement = ({
           type: penaltyType,
           description: description || undefined,
           created_by: user?.id,
-        });
+          created_at: transactionDateTime.toISOString(),
+        })
+        .select("id")
+        .single();
 
       if (txError) throw txError;
+
+      if (!insertedTx || !insertedTx.id) {
+        throw new Error("Failed to get penalty transaction ID");
+      }
 
       // Update driver's total penalties
       const { error: userError } = await supabase
@@ -168,10 +473,22 @@ export const PenaltyManagement = ({
 
       if (userError) throw userError;
 
+      // If this is a penalty type, distribute to vehicles as income
+      // Only for "penalty" type, not for insurance_claim_charge
+      if (penaltyType === "penalty") {
+        await distributePenaltyToVehicles(
+          numericAmount,
+          description || penaltyType,
+          transactionDate,
+          insertedTx.id
+        );
+      }
+
       toast.success("Penalty transaction added successfully");
 
       setAmount("");
       setDescription("");
+      setTransactionDate(new Date().toISOString().split("T")[0]);
       setIsAdding(false);
 
       fetchTransactions();
@@ -181,6 +498,103 @@ export const PenaltyManagement = ({
       toast.error("Failed to add penalty transaction");
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  // Remove vehicle transactions for a deleted penalty
+  const removePenaltyFromVehicles = async (
+    penaltyAmount: number,
+    penaltyDescription: string,
+    transactionDate?: string,
+    penaltyTransactionId?: string
+  ) => {
+    try {
+      // Use transaction date if provided, otherwise use current date
+      // Pass the date string directly to avoid timezone issues
+      const dateForWeek =
+        transactionDate || new Date().toISOString().split("T")[0];
+      const weekRange = getWeekRange(dateForWeek);
+
+      // Get driver name for matching
+      const { data: driverData } = await supabase
+        .from("users")
+        .select("name, driver_id")
+        .eq("id", driverId)
+        .single();
+
+      const driverName = driverData?.name || driverData?.driver_id || "Driver";
+
+      // Get all fleet reports for this driver in the week
+      const { data: reports } = await supabase
+        .from("fleet_reports")
+        .select("vehicle_number")
+        .eq("user_id", driverId)
+        .gte("rent_date", weekRange.startDate)
+        .lte("rent_date", weekRange.endDate)
+        .eq("status", "approved");
+
+      if (!reports || reports.length === 0) return;
+
+      // Count days per vehicle (same logic as distribution)
+      const vehicleDaysMap = new Map<string, number>();
+      reports.forEach((report) => {
+        const vehicleNumber = report.vehicle_number;
+        if (vehicleNumber && vehicleNumber.trim() !== "") {
+          const currentDays = vehicleDaysMap.get(vehicleNumber) || 0;
+          vehicleDaysMap.set(vehicleNumber, currentDays + 1);
+        }
+      });
+
+      if (vehicleDaysMap.size === 0) return;
+
+      // Find and delete vehicle transactions that match this penalty
+      // Use penalty transaction ID for exact matching (amounts will vary per vehicle)
+      const vehicleNumbers = Array.from(vehicleDaysMap.keys());
+
+      for (const vehicleNumber of vehicleNumbers) {
+        let vehicleTransactions;
+
+        if (penaltyTransactionId) {
+          // Exact match using penalty transaction ID (this is the primary method)
+          const { data } = await supabase
+            .from("vehicle_transactions")
+            .select("id, amount, description")
+            .eq("vehicle_number", vehicleNumber)
+            .eq("transaction_type", "income")
+            .like("description", `%[PENALTY_TX_ID:${penaltyTransactionId}]%`);
+
+          vehicleTransactions = data;
+        } else {
+          // Fallback: match by description pattern and date range
+          // Note: We can't match by exact amount since amounts vary per vehicle
+          const { data } = await supabase
+            .from("vehicle_transactions")
+            .select("id, amount, description")
+            .eq("vehicle_number", vehicleNumber)
+            .eq("transaction_type", "income")
+            .gte("transaction_date", weekRange.startDate)
+            .lte("transaction_date", weekRange.endDate)
+            .like("description", `%Driver Penalty: ${driverName}%`);
+
+          vehicleTransactions = data;
+        }
+
+        if (vehicleTransactions && vehicleTransactions.length > 0) {
+          // Delete all matching transactions
+          const idsToDelete = vehicleTransactions.map((tx) => tx.id);
+          await supabase
+            .from("vehicle_transactions")
+            .delete()
+            .in("id", idsToDelete);
+        }
+      }
+
+      console.log(
+        `Removed penalty distribution from ${vehicleNumbers.length} vehicles`
+      );
+    } catch (error) {
+      console.error("Error removing penalty from vehicles:", error);
+      // Don't throw - penalty deletion should still succeed
     }
   };
 
@@ -201,9 +615,21 @@ export const PenaltyManagement = ({
         ? 0
         : transactionData.type === "penalty" ||
           transactionData.type === "due" ||
-          transactionData.type === "extra_collection"
+          transactionData.type === "extra_collection" ||
+          transactionData.type === "insurance_claim_charge"
         ? -transactionData.amount
         : transactionData.amount;
+
+      // If this is a penalty type, remove from vehicles
+      // Only for "penalty" type that was distributed to vehicles
+      if (transactionData.type === "penalty") {
+        await removePenaltyFromVehicles(
+          transactionData.amount,
+          transactionData.description || transactionData.type,
+          transactionData.created_at.split("T")[0],
+          transactionId // Pass the penalty transaction ID for exact matching
+        );
+      }
 
       // Delete the transaction
       const { error } = await supabase
@@ -271,14 +697,16 @@ export const PenaltyManagement = ({
         ? 0
         : selectedTransaction.type === "penalty" ||
           selectedTransaction.type === "due" ||
-          selectedTransaction.type === "extra_collection"
+          selectedTransaction.type === "extra_collection" ||
+          selectedTransaction.type === "insurance_claim_charge"
         ? oldAmount
         : -oldAmount;
       const newPenaltyChange = isPositive
         ? 0
         : penaltyType === "penalty" ||
           penaltyType === "due" ||
-          penaltyType === "extra_collection"
+          penaltyType === "extra_collection" ||
+          penaltyType === "insurance_claim_charge"
         ? numericAmount
         : -numericAmount;
       const penaltyDifference = newPenaltyChange - oldPenaltyChange;
@@ -305,6 +733,31 @@ export const PenaltyManagement = ({
         .eq("id", driverId);
 
       if (userError) throw userError;
+
+      // Handle vehicle transaction updates for penalties
+      // Only handle "penalty" type for vehicle transactions
+      const wasPenaltyType = selectedTransaction.type === "penalty";
+      const isPenaltyType = penaltyType === "penalty";
+
+      // If old transaction was a penalty type, remove old vehicle transactions
+      if (wasPenaltyType) {
+        await removePenaltyFromVehicles(
+          oldAmount,
+          selectedTransaction.description || selectedTransaction.type,
+          selectedTransaction.created_at.split("T")[0],
+          selectedTransaction.id // Use penalty transaction ID for exact matching
+        );
+      }
+
+      // If new transaction is a penalty type, add new vehicle transactions
+      if (isPenaltyType) {
+        await distributePenaltyToVehicles(
+          numericAmount,
+          description || penaltyType,
+          editDate,
+          selectedTransaction.id // Use the same transaction ID since we're updating
+        );
+      }
 
       toast.success("Transaction updated successfully");
 
@@ -403,7 +856,7 @@ export const PenaltyManagement = ({
       case "penalty":
         return "Penalty";
       case "penalty_paid":
-        return "Penalty Paid";
+        return "Pending Paid";
       case "bonus":
         return "Bonus";
       case "refund":
@@ -412,6 +865,8 @@ export const PenaltyManagement = ({
         return "Due";
       case "extra_collection":
         return "Extra Collection";
+      case "insurance_claim_charge":
+        return "Insurance Claim Charge";
       default:
         return type;
     }
@@ -431,6 +886,8 @@ export const PenaltyManagement = ({
         return <AlertCircle className="h-4 w-4 text-orange-500" />;
       case "extra_collection":
         return <DollarSign className="h-4 w-4 text-purple-500" />;
+      case "insurance_claim_charge":
+        return <AlertTriangle className="h-4 w-4 text-red-600" />;
       default:
         return <AlertCircle className="h-4 w-4 text-gray-500" />;
     }
@@ -473,6 +930,9 @@ export const PenaltyManagement = ({
         case "extra_collection":
           totalPenalties += amount; // Extra collection amounts are treated as penalties
           break;
+        case "insurance_claim_charge":
+          totalPenalties += amount; // Insurance claim charges are treated as penalties
+          break;
       }
     });
 
@@ -490,7 +950,125 @@ export const PenaltyManagement = ({
     };
   }, [transactions]);
 
+  const fetchPendingRefundRequest = async () => {
+    try {
+      const { data, error } = await supabase
+        .from("driver_refund_requests")
+        .select("id, status, requested_at, amount")
+        .eq("driver_id", driverId)
+        .eq("status", "pending")
+        .order("requested_at", { ascending: false })
+        .limit(1);
+
+      if (error) throw error;
+      setPendingRefundRequest(data && data.length > 0 ? (data[0] as any) : null);
+    } catch (e) {
+      // If the table/policy isn't present in an environment yet, don't break the UI
+      console.warn("Unable to load pending refund request:", e);
+      setPendingRefundRequest(null);
+    }
+  };
+
+  useEffect(() => {
+    if (!driverId) return;
+    fetchPendingRefundRequest();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [driverId]);
+
   const filteredTransactions = transactions;
+
+  // Handle WhatsApp share for refund
+  const handleWhatsAppShare = () => {
+    if (!driverInfo?.phone_number) {
+      toast.error("Phone number not available for this driver");
+      return;
+    }
+
+    if (penaltySummary.netPenalties <= 0) {
+      toast.error("No refund amount to share");
+      return;
+    }
+
+    // Get current week range for the message
+    const currentDate = new Date();
+    const weekStart = startOfWeek(currentDate, { weekStartsOn: 1 });
+    const weekEnd = addDays(weekStart, 6);
+    const weekRange = `${format(weekStart, "dd MMM")} - ${format(
+      weekEnd,
+      "dd MMM yyyy"
+    )}`;
+    const currentDateFormatted = format(currentDate, "dd MMM yyyy");
+
+    // Format phone number for WhatsApp
+    let formattedPhone = driverInfo.phone_number.replace(/\D/g, "");
+    if (!formattedPhone.startsWith("91") && formattedPhone.length === 10) {
+      formattedPhone = "91" + formattedPhone;
+    }
+
+    // Create WhatsApp message
+    const message = `💰 *Refund Details*
+
+*Driver Name:* ${driverInfo.name}
+*Week:* ${weekRange}
+*Refund Amount:* ₹${penaltySummary.netPenalties.toLocaleString()}
+*Date:* ${currentDateFormatted}
+
+Your refund has been processed and credited to your account. Thank you for your service!`;
+
+    const encodedMessage = encodeURIComponent(message);
+    const whatsappUrl = `https://wa.me/${formattedPhone}?text=${encodedMessage}`;
+
+    window.open(whatsappUrl, "_blank");
+    toast.success("Opening WhatsApp...");
+  };
+
+  const openRefundRequest = () => {
+    if (penaltySummary.netPenalties <= 0) return;
+    setRefundRequestAmount(String(Math.floor(penaltySummary.netPenalties)));
+    setRefundRequestNotes("");
+    setRefundRequestOpen(true);
+  };
+
+  const submitRefundRequest = async () => {
+    if (!user?.id) {
+      toast.error("You must be logged in");
+      return;
+    }
+    const amountNum = Number(refundRequestAmount);
+    if (!Number.isFinite(amountNum) || amountNum <= 0) {
+      toast.error("Enter a valid amount");
+      return;
+    }
+    if (amountNum > penaltySummary.netPenalties) {
+      toast.error("Amount cannot exceed the current refund balance");
+      return;
+    }
+    if (pendingRefundRequest) {
+      toast.error("A refund request is already pending for this driver");
+      return;
+    }
+
+    try {
+      setRefundRequestSubmitting(true);
+      const { error } = await supabase.from("driver_refund_requests").insert({
+        driver_id: driverId,
+        amount: amountNum,
+        status: "pending",
+        requested_by: user.id,
+        notes: refundRequestNotes.trim() || null,
+      });
+
+      if (error) throw error;
+      toast.success("Refund request submitted");
+      setRefundRequestOpen(false);
+      await fetchPendingRefundRequest();
+    } catch (e) {
+      console.error("Error submitting refund request:", e);
+      toast.error("Failed to submit refund request");
+    } finally {
+      setRefundRequestSubmitting(false);
+    }
+  };
 
   return (
     <div className="space-y-6 w-full">
@@ -576,6 +1154,54 @@ export const PenaltyManagement = ({
                     ).toLocaleString()} in penalties`
                   : "No outstanding balance"}
               </div>
+              {penaltySummary.netPenalties > 0 && (
+                <div className="mt-3">
+                  <div className="flex flex-wrap gap-2 items-start">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={openRefundRequest}
+                      className="bg-green-600 hover:bg-green-700 text-white border-green-600"
+                      disabled={!!pendingRefundRequest}
+                      title={
+                        pendingRefundRequest
+                          ? "A pending refund request already exists"
+                          : ""
+                      }
+                    >
+                      Request Refund
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleWhatsAppShare}
+                      className="bg-green-50 hover:bg-green-100 text-green-700 border-green-200"
+                      disabled={!driverInfo?.phone_number}
+                    >
+                      <Share2 className="h-4 w-4 mr-2" />
+                      Share Refund via WhatsApp
+                    </Button>
+                  </div>
+
+                  {pendingRefundRequest && (
+                    <p className="text-xs text-muted-foreground mt-2">
+                      Refund request pending: ₹
+                      {Number(pendingRefundRequest.amount).toLocaleString(
+                        "en-IN"
+                      )}{" "}
+                      ({format(
+                        new Date(pendingRefundRequest.requested_at),
+                        "dd MMM yyyy"
+                      )})
+                    </p>
+                  )}
+                  {!driverInfo?.phone_number && (
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Phone number not available
+                    </p>
+                  )}
+                </div>
+              )}
             </>
           )}
         </CardHeader>
@@ -616,15 +1242,28 @@ export const PenaltyManagement = ({
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="penalty">Penalty</SelectItem>
-                      <SelectItem value="penalty_paid">Penalty Paid</SelectItem>
+                      <SelectItem value="penalty_paid">Pending Paid</SelectItem>
                       <SelectItem value="bonus">Bonus</SelectItem>
                       <SelectItem value="refund">Refund</SelectItem>
                       <SelectItem value="due">Due</SelectItem>
                       <SelectItem value="extra_collection">
                         Extra Collection
                       </SelectItem>
+                      <SelectItem value="insurance_claim_charge">
+                        Insurance Claim Charge
+                      </SelectItem>
                     </SelectContent>
                   </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="transaction-date">Transaction Date</Label>
+                  <Input
+                    id="transaction-date"
+                    type="date"
+                    value={transactionDate}
+                    onChange={(e) => setTransactionDate(e.target.value)}
+                  />
                 </div>
 
                 <div className="space-y-2 md:col-span-2">
@@ -639,7 +1278,15 @@ export const PenaltyManagement = ({
               </div>
 
               <div className="flex justify-end space-x-2">
-                <Button variant="outline" onClick={() => setIsAdding(false)}>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setIsAdding(false);
+                    setAmount("");
+                    setDescription("");
+                    setTransactionDate(new Date().toISOString().split("T")[0]);
+                  }}
+                >
                   Cancel
                 </Button>
                 <Button onClick={handleAddTransaction} disabled={isSubmitting}>
@@ -683,6 +1330,9 @@ export const PenaltyManagement = ({
                       <SelectItem value="due">Due</SelectItem>
                       <SelectItem value="extra_collection">
                         Extra Collection
+                      </SelectItem>
+                      <SelectItem value="insurance_claim_charge">
+                        Insurance Claim Charge
                       </SelectItem>
                     </SelectContent>
                   </Select>
@@ -808,6 +1458,9 @@ export const PenaltyManagement = ({
                                         : transaction.type ===
                                           "extra_collection"
                                         ? "bg-purple-100 text-purple-800"
+                                        : transaction.type ===
+                                          "insurance_claim_charge"
+                                        ? "bg-red-200 text-red-900"
                                         : "bg-blue-100 text-blue-800"
                                     }`}
                                   >
@@ -925,6 +1578,8 @@ export const PenaltyManagement = ({
                               ? "bg-orange-100 text-orange-800"
                               : transaction.type === "extra_collection"
                               ? "bg-purple-100 text-purple-800"
+                              : transaction.type === "insurance_claim_charge"
+                              ? "bg-red-200 text-red-900"
                               : "bg-blue-100 text-blue-800"
                           }`}
                         >
@@ -1000,6 +1655,61 @@ export const PenaltyManagement = ({
           </div>
         </CardContent>
       </Card>
+
+      <Dialog open={refundRequestOpen} onOpenChange={setRefundRequestOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Request Refund (R&F)</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="rounded-md bg-muted/30 p-3 text-sm">
+              <div className="text-muted-foreground">Available refund balance</div>
+              <div className="text-lg font-semibold text-green-700">
+                ₹{Number(penaltySummary.netPenalties).toLocaleString("en-IN")}
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="refund-request-amount">Amount</Label>
+              <Input
+                id="refund-request-amount"
+                type="number"
+                min={1}
+                value={refundRequestAmount}
+                onChange={(e) => setRefundRequestAmount(e.target.value)}
+                placeholder="Enter amount"
+              />
+              <p className="text-xs text-muted-foreground">
+                Amount must be ≤ current refund balance.
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="refund-request-notes">Notes (optional)</Label>
+              <Textarea
+                id="refund-request-notes"
+                value={refundRequestNotes}
+                onChange={(e) => setRefundRequestNotes(e.target.value)}
+                rows={3}
+                placeholder="Any details for the finance/admin team..."
+              />
+            </div>
+
+            <div className="flex justify-end gap-2">
+              <Button
+                variant="outline"
+                onClick={() => setRefundRequestOpen(false)}
+                disabled={refundRequestSubmitting}
+              >
+                Cancel
+              </Button>
+              <Button onClick={submitRefundRequest} disabled={refundRequestSubmitting}>
+                {refundRequestSubmitting ? "Submitting..." : "Submit Request"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

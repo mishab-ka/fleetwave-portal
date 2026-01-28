@@ -75,7 +75,8 @@ const HRJoiningCalendar: React.FC = () => {
         .from("hr_leads")
         .select("*")
         .not("joining_date", "is", null)
-        .not("status", "in", '("joined","not_interested")')
+        .eq("status", "conform")
+        // .not("status", "in", '("joined","not_interested","hot_lead", "cold_lead", "callback", "call_not_picked", "new")')
         .order("joining_date", { ascending: true });
 
       if (error) {

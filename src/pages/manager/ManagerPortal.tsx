@@ -62,10 +62,13 @@ interface Driver {
   vehicle_number: string;
   shift: string;
   online: boolean;
-  balance: number;
-  deposit_collected: number;
-  photo_url?: string;
+  net_balance?: number | null;
+  pending_balance?: number | null;
+  deposit_amount?: number | null;
+  profile_photo?: string | null;
   joining_date?: string;
+  driver_status?: string | null;
+  resigning_date?: string | null;
 }
 
 interface Vehicle {
@@ -121,6 +124,17 @@ const ManagerPortal = () => {
   // Shifts State
   const [shifts, setShifts] = useState<ShiftAssignment[]>([]);
   const [shiftSearchQuery, setShiftSearchQuery] = useState("");
+  const [noShiftDrivers, setNoShiftDrivers] = useState<Driver[]>([]);
+  const [availableVehicles, setAvailableVehicles] = useState<Vehicle[]>([]);
+  const [showAssignDialog, setShowAssignDialog] = useState(false);
+  const [selectedDriverForAssign, setSelectedDriverForAssign] =
+    useState<Driver | null>(null);
+  const [selectedVehicleForAssign, setSelectedVehicleForAssign] =
+    useState<string>("");
+  const [selectedShiftForAssign, setSelectedShiftForAssign] = useState<
+    "morning" | "night" | "24" | "none"
+  >("morning");
+  const [isAssigning, setIsAssigning] = useState(false);
 
   // Calendar State
   const [calendarData, setCalendarData] = useState<CalendarEntry[]>([]);
@@ -168,7 +182,9 @@ const ManagerPortal = () => {
     try {
       const { data, error } = await supabase
         .from("users")
-        .select("*")
+        .select(
+          "id, name, driver_id, phone_number, vehicle_number, shift, online, net_balance, pending_balance, deposit_amount, profile_photo, joining_date, driver_status, resigning_date"
+        )
         .eq("role", "user")
         .order("name");
 
@@ -197,26 +213,88 @@ const ManagerPortal = () => {
   // Fetch Shifts
   const fetchShifts = async () => {
     try {
-      const { data, error } = await supabase
+      // Fetch all online drivers
+      const { data: driversData, error: driversError } = await supabase
         .from("users")
         .select("id, name, vehicle_number, shift, online, phone_number")
         .eq("role", "user")
         .eq("online", true)
         .order("vehicle_number");
 
-      if (error) throw error;
+      if (driversError) throw driversError;
 
-      const shiftAssignments: ShiftAssignment[] = (data || []).map((d) => ({
-        id: d.id,
-        driver_id: d.id,
-        driver_name: d.name || "Unknown",
-        vehicle_number: d.vehicle_number || "Unassigned",
-        shift_type: d.shift as "morning" | "night" | "24" | "none",
-        online: d.online,
-        phone_number: d.phone_number,
-      }));
+      const shiftAssignments: ShiftAssignment[] = (driversData || [])
+        .filter((d) => d.shift && d.shift !== "none")
+        .map((d) => ({
+          id: d.id,
+          driver_id: d.id,
+          driver_name: d.name || "Unknown",
+          vehicle_number: d.vehicle_number || "Unassigned",
+          shift_type: d.shift as "morning" | "night" | "24" | "none",
+          online: d.online,
+          phone_number: d.phone_number,
+        }));
+
+      // Get drivers with no shift
+      const noShift = (driversData || [])
+        .filter((d) => !d.shift || d.shift === "none" || d.shift === "")
+        .map((d) => ({
+          id: d.id,
+          name: d.name || "Unknown",
+          driver_id: d.id,
+          phone_number: d.phone_number || "",
+          vehicle_number: d.vehicle_number || "",
+          shift: d.shift || "none",
+          online: d.online,
+          net_balance: 0,
+          pending_balance: 0,
+          deposit_amount: 0,
+          profile_photo: null,
+          joining_date: null,
+          driver_status: null,
+          resigning_date: null,
+        }));
 
       setShifts(shiftAssignments);
+      setNoShiftDrivers(noShift);
+
+      // Fetch available vehicles
+      const { data: vehiclesData, error: vehiclesError } = await supabase.rpc(
+        "get_vehicle_assignment_status"
+      );
+
+      if (vehiclesError) {
+        console.error("Error fetching vehicles:", vehiclesError);
+        // Fallback to basic vehicle fetch
+        const { data: basicVehicles, error: basicError } = await supabase
+          .from("vehicles")
+          .select("vehicle_number, online")
+          .eq("online", true);
+
+        if (!basicError && basicVehicles) {
+          setAvailableVehicles(
+            basicVehicles.map((v) => ({
+              vehicle_number: v.vehicle_number,
+              fleet_name: null,
+              total_trips: null,
+              online: v.online,
+              deposit: null,
+            }))
+          );
+        }
+      } else {
+        // Map RPC response to Vehicle interface
+        const mappedVehicles: Vehicle[] = (vehiclesData || []).map(
+          (v: any) => ({
+            vehicle_number: v.vehicle_number,
+            fleet_name: null,
+            total_trips: null,
+            online: true,
+            deposit: null,
+          })
+        );
+        setAvailableVehicles(mappedVehicles);
+      }
     } catch (error) {
       console.error("Error fetching shifts:", error);
     }
@@ -455,6 +533,74 @@ const ManagerPortal = () => {
     }
   };
 
+  // Handle Shift Assignment
+  const handleAssignShift = async () => {
+    if (!selectedDriverForAssign) {
+      toast.error("Please select a driver");
+      return;
+    }
+
+    setIsAssigning(true);
+
+    try {
+      const updateData: any = {
+        shift:
+          selectedShiftForAssign === "none" ? null : selectedShiftForAssign,
+      };
+
+      // Handle vehicle assignment
+      if (selectedVehicleForAssign && selectedVehicleForAssign !== "") {
+        updateData.vehicle_number = selectedVehicleForAssign;
+      } else if (selectedVehicleForAssign === "") {
+        updateData.vehicle_number = null;
+      }
+
+      const { error: updateError } = await supabase
+        .from("users")
+        .update(updateData)
+        .eq("id", selectedDriverForAssign.id);
+
+      if (updateError) throw updateError;
+
+      // If shift is not "none", add to shift_history
+      if (selectedShiftForAssign !== "none") {
+        const today = new Date().toISOString().split("T")[0];
+        const { error: historyError } = await supabase
+          .from("shift_history")
+          .insert({
+            user_id: selectedDriverForAssign.id,
+            shift: selectedShiftForAssign,
+            effective_from_date: today,
+          });
+
+        if (historyError) {
+          console.error("Error adding shift history:", historyError);
+          // Don't throw, just log - the main update succeeded
+        }
+      }
+
+      toast.success(
+        `Shift ${
+          selectedShiftForAssign === "none" ? "removed" : "assigned"
+        } successfully`
+      );
+
+      setShowAssignDialog(false);
+      setSelectedDriverForAssign(null);
+      setSelectedVehicleForAssign("");
+      setSelectedShiftForAssign("morning");
+
+      // Refresh data
+      await fetchShifts();
+      await fetchDrivers();
+    } catch (error) {
+      console.error("Error assigning shift:", error);
+      toast.error("Failed to assign shift");
+    } finally {
+      setIsAssigning(false);
+    }
+  };
+
   if (managerLoading || isLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-gray-50">
@@ -687,7 +833,7 @@ const ManagerPortal = () => {
         {activeTab === "drivers" && (
           <div className="space-y-4">
             {/* Stats Cards */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
               <Card className="bg-gradient-to-br from-purple-500 to-purple-600">
                 <CardContent className="p-4">
                   <div className="flex items-center justify-between">
@@ -714,29 +860,54 @@ const ManagerPortal = () => {
                   </div>
                 </CardContent>
               </Card>
-              <Card className="bg-gradient-to-br from-red-500 to-red-600">
-                <CardContent className="p-4">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-red-100 text-xs">Offline</p>
-                      <p className="text-2xl font-bold text-white">
-                        {drivers.filter((d) => !d.online).length}
-                      </p>
-                    </div>
-                    <WifiOff className="h-8 w-8 text-red-200" />
-                  </div>
-                </CardContent>
-              </Card>
               <Card className="bg-gradient-to-br from-blue-500 to-blue-600">
                 <CardContent className="p-4">
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className="text-blue-100 text-xs">With Vehicle</p>
+                      <p className="text-blue-100 text-xs">On Leave</p>
                       <p className="text-2xl font-bold text-white">
-                        {drivers.filter((d) => d.vehicle_number).length}
+                        {
+                          drivers.filter((d) => d.driver_status === "leave")
+                            .length
+                        }
                       </p>
                     </div>
-                    <Car className="h-8 w-8 text-blue-200" />
+                    <Calendar className="h-8 w-8 text-blue-200" />
+                  </div>
+                </CardContent>
+              </Card>
+              <Card className="bg-gradient-to-br from-orange-500 to-orange-600">
+                <CardContent className="p-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-orange-100 text-xs">Resigning</p>
+                      <p className="text-2xl font-bold text-white">
+                        {
+                          drivers.filter(
+                            (d) =>
+                              d.driver_status === "resigning" ||
+                              d.resigning_date
+                          ).length
+                        }
+                      </p>
+                    </div>
+                    <User className="h-8 w-8 text-orange-200" />
+                  </div>
+                </CardContent>
+              </Card>
+              <Card className="bg-gradient-to-br from-gray-500 to-gray-600">
+                <CardContent className="p-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-gray-100 text-xs">Offline</p>
+                      <p className="text-2xl font-bold text-white">
+                        {
+                          drivers.filter((d) => !d.online && !d.driver_status)
+                            .length
+                        }
+                      </p>
+                    </div>
+                    <WifiOff className="h-8 w-8 text-gray-200" />
                   </div>
                 </CardContent>
               </Card>
@@ -788,66 +959,100 @@ const ManagerPortal = () => {
 
             {/* Drivers List */}
             <div className="space-y-3">
-              {filteredDrivers.map((driver) => (
-                <Card
-                  key={driver.id}
-                  className="overflow-hidden hover:shadow-md transition-shadow cursor-pointer"
-                  onClick={() => setSelectedDriver(driver)}
-                >
-                  <CardContent className="p-4">
-                    <div className="flex items-center gap-4">
-                      <Avatar className="h-12 w-12">
-                        <AvatarImage src={driver.photo_url} />
-                        <AvatarFallback className="bg-purple-100 text-purple-600">
-                          {driver.name?.charAt(0) || "?"}
-                        </AvatarFallback>
-                      </Avatar>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <h3 className="font-semibold text-gray-900 truncate">
-                            {driver.name || "Unknown"}
-                          </h3>
-                          {driver.online ? (
-                            <Badge className="bg-green-100 text-green-700 text-xs">
-                              <Wifi className="h-3 w-3 mr-1" />
-                              Online
-                            </Badge>
-                          ) : (
-                            <Badge variant="secondary" className="text-xs">
-                              <WifiOff className="h-3 w-3 mr-1" />
-                              Offline
-                            </Badge>
-                          )}
+              {filteredDrivers.map((driver) => {
+                const getStatusBadge = () => {
+                  if (driver.driver_status === "leave") {
+                    return (
+                      <Badge className="bg-blue-100 text-blue-700 text-xs">
+                        <Calendar className="h-3 w-3 mr-1" />
+                        Leave
+                      </Badge>
+                    );
+                  } else if (
+                    driver.driver_status === "resigning" ||
+                    driver.resigning_date
+                  ) {
+                    return (
+                      <Badge className="bg-orange-100 text-orange-700 text-xs">
+                        <User className="h-3 w-3 mr-1" />
+                        Resigning
+                      </Badge>
+                    );
+                  } else if (!driver.online) {
+                    return (
+                      <Badge variant="secondary" className="text-xs">
+                        <WifiOff className="h-3 w-3 mr-1" />
+                        Offline
+                      </Badge>
+                    );
+                  } else {
+                    return (
+                      <Badge className="bg-green-100 text-green-700 text-xs">
+                        <Wifi className="h-3 w-3 mr-1" />
+                        Online
+                      </Badge>
+                    );
+                  }
+                };
+
+                return (
+                  <Card
+                    key={driver.id}
+                    className="overflow-hidden hover:shadow-md transition-shadow cursor-pointer"
+                    onClick={() => setSelectedDriver(driver)}
+                  >
+                    <CardContent className="p-4">
+                      <div className="flex items-center gap-4">
+                        <Avatar className="h-12 w-12">
+                          <AvatarImage src={driver.profile_photo} />
+                          <AvatarFallback className="bg-purple-100 text-purple-600">
+                            {driver.name?.charAt(0) || "?"}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <h3 className="font-semibold text-gray-900 truncate">
+                              {driver.name || "Unknown"}
+                            </h3>
+                            {getStatusBadge()}
+                          </div>
+                          <div className="flex flex-wrap gap-2 mt-1 text-sm text-gray-500">
+                            <span className="flex items-center gap-1">
+                              <Car className="h-3 w-3" />
+                              {driver.vehicle_number || "No Vehicle"}
+                            </span>
+                            <span className="flex items-center gap-1">
+                              <Clock className="h-3 w-3" />
+                              {driver.shift || "No Shift"}
+                            </span>
+                          </div>
                         </div>
-                        <div className="flex flex-wrap gap-2 mt-1 text-sm text-gray-500">
-                          <span className="flex items-center gap-1">
-                            <Car className="h-3 w-3" />
-                            {driver.vehicle_number || "No Vehicle"}
-                          </span>
-                          <span className="flex items-center gap-1">
-                            <Clock className="h-3 w-3" />
-                            {driver.shift || "No Shift"}
-                          </span>
+                        <div className="text-right hidden md:block">
+                          <p className="text-sm text-gray-500">Balance</p>
+                          <p
+                            className={cn(
+                              "font-semibold",
+                              (driver.net_balance ||
+                                driver.pending_balance ||
+                                0) < 0
+                                ? "text-red-600"
+                                : "text-green-600"
+                            )}
+                          >
+                            ₹
+                            {(
+                              driver.net_balance ||
+                              driver.pending_balance ||
+                              0
+                            ).toLocaleString()}
+                          </p>
                         </div>
+                        <Eye className="h-5 w-5 text-gray-400" />
                       </div>
-                      <div className="text-right hidden md:block">
-                        <p className="text-sm text-gray-500">Balance</p>
-                        <p
-                          className={cn(
-                            "font-semibold",
-                            (driver.balance || 0) < 0
-                              ? "text-red-600"
-                              : "text-green-600"
-                          )}
-                        >
-                          ₹{(driver.balance || 0).toLocaleString()}
-                        </p>
-                      </div>
-                      <Eye className="h-5 w-5 text-gray-400" />
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
+                    </CardContent>
+                  </Card>
+                );
+              })}
 
               {filteredDrivers.length === 0 && (
                 <Card>
@@ -1006,6 +1211,22 @@ const ManagerPortal = () => {
               </CardContent>
             </Card>
 
+            {/* Action Button */}
+            <div className="flex justify-end">
+              <Button
+                onClick={() => {
+                  setSelectedDriverForAssign(null);
+                  setSelectedVehicleForAssign("");
+                  setSelectedShiftForAssign("morning");
+                  setShowAssignDialog(true);
+                }}
+                className="bg-purple-600 hover:bg-purple-700"
+              >
+                <Clock className="h-4 w-4 mr-2" />
+                Assign Shift
+              </Button>
+            </div>
+
             {/* Shift Summary */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               <Card className="bg-gradient-to-br from-amber-500 to-amber-600">
@@ -1036,11 +1257,7 @@ const ManagerPortal = () => {
                 <CardContent className="p-4">
                   <p className="text-gray-100 text-xs">No Shift</p>
                   <p className="text-2xl font-bold text-white">
-                    {
-                      shifts.filter(
-                        (s) => s.shift_type === "none" || !s.shift_type
-                      ).length
-                    }
+                    {noShiftDrivers.length}
                   </p>
                 </CardContent>
               </Card>
@@ -1126,6 +1343,96 @@ const ManagerPortal = () => {
                 </Card>
               )}
             </div>
+
+            {/* No Shift Drivers Section */}
+            {noShiftDrivers.length > 0 && (
+              <Card>
+                <CardHeader className="p-4 pb-2">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Users className="h-5 w-5 text-orange-600" />
+                      <CardTitle className="text-lg">
+                        No Shift Drivers
+                      </CardTitle>
+                      <Badge
+                        variant="outline"
+                        className="bg-orange-50 text-orange-700"
+                      >
+                        {noShiftDrivers.length}
+                      </Badge>
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent className="p-4 pt-0">
+                  <div className="space-y-2">
+                    {noShiftDrivers
+                      .filter((driver) => {
+                        if (!shiftSearchQuery) return true;
+                        return (
+                          driver.name
+                            ?.toLowerCase()
+                            .includes(shiftSearchQuery.toLowerCase()) ||
+                          driver.vehicle_number
+                            ?.toLowerCase()
+                            .includes(shiftSearchQuery.toLowerCase())
+                        );
+                      })
+                      .map((driver) => (
+                        <div
+                          key={driver.id}
+                          className="flex items-center justify-between p-3 bg-orange-50 rounded-lg border border-orange-200"
+                        >
+                          <div className="flex items-center gap-3">
+                            <Avatar className="h-10 w-10">
+                              <AvatarFallback className="bg-orange-100 text-orange-600">
+                                {driver.name?.charAt(0) || "?"}
+                              </AvatarFallback>
+                            </Avatar>
+                            <div>
+                              <p className="font-medium">
+                                {driver.name || "Unknown"}
+                              </p>
+                              <div className="flex gap-2 text-sm text-gray-500">
+                                {driver.vehicle_number && (
+                                  <span className="flex items-center gap-1">
+                                    <Car className="h-3 w-3" />
+                                    {driver.vehicle_number}
+                                  </span>
+                                )}
+                                {driver.phone_number && (
+                                  <a
+                                    href={`tel:${driver.phone_number}`}
+                                    className="text-blue-600 flex items-center gap-1"
+                                  >
+                                    <Phone className="h-3 w-3" />
+                                    {driver.phone_number}
+                                  </a>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => {
+                              setSelectedDriverForAssign(driver);
+                              setSelectedVehicleForAssign(
+                                driver.vehicle_number || ""
+                              );
+                              setSelectedShiftForAssign("morning");
+                              setShowAssignDialog(true);
+                            }}
+                            className="border-purple-300 text-purple-700 hover:bg-purple-50"
+                          >
+                            <Clock className="h-3 w-3 mr-1" />
+                            Assign
+                          </Button>
+                        </div>
+                      ))}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
           </div>
         )}
 
@@ -1308,6 +1615,143 @@ const ManagerPortal = () => {
         )}
       </main>
 
+      {/* Assign Shift Dialog */}
+      <Dialog open={showAssignDialog} onOpenChange={setShowAssignDialog}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Assign Shift to Driver</DialogTitle>
+            <DialogDescription>
+              Select a driver, vehicle, and shift type to assign
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            {/* Driver Selection */}
+            <div>
+              <Label htmlFor="driver-select">Driver</Label>
+              <Select
+                value={selectedDriverForAssign?.id || ""}
+                onValueChange={(value) => {
+                  const driver =
+                    noShiftDrivers.find((d) => d.id === value) ||
+                    drivers.find((d) => d.id === value);
+                  setSelectedDriverForAssign(driver || null);
+                  if (driver) {
+                    setSelectedVehicleForAssign(driver.vehicle_number || "");
+                  }
+                }}
+              >
+                <SelectTrigger id="driver-select">
+                  <SelectValue placeholder="Select driver">
+                    {selectedDriverForAssign?.name || "Select driver"}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  {noShiftDrivers.map((driver) => (
+                    <SelectItem key={driver.id} value={driver.id}>
+                      {driver.name || "Unknown"}{" "}
+                      {driver.vehicle_number
+                        ? `(${driver.vehicle_number})`
+                        : ""}
+                    </SelectItem>
+                  ))}
+                  {drivers
+                    .filter((d) => d.online && d.shift && d.shift !== "none")
+                    .map((driver) => (
+                      <SelectItem key={driver.id} value={driver.id}>
+                        {driver.name || "Unknown"}{" "}
+                        {driver.vehicle_number
+                          ? `(${driver.vehicle_number})`
+                          : ""}
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Shift Selection */}
+            <div>
+              <Label htmlFor="shift-select">Shift Type</Label>
+              <Select
+                value={selectedShiftForAssign}
+                onValueChange={(value) =>
+                  setSelectedShiftForAssign(
+                    value as "morning" | "night" | "24" | "none"
+                  )
+                }
+              >
+                <SelectTrigger id="shift-select">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="morning">Morning (4AM - 4PM)</SelectItem>
+                  <SelectItem value="night">Night (4PM - 4AM)</SelectItem>
+                  <SelectItem value="24">24 Hours</SelectItem>
+                  <SelectItem value="none">No Shift</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Vehicle Selection */}
+            <div>
+              <Label htmlFor="vehicle-select">Vehicle</Label>
+              <Select
+                value={selectedVehicleForAssign}
+                onValueChange={setSelectedVehicleForAssign}
+              >
+                <SelectTrigger id="vehicle-select">
+                  <SelectValue placeholder="Select vehicle">
+                    {selectedVehicleForAssign || "Select vehicle"}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">No Vehicle</SelectItem>
+                  {availableVehicles
+                    .filter((v) => v.online)
+                    .map((vehicle) => (
+                      <SelectItem
+                        key={vehicle.vehicle_number}
+                        value={vehicle.vehicle_number}
+                      >
+                        {vehicle.vehicle_number}
+                        {vehicle.fleet_name && ` - ${vehicle.fleet_name}`}
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-gray-500 mt-1">
+                {availableVehicles.filter((v) => v.online).length} available
+                vehicles
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setShowAssignDialog(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleAssignShift}
+              disabled={!selectedDriverForAssign || isAssigning}
+              className="bg-purple-600 hover:bg-purple-700"
+            >
+              {isAssigning ? (
+                <>
+                  <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                  Assigning...
+                </>
+              ) : (
+                <>
+                  <Clock className="h-4 w-4 mr-2" />
+                  Assign Shift
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Driver Details Modal */}
       <Dialog
         open={!!selectedDriver}
@@ -1321,7 +1765,7 @@ const ManagerPortal = () => {
             <div className="space-y-4">
               <div className="flex items-center gap-4">
                 <Avatar className="h-16 w-16">
-                  <AvatarImage src={selectedDriver.photo_url} />
+                  <AvatarImage src={selectedDriver.profile_photo} />
                   <AvatarFallback className="bg-purple-100 text-purple-600 text-xl">
                     {selectedDriver.name?.charAt(0) || "?"}
                   </AvatarFallback>
@@ -1329,7 +1773,18 @@ const ManagerPortal = () => {
                 <div>
                   <h3 className="font-bold text-lg">{selectedDriver.name}</h3>
                   <p className="text-gray-500">{selectedDriver.driver_id}</p>
-                  {selectedDriver.online ? (
+                  {selectedDriver.driver_status === "leave" ? (
+                    <Badge className="bg-blue-100 text-blue-700 mt-1">
+                      <Calendar className="h-3 w-3 mr-1" />
+                      Leave
+                    </Badge>
+                  ) : selectedDriver.driver_status === "resigning" ||
+                    selectedDriver.resigning_date ? (
+                    <Badge className="bg-orange-100 text-orange-700 mt-1">
+                      <User className="h-3 w-3 mr-1" />
+                      Resigning
+                    </Badge>
+                  ) : selectedDriver.online ? (
                     <Badge className="bg-green-100 text-green-700 mt-1">
                       <Wifi className="h-3 w-3 mr-1" />
                       Online
@@ -1357,24 +1812,55 @@ const ManagerPortal = () => {
                   </p>
                 </div>
                 <div className="p-3 bg-gray-50 rounded-lg">
+                  <p className="text-xs text-gray-500">Status</p>
+                  <p className="font-semibold capitalize">
+                    {selectedDriver.driver_status === "leave"
+                      ? "Leave"
+                      : selectedDriver.driver_status === "resigning" ||
+                        selectedDriver.resigning_date
+                      ? "Resigning"
+                      : selectedDriver.online
+                      ? "Online"
+                      : "Offline"}
+                  </p>
+                </div>
+                <div className="p-3 bg-gray-50 rounded-lg">
                   <p className="text-xs text-gray-500">Balance</p>
                   <p
                     className={cn(
                       "font-semibold",
-                      (selectedDriver.balance || 0) < 0
+                      (selectedDriver.net_balance ||
+                        selectedDriver.pending_balance ||
+                        0) < 0
                         ? "text-red-600"
                         : "text-green-600"
                     )}
                   >
-                    ₹{(selectedDriver.balance || 0).toLocaleString()}
+                    ₹
+                    {(
+                      selectedDriver.net_balance ||
+                      selectedDriver.pending_balance ||
+                      0
+                    ).toLocaleString()}
                   </p>
                 </div>
                 <div className="p-3 bg-gray-50 rounded-lg">
                   <p className="text-xs text-gray-500">Deposit</p>
                   <p className="font-semibold">
-                    ₹{(selectedDriver.deposit_collected || 0).toLocaleString()}
+                    ₹{(selectedDriver.deposit_amount || 0).toLocaleString()}
                   </p>
                 </div>
+                {selectedDriver.resigning_date && (
+                  <div className="p-3 bg-gray-50 rounded-lg">
+                    <p className="text-xs text-gray-500">Resigning Date</p>
+                    <p className="font-semibold">
+                      {format(
+                        new Date(selectedDriver.resigning_date),
+                        "MMM d, yyyy"
+                      )}
+                    </p>
+                  </div>
+                )}
               </div>
 
               {selectedDriver.phone_number && (

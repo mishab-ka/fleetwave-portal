@@ -29,6 +29,8 @@ import {
   AlertCircle,
   Activity,
   Trophy,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import HRLiveActivityDashboard from "./HRLiveActivityDashboard";
 import HRAlertCenter from "./HRAlertCenter";
@@ -91,6 +93,8 @@ const HRPerformanceAnalytics: React.FC = () => {
   const [activeView, setActiveView] = useState<
     "performance" | "attendance" | "targets" | "alerts" | "live"
   >("performance");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage] = useState(10);
 
   useEffect(() => {
     fetchStaffList();
@@ -352,8 +356,7 @@ const HRPerformanceAnalytics: React.FC = () => {
       const { data, error } = await supabase
         .from("hr_call_tracking")
         .select("*")
-        .order("created_at", { ascending: false })
-        .limit(20);
+        .order("created_at", { ascending: false });
 
       if (error) throw error;
       setCallData(data || []);
@@ -390,6 +393,17 @@ const HRPerformanceAnalytics: React.FC = () => {
     return colors[status] || "bg-gray-100 text-gray-800";
   };
 
+  // Calculate pagination for Recent Activity
+  const totalPages = Math.ceil(callData.length / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const endIndex = startIndex + itemsPerPage;
+  const paginatedCallData = callData.slice(startIndex, endIndex);
+
+  // Reset to first page when callData changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [callData.length]);
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -399,7 +413,7 @@ const HRPerformanceAnalytics: React.FC = () => {
   }
 
   return (
-    <div className="h-[calc(100vh-2rem)] flex flex-col w-full bg-gradient-to-br from-gray-50 to-blue-50/30">
+    <div className=" flex flex-col w-full bg-gradient-to-br from-gray-50 to-blue-50/30">
       {/* Header */}
 
       {/* Filters */}
@@ -569,8 +583,8 @@ const HRPerformanceAnalytics: React.FC = () => {
               </Badge>
             </CardTitle>
           </CardHeader>
-          <CardContent className="flex-1 overflow-hidden">
-            <div className="overflow-x-auto h-full overflow-y-auto border border-gray-200 rounded-lg">
+          <CardContent className="flex-1 overflow-hidden flex flex-col">
+            <div className="overflow-x-auto flex-1 overflow-y-auto border border-gray-200 rounded-lg">
               <Table>
                 <TableHeader className="sticky top-0 bg-white z-10">
                   <TableRow>
@@ -595,55 +609,129 @@ const HRPerformanceAnalytics: React.FC = () => {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {callData.slice(0, 20).map((call, index) => (
-                    <TableRow
-                      key={call.id}
-                      className={`hover:bg-green-50/50 transition-colors ${
-                        index % 2 === 0 ? "bg-white" : "bg-gray-50/50"
-                      }`}
-                    >
-                      <TableCell className="font-medium">
-                        {staffNames[call.staff_user_id] || "Unknown"}
-                      </TableCell>
-                      <TableCell>
-                        <div>
-                          <div className="font-medium">{call.name}</div>
-                          <div className="text-xs text-gray-500">
-                            {call.phone}
+                  {paginatedCallData.length > 0 ? (
+                    paginatedCallData.map((call, index) => (
+                      <TableRow
+                        key={call.id}
+                        className={`hover:bg-green-50/50 transition-colors ${
+                          index % 2 === 0 ? "bg-white" : "bg-gray-50/50"
+                        }`}
+                      >
+                        <TableCell className="font-medium">
+                          {staffNames[call.staff_user_id] || "Unknown"}
+                        </TableCell>
+                        <TableCell>
+                          <div>
+                            <div className="font-medium">{call.name}</div>
+                            <div className="text-xs text-gray-500">
+                              {call.phone}
+                            </div>
                           </div>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <Badge className={getStatusColor(call.status)}>
-                          {call.status.replace("_", " ")}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-sm">
-                        {Math.floor(call.call_duration / 60)}m{" "}
-                        {call.call_duration % 60}s
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="outline" className="text-xs">
-                          {call.source?.toUpperCase() || "N/A"}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-sm">
-                        <div>
-                          {new Date(call.created_at).toLocaleDateString()}
-                        </div>
-                        <div className="text-xs text-gray-500">
-                          {new Date(call.created_at).toLocaleTimeString([], {
-                            hour: "2-digit",
-                            minute: "2-digit",
-                            hour12: true,
-                          })}
-                        </div>
+                        </TableCell>
+                        <TableCell>
+                          <Badge className={getStatusColor(call.status)}>
+                            {call.status.replace("_", " ")}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-sm">
+                          {Math.floor(call.call_duration / 60)}m{" "}
+                          {call.call_duration % 60}s
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="outline" className="text-xs">
+                            {call.source?.toUpperCase() || "N/A"}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-sm">
+                          <div>
+                            {new Date(call.created_at).toLocaleDateString()}
+                          </div>
+                          <div className="text-xs text-gray-500">
+                            {new Date(call.created_at).toLocaleTimeString([], {
+                              hour: "2-digit",
+                              minute: "2-digit",
+                              hour12: true,
+                            })}
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  ) : (
+                    <TableRow>
+                      <TableCell
+                        colSpan={7}
+                        className="text-center py-8 text-gray-500"
+                      >
+                        No activity records found
                       </TableCell>
                     </TableRow>
-                  ))}
+                  )}
                 </TableBody>
               </Table>
             </div>
+            {/* Pagination Controls */}
+            {totalPages > 1 && (
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-4 mt-4 pt-4 border-t border-gray-200">
+                <div className="text-sm text-gray-600">
+                  Showing {startIndex + 1} to{" "}
+                  {Math.min(endIndex, callData.length)} of {callData.length}{" "}
+                  activities
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() =>
+                      setCurrentPage((prev) => Math.max(1, prev - 1))
+                    }
+                    disabled={currentPage === 1}
+                    className="h-9"
+                  >
+                    <ChevronLeft className="w-4 h-4 mr-1" />
+                    Previous
+                  </Button>
+                  <div className="flex items-center gap-1">
+                    {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                      let pageNum;
+                      if (totalPages <= 5) {
+                        pageNum = i + 1;
+                      } else if (currentPage <= 3) {
+                        pageNum = i + 1;
+                      } else if (currentPage >= totalPages - 2) {
+                        pageNum = totalPages - 4 + i;
+                      } else {
+                        pageNum = currentPage - 2 + i;
+                      }
+                      return (
+                        <Button
+                          key={pageNum}
+                          variant={
+                            currentPage === pageNum ? "default" : "outline"
+                          }
+                          size="sm"
+                          onClick={() => setCurrentPage(pageNum)}
+                          className="w-9 h-9 p-0"
+                        >
+                          {pageNum}
+                        </Button>
+                      );
+                    })}
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() =>
+                      setCurrentPage((prev) => Math.min(totalPages, prev + 1))
+                    }
+                    disabled={currentPage === totalPages}
+                    className="h-9"
+                  >
+                    Next
+                    <ChevronRight className="w-4 h-4 ml-1" />
+                  </Button>
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
         <Card className="flex-1 flex flex-col overflow-y-auto h-[600px] border-none shadow-xl bg-white/95 backdrop-blur-sm">

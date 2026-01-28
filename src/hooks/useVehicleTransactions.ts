@@ -45,10 +45,17 @@ export const useVehicleTransactions = () => {
         query = query.lte("transaction_date", endDate);
       }
 
+      console.log("Query params:", { vehicleNumber, startDate, endDate });
       const { data, error } = await query;
 
-      if (error) throw error;
+      if (error) {
+        console.error("Supabase query error:", error);
+        throw error;
+      }
 
+      console.log("Raw transaction data from DB:", data);
+      console.log("Number of transactions found:", data?.length || 0);
+      
       setTransactions(data || []);
       return data || [];
     } catch (error) {
