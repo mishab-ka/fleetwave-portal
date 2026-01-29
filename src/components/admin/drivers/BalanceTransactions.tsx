@@ -25,6 +25,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useAuth } from "@/context/AuthContext";
+import { useAdmin } from "@/context/AdminContext";
 import { useIsMobile } from "@/hooks/use-mobile";
 import {
   Table,
@@ -71,6 +72,7 @@ export const BalanceTransactions = ({
   onBalanceUpdate,
 }: BalanceTransactionsProps) => {
   const { user } = useAuth();
+  const { isAdmin } = useAdmin();
   const isMobile = useIsMobile();
   const [transactions, setTransactions] = useState<BalanceTransaction[]>([]);
   const [loading, setLoading] = useState(false);
@@ -102,17 +104,50 @@ export const BalanceTransactions = ({
   const fetchTransactions = async () => {
     try {
       setLoading(true);
+      console.log("Fetching transactions for driverId:", driverId);
+      
       const { data, error } = await supabase
         .from("driver_balance_transactions")
         .select("*")
         .eq("user_id", driverId)
         .order("created_at", { ascending: false });
 
-      if (error) throw error;
+      if (error) {
+        console.error("Error fetching transactions:", error);
+        console.error("Error code:", error.code);
+        console.error("Error message:", error.message);
+        console.error("Error details:", error.details);
+        console.error("Error hint:", error.hint);
+        throw error;
+      }
+      
+      console.log("Fetched transactions:", data);
+      console.log("Transaction count:", data?.length || 0);
       setTransactions(data || []);
-    } catch (error) {
+      
+      if (data && data.length === 0) {
+        console.log("No transactions found in database for driverId:", driverId);
+      }
+    } catch (error: any) {
       console.error("Error fetching transactions:", error);
-      toast.error("Failed to load transaction history");
+      console.error("Full error object:", JSON.stringify(error, null, 2));
+      
+      let errorMessage = "Failed to load transaction history";
+      if (error?.code === "42501") {
+        errorMessage = "Permission denied: Cannot view transactions. Please check RLS policies in Supabase.";
+      } else if (error?.code === "PGRST116") {
+        errorMessage = "No transactions found for this driver.";
+      } else if (error?.message) {
+        errorMessage = error.message;
+      }
+      
+      toast.error(errorMessage, {
+        description: error?.code === "42501" 
+          ? "Contact your administrator to verify Row Level Security policies allow your role to view transactions."
+          : "Please check the browser console for more details.",
+        duration: 5000,
+      });
+      setTransactions([]);
     } finally {
       setLoading(false);
     }
@@ -637,9 +672,20 @@ export const BalanceTransactions = ({
               <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-fleet-purple"></div>
             </div>
           ) : transactions.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground">
-              <AlertCircle className="mx-auto h-8 w-8 mb-2" />
-              <p>No transactions found</p>
+            <div className="text-center py-8 text-muted-foreground space-y-2">
+              <AlertCircle className="mx-auto h-8 w-8 mb-2 text-muted-foreground" />
+              <p className="font-medium">No transactions found</p>
+              <p className="text-sm text-muted-foreground">
+                This driver has no deposit, refund, due, penalty, or bonus transactions yet.
+              </p>
+              <p className="text-xs text-muted-foreground mt-2">
+                If you expected to see transactions, please check:
+              </p>
+              <ul className="text-xs text-muted-foreground text-left max-w-md mx-auto mt-2 space-y-1">
+                <li>• RLS policies allow your role to view transactions</li>
+                <li>• Transactions exist in the database for this driver</li>
+                <li>• Check browser console for error messages</li>
+              </ul>
             </div>
           ) : (
             <>
@@ -710,44 +756,46 @@ export const BalanceTransactions = ({
                                     <Edit className="h-4 w-4" />
                                   </Button>
 
-                                  <AlertDialog>
-                                    <AlertDialogTrigger asChild>
-                                      <Button
-                                        variant="ghost"
-                                        size="sm"
-                                        className="text-red-500 hover:text-red-700"
-                                      >
-                                        <Trash className="h-4 w-4" />
-                                      </Button>
-                                    </AlertDialogTrigger>
-                                    <AlertDialogContent>
-                                      <AlertDialogHeader>
-                                        <AlertDialogTitle>
-                                          Delete Transaction?
-                                        </AlertDialogTitle>
-                                        <AlertDialogDescription>
-                                          This action cannot be undone. This
-                                          will permanently delete the
-                                          transaction.
-                                        </AlertDialogDescription>
-                                      </AlertDialogHeader>
-                                      <AlertDialogFooter>
-                                        <AlertDialogCancel>
-                                          Cancel
-                                        </AlertDialogCancel>
-                                        <AlertDialogAction
-                                          onClick={() =>
-                                            handleDeleteTransaction(
-                                              transaction.id
-                                            )
-                                          }
-                                          className="bg-red-500 hover:bg-red-600"
+                                  {isAdmin && (
+                                    <AlertDialog>
+                                      <AlertDialogTrigger asChild>
+                                        <Button
+                                          variant="ghost"
+                                          size="sm"
+                                          className="text-red-500 hover:text-red-700"
                                         >
-                                          Delete
-                                        </AlertDialogAction>
-                                      </AlertDialogFooter>
-                                    </AlertDialogContent>
-                                  </AlertDialog>
+                                          <Trash className="h-4 w-4" />
+                                        </Button>
+                                      </AlertDialogTrigger>
+                                      <AlertDialogContent>
+                                        <AlertDialogHeader>
+                                          <AlertDialogTitle>
+                                            Delete Transaction?
+                                          </AlertDialogTitle>
+                                          <AlertDialogDescription>
+                                            This action cannot be undone. This
+                                            will permanently delete the
+                                            transaction.
+                                          </AlertDialogDescription>
+                                        </AlertDialogHeader>
+                                        <AlertDialogFooter>
+                                          <AlertDialogCancel>
+                                            Cancel
+                                          </AlertDialogCancel>
+                                          <AlertDialogAction
+                                            onClick={() =>
+                                              handleDeleteTransaction(
+                                                transaction.id
+                                              )
+                                            }
+                                            className="bg-red-500 hover:bg-red-600"
+                                          >
+                                            Delete
+                                          </AlertDialogAction>
+                                        </AlertDialogFooter>
+                                      </AlertDialogContent>
+                                    </AlertDialog>
+                                  )}
                                 </div>
                               </TableCell>
                             </TableRow>
@@ -819,39 +867,41 @@ export const BalanceTransactions = ({
                           <Edit className="h-4 w-4" />
                         </Button>
 
-                        <AlertDialog>
-                          <AlertDialogTrigger asChild>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="text-red-500 hover:text-red-700"
-                            >
-                              <Trash className="h-4 w-4" />
-                            </Button>
-                          </AlertDialogTrigger>
-                          <AlertDialogContent>
-                            <AlertDialogHeader>
-                              <AlertDialogTitle>
-                                Delete Transaction?
-                              </AlertDialogTitle>
-                              <AlertDialogDescription>
-                                This action cannot be undone. This will
-                                permanently delete the transaction.
-                              </AlertDialogDescription>
-                            </AlertDialogHeader>
-                            <AlertDialogFooter>
-                              <AlertDialogCancel>Cancel</AlertDialogCancel>
-                              <AlertDialogAction
-                                onClick={() =>
-                                  handleDeleteTransaction(transaction.id)
-                                }
-                                className="bg-red-500 hover:bg-red-600"
+                        {isAdmin && (
+                          <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="text-red-500 hover:text-red-700"
                               >
-                                Delete
-                              </AlertDialogAction>
-                            </AlertDialogFooter>
-                          </AlertDialogContent>
-                        </AlertDialog>
+                                <Trash className="h-4 w-4" />
+                              </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                              <AlertDialogHeader>
+                                <AlertDialogTitle>
+                                  Delete Transaction?
+                                </AlertDialogTitle>
+                                <AlertDialogDescription>
+                                  This action cannot be undone. This will
+                                  permanently delete the transaction.
+                                </AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <AlertDialogFooter>
+                                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                <AlertDialogAction
+                                  onClick={() =>
+                                    handleDeleteTransaction(transaction.id)
+                                  }
+                                  className="bg-red-500 hover:bg-red-600"
+                                >
+                                  Delete
+                                </AlertDialogAction>
+                              </AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialog>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -859,8 +909,12 @@ export const BalanceTransactions = ({
               })}
 
               {filteredTransactions.length === 0 && (
-                <div className="text-center py-8 text-gray-500">
-                  No transactions found
+                <div className="text-center py-8 text-muted-foreground space-y-2">
+                  <AlertCircle className="mx-auto h-6 w-6 mb-2 text-muted-foreground" />
+                  <p className="text-sm font-medium">No transactions found</p>
+                  <p className="text-xs text-muted-foreground">
+                    This driver has no deposit transactions yet.
+                  </p>
                 </div>
               )}
             </ScrollArea>

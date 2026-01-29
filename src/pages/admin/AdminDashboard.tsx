@@ -23,6 +23,8 @@ import {
   BarChart3,
   AlertTriangle,
   Loader2,
+  UserPlus,
+  XCircle,
 } from "lucide-react";
 import {
   ResponsiveContainer,
@@ -52,6 +54,14 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { Calendar as CalendarComponent } from "@/components/ui/calendar";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { Calendar } from "lucide-react";
+import { Label } from "@/components/ui/label";
 
 interface FinancialMetrics {
   currentMonth: {
@@ -132,12 +142,27 @@ const AdminDashboard = () => {
     rejectedReports: 0,
     outstandingDeposits: 0,
     totalTrips: 0,
+    totalJoinedDrivers: 0,
+    totalLeaveDrivers: 0,
+    totalResignedDrivers: 0,
   });
 
+  const [driverUpdatesFilter, setDriverUpdatesFilter] = useState<"today" | "yesterday" | "weekly" | "monthly" | "custom">("today");
+  const [customStartDate, setCustomStartDate] = useState<Date | null>(null);
+  const [customEndDate, setCustomEndDate] = useState<Date | null>(null);
+  const [driverUpdates, setDriverUpdates] = useState({
+    totalDrivers: 0,
+    leaveDrivers: 0,
+    resignedDrivers: 0,
+  });
 
   useEffect(() => {
     fetchAllMetrics();
   }, []);
+
+  useEffect(() => {
+    fetchDriverUpdates();
+  }, [driverUpdatesFilter, customStartDate, customEndDate]);
 
 
   const fetchAllMetrics = async () => {
@@ -154,6 +179,7 @@ const AdminDashboard = () => {
       const lastWeekEnd = endOfWeek(subWeeks(now, 1), { weekStartsOn: 1 });
 
       // Fetch all data in parallel
+      const today = format(now, "yyyy-MM-dd");
       const [
         driversData,
         vehiclesData,
@@ -166,8 +192,10 @@ const AdminDashboard = () => {
         depositsData,
         allReports,
         trendReports,
+        leaveReportsToday,
+        approvedLeaveApplications,
       ] = await Promise.all([
-        supabase.from("users").select("id, online, role, resigning_date"),
+        supabase.from("users").select("id, online, role, resigning_date, created_at"),
         supabase.from("vehicles").select("id, online"),
         supabase
           .from("fleet_reports")
@@ -208,6 +236,17 @@ const AdminDashboard = () => {
           .select("rent_date, total_earnings, rent_paid_amount, toll, status")
           .gte("rent_date", format(subDays(now, 30), "yyyy-MM-dd"))
           .order("rent_date", { ascending: true }),
+        supabase
+          .from("fleet_reports")
+          .select("user_id")
+          .eq("rent_date", today)
+          .eq("status", "leave"),
+        supabase
+          .from("leave_applications")
+          .select("user_id, start_date, end_date")
+          .eq("status", "approved")
+          .lte("start_date", today)
+          .gte("end_date", today),
       ]);
 
       // Calculate basic stats
@@ -222,8 +261,29 @@ const AdminDashboard = () => {
       const totalTrips = allReportsData.reduce((sum, r) => sum + (r.total_trips || 0), 0);
       const outstandingDeposits = (depositsData.data || []).reduce((sum, d) => sum + (Number(d.pending_balance) || 0), 0);
 
+      // Calculate driver statistics
+      const totalJoinedDrivers = drivers.filter((d) => d.role === "driver").length;
+      const totalResignedDrivers = drivers.filter((d) => d.resigning_date && d.role === "driver").length;
+      
+      // Calculate leave drivers: from fleet_reports with status='leave' for today
+      const leaveReportsTodayData = leaveReportsToday.data || [];
+      const leaveDriverIdsFromReports = new Set(leaveReportsTodayData.map((r) => r.user_id));
+      
+      // Also check approved leave applications that cover today
+      const approvedLeaveApps = approvedLeaveApplications.data || [];
+      const leaveDriverIdsFromApps = new Set(
+        approvedLeaveApps.map((app) => app.user_id)
+      );
+      
+      // Combine both sources and get unique driver IDs
+      const allLeaveDriverIds = new Set([
+        ...leaveDriverIdsFromReports,
+        ...leaveDriverIdsFromApps,
+      ]);
+      const totalLeaveDrivers = allLeaveDriverIds.size;
+
         setStats({
-        totalDrivers: drivers.filter((d) => d.role === "driver").length,
+        totalDrivers: totalJoinedDrivers,
         activeDrivers,
         totalVehicles: vehicles.length,
         activeVehicles,
@@ -233,6 +293,9 @@ const AdminDashboard = () => {
         rejectedReports,
         outstandingDeposits,
         totalTrips,
+        totalJoinedDrivers,
+        totalLeaveDrivers,
+        totalResignedDrivers,
       });
 
       // Calculate financial metrics
@@ -461,6 +524,106 @@ const AdminDashboard = () => {
       }
     };
 
+  const fetchDriverUpdates = async () => {
+    try {
+      const now = new Date();
+      let startDate: Date;
+      let endDate: Date = now;
+
+      if (driverUpdatesFilter === "custom") {
+        if (!customStartDate || !customEndDate) {
+          // Don't fetch if custom dates are not set
+          return;
+        }
+        startDate = customStartDate;
+        endDate = customEndDate;
+      } else {
+        switch (driverUpdatesFilter) {
+          case "today":
+            startDate = now;
+            endDate = now;
+            break;
+          case "yesterday":
+            startDate = subDays(now, 1);
+            endDate = subDays(now, 1);
+            break;
+          case "weekly":
+            startDate = startOfWeek(now, { weekStartsOn: 1 });
+            endDate = endOfWeek(now, { weekStartsOn: 1 });
+            break;
+          case "monthly":
+            startDate = startOfMonth(now);
+            endDate = endOfMonth(now);
+            break;
+          default:
+            startDate = now;
+            endDate = now;
+        }
+      }
+
+      const startDateStr = format(startDate, "yyyy-MM-dd");
+      const endDateStr = format(endDate, "yyyy-MM-dd");
+
+      // Fetch drivers joined in the period
+      const { data: joinedDrivers } = await supabase
+        .from("users")
+        .select("id")
+        .eq("role", "driver")
+        .gte("created_at", startDateStr + "T00:00:00")
+        .lte("created_at", endDateStr + "T23:59:59");
+
+      // Fetch drivers resigned in the period
+      const { data: resignedDrivers } = await supabase
+        .from("users")
+        .select("id")
+        .eq("role", "driver")
+        .not("resigning_date", "is", null)
+        .gte("resigning_date", startDateStr)
+        .lte("resigning_date", endDateStr);
+
+      // Fetch leave reports in the period
+      const { data: leaveReports } = await supabase
+        .from("fleet_reports")
+        .select("user_id, rent_date")
+        .eq("status", "leave")
+        .gte("rent_date", startDateStr)
+        .lte("rent_date", endDateStr);
+
+      // Fetch approved leave applications that overlap with the period
+      const { data: leaveApplications } = await supabase
+        .from("leave_applications")
+        .select("user_id, start_date, end_date")
+        .eq("status", "approved")
+        .lte("start_date", endDateStr)
+        .gte("end_date", startDateStr);
+
+      // Calculate unique leave drivers
+      const leaveDriverIds = new Set<string>();
+      
+      // Add drivers from leave reports
+      if (leaveReports) {
+        leaveReports.forEach((report) => {
+          leaveDriverIds.add(report.user_id);
+        });
+      }
+
+      // Add drivers from leave applications
+      if (leaveApplications) {
+        leaveApplications.forEach((app) => {
+          leaveDriverIds.add(app.user_id);
+        });
+      }
+
+      setDriverUpdates({
+        totalDrivers: joinedDrivers?.length || 0,
+        leaveDrivers: leaveDriverIds.size,
+        resignedDrivers: resignedDrivers?.length || 0,
+      });
+    } catch (error) {
+      console.error("Error fetching driver updates:", error);
+    }
+  };
+
   const formatCurrency = (value: number) => {
     if (value >= 1000000) return `₹${(value / 1000000).toFixed(2)}M`;
     if (value >= 1000) return `₹${(value / 1000).toFixed(1)}K`;
@@ -611,6 +774,223 @@ const AdminDashboard = () => {
           </CardContent>
         </Card>
       </div>
+
+      {/* Driver Updates Section with Filters */}
+      <Card className="mb-8">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Users className="h-5 w-5" />
+            Driver Updates
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {/* Filter Buttons */}
+          <div className="flex flex-wrap gap-2 mb-6">
+            <Button
+              variant={driverUpdatesFilter === "today" ? "default" : "outline"}
+              size="sm"
+              onClick={() => setDriverUpdatesFilter("today")}
+              className={cn(
+                driverUpdatesFilter === "today" && "bg-fleet-purple text-white hover:bg-fleet-purple/90"
+              )}
+            >
+              Today
+            </Button>
+            <Button
+              variant={driverUpdatesFilter === "yesterday" ? "default" : "outline"}
+              size="sm"
+              onClick={() => setDriverUpdatesFilter("yesterday")}
+              className={cn(
+                driverUpdatesFilter === "yesterday" && "bg-fleet-purple text-white hover:bg-fleet-purple/90"
+              )}
+            >
+              Yesterday
+            </Button>
+            <Button
+              variant={driverUpdatesFilter === "weekly" ? "default" : "outline"}
+              size="sm"
+              onClick={() => setDriverUpdatesFilter("weekly")}
+              className={cn(
+                driverUpdatesFilter === "weekly" && "bg-fleet-purple text-white hover:bg-fleet-purple/90"
+              )}
+            >
+              Weekly
+            </Button>
+            <Button
+              variant={driverUpdatesFilter === "monthly" ? "default" : "outline"}
+              size="sm"
+              onClick={() => setDriverUpdatesFilter("monthly")}
+              className={cn(
+                driverUpdatesFilter === "monthly" && "bg-fleet-purple text-white hover:bg-fleet-purple/90"
+              )}
+            >
+              Monthly
+            </Button>
+            <Button
+              variant={driverUpdatesFilter === "custom" ? "default" : "outline"}
+              size="sm"
+              onClick={() => setDriverUpdatesFilter("custom")}
+              className={cn(
+                driverUpdatesFilter === "custom" && "bg-fleet-purple text-white hover:bg-fleet-purple/90"
+              )}
+            >
+              Custom Date Range
+            </Button>
+          </div>
+
+          {/* Custom Date Range Pickers */}
+          {driverUpdatesFilter === "custom" && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6 p-4 bg-gray-50 rounded-lg border">
+              <div className="space-y-2">
+                <Label>Start Date</Label>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      className={cn(
+                        "w-full justify-start text-left font-normal",
+                        !customStartDate && "text-muted-foreground"
+                      )}
+                    >
+                      <Calendar className="mr-2 h-4 w-4" />
+                      {customStartDate ? (
+                        format(customStartDate, "dd MMM yyyy")
+                      ) : (
+                        <span>Pick a start date</span>
+                      )}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <CalendarComponent
+                      mode="single"
+                      selected={customStartDate || undefined}
+                      onSelect={(date) => setCustomStartDate(date || null)}
+                      initialFocus
+                    />
+                  </PopoverContent>
+                </Popover>
+              </div>
+              <div className="space-y-2">
+                <Label>End Date</Label>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      className={cn(
+                        "w-full justify-start text-left font-normal",
+                        !customEndDate && "text-muted-foreground"
+                      )}
+                    >
+                      <Calendar className="mr-2 h-4 w-4" />
+                      {customEndDate ? (
+                        format(customEndDate, "dd MMM yyyy")
+                      ) : (
+                        <span>Pick an end date</span>
+                      )}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <CalendarComponent
+                      mode="single"
+                      selected={customEndDate || undefined}
+                      onSelect={(date) => setCustomEndDate(date || null)}
+                      initialFocus
+                      disabled={(date) => customStartDate ? date < customStartDate : false}
+                    />
+                  </PopoverContent>
+                </Popover>
+              </div>
+            </div>
+          )}
+
+          {/* Driver Update Cards */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <Card className="bg-gradient-to-br from-indigo-100 to-indigo-50">
+              <CardHeader className="flex flex-row items-center justify-between pb-2">
+                <CardTitle className="text-sm font-medium text-indigo-800">
+                  Total Drivers
+                </CardTitle>
+                <UserPlus className="h-5 w-5 text-indigo-600" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-indigo-900">
+                  {driverUpdates.totalDrivers}
+                </div>
+                <div className="flex items-center text-xs text-indigo-600 mt-2">
+                  <Users className="h-4 w-4 mr-1" />
+                  <span>
+                    {driverUpdatesFilter === "custom" && customStartDate && customEndDate
+                      ? `Joined from ${format(customStartDate, "dd MMM")} to ${format(customEndDate, "dd MMM yyyy")}`
+                      : driverUpdatesFilter === "today"
+                      ? "Joined today"
+                      : driverUpdatesFilter === "yesterday"
+                      ? "Joined yesterday"
+                      : driverUpdatesFilter === "weekly"
+                      ? "Joined this week"
+                      : "Joined this month"}
+                  </span>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="bg-gradient-to-br from-amber-100 to-amber-50">
+              <CardHeader className="flex flex-row items-center justify-between pb-2">
+                <CardTitle className="text-sm font-medium text-amber-800">
+                  Drivers on Leave
+                </CardTitle>
+                <Clock className="h-5 w-5 text-amber-600" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-amber-900">
+                  {driverUpdates.leaveDrivers}
+                </div>
+                <div className="flex items-center text-xs text-amber-600 mt-2">
+                  <AlertCircle className="h-4 w-4 mr-1" />
+                  <span>
+                    {driverUpdatesFilter === "custom" && customStartDate && customEndDate
+                      ? `On leave from ${format(customStartDate, "dd MMM")} to ${format(customEndDate, "dd MMM yyyy")}`
+                      : driverUpdatesFilter === "today"
+                      ? "On leave today"
+                      : driverUpdatesFilter === "yesterday"
+                      ? "On leave yesterday"
+                      : driverUpdatesFilter === "weekly"
+                      ? "On leave this week"
+                      : "On leave this month"}
+                  </span>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="bg-gradient-to-br from-rose-100 to-rose-50">
+              <CardHeader className="flex flex-row items-center justify-between pb-2">
+                <CardTitle className="text-sm font-medium text-rose-800">
+                  Resigned Drivers
+                </CardTitle>
+                <XCircle className="h-5 w-5 text-rose-600" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-rose-900">
+                  {driverUpdates.resignedDrivers}
+                </div>
+                <div className="flex items-center text-xs text-rose-600 mt-2">
+                  <TrendingDown className="h-4 w-4 mr-1" />
+                  <span>
+                    {driverUpdatesFilter === "custom" && customStartDate && customEndDate
+                      ? `Resigned from ${format(customStartDate, "dd MMM")} to ${format(customEndDate, "dd MMM yyyy")}`
+                      : driverUpdatesFilter === "today"
+                      ? "Resigned today"
+                      : driverUpdatesFilter === "yesterday"
+                      ? "Resigned yesterday"
+                      : driverUpdatesFilter === "weekly"
+                      ? "Resigned this week"
+                      : "Resigned this month"}
+                  </span>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Key Performance Indicators */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">

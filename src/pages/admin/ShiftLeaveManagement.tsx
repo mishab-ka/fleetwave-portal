@@ -43,6 +43,14 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
 import { cn } from "@/lib/utils";
 
 interface Vehicle {
@@ -918,9 +926,9 @@ const ShiftLeaveManagement = () => {
               <Input
                 id="shifts-runned"
                 type="number"
-                min="0"
                 max={totalAvailableShifts}
                 value={shiftsRunned}
+                onWheel={(e) => e.currentTarget.blur()}
                 onChange={(e) => {
                   const value = parseInt(e.target.value) || 0;
                   const runned = Math.max(
@@ -962,6 +970,7 @@ const ShiftLeaveManagement = () => {
                 type="number"
                 min="0"
                 value={shiftsLeave}
+                onWheel={(e) => e.currentTarget.blur()}
                 onChange={(e) => {
                   const value = parseInt(e.target.value) || 0;
                   setShiftsLeave(Math.max(0, value));
@@ -995,26 +1004,44 @@ const ShiftLeaveManagement = () => {
                       {/* Vehicle Selection */}
                       <div className="space-y-2">
                         <Label>Vehicle *</Label>
-                        <Select
-                          value={detail.vehicle_number}
-                          onValueChange={(value) =>
-                            handleVehicleChange(index, value)
-                          }
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select vehicle" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {activeVehicles.map((vehicle) => (
-                              <SelectItem
-                                key={vehicle.vehicle_number}
-                                value={vehicle.vehicle_number}
-                              >
-                                {vehicle.vehicle_number}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <Button
+                              variant="outline"
+                              role="combobox"
+                              className="w-full justify-between"
+                            >
+                              {detail.vehicle_number
+                                ? detail.vehicle_number
+                                : "Search vehicle..."}
+                              <Search className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                            </Button>
+                          </PopoverTrigger>
+                          <PopoverContent className="p-0 w-[280px]">
+                            <Command>
+                              <CommandInput placeholder="Search vehicle number..." />
+                              <CommandList>
+                                <CommandEmpty>No vehicle found.</CommandEmpty>
+                                <CommandGroup>
+                                  {activeVehicles.map((vehicle) => (
+                                    <CommandItem
+                                      key={vehicle.vehicle_number}
+                                      value={vehicle.vehicle_number}
+                                      onSelect={() =>
+                                        handleVehicleChange(
+                                          index,
+                                          vehicle.vehicle_number
+                                        )
+                                      }
+                                    >
+                                      {vehicle.vehicle_number}
+                                    </CommandItem>
+                                  ))}
+                                </CommandGroup>
+                              </CommandList>
+                            </Command>
+                          </PopoverContent>
+                        </Popover>
                       </div>
 
                       {/* Driver Selection */}

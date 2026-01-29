@@ -1725,11 +1725,14 @@ export const DriverDetailsModal = ({
                     </CardContent>
                   </Card>
 
-                  {/* <Card>
+                  <Card>
                     <CardHeader>
                       <CardTitle className="text-lg font-medium">
-                        Balance Transactions
+                        Deposit Transaction History
                       </CardTitle>
+                      <CardDescription>
+                        View all deposit, refund, due, penalty, and bonus transactions
+                      </CardDescription>
                     </CardHeader>
                     <CardContent>
                       <BalanceTransactions
@@ -1738,7 +1741,7 @@ export const DriverDetailsModal = ({
                         onBalanceUpdate={fetchDriverDetails}
                       />
                     </CardContent>
-                  </Card> */}
+                  </Card>
                 </div>
               )}
             </TabsContent>

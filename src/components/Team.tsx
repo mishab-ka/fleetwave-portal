@@ -33,66 +33,7 @@ interface TeamMember {
   expertise: string[];
 }
 
-const teamMembers: TeamMember[] = [
-  {
-    id: 1,
-    name: "Shuhaib Haris",
-    role: "CEO & Founder",
-    position: "Chief Executive Officer",
-    image:
-      "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=400&h=400&fit=crop&crop=face",
-    bio: "Visionary leader and strategic mastermind behind Tawaaq's mission to revolutionize fleet management in the UAE. Driving innovation and sustainable growth.",
-    experience: "8+ Years",
-    location: "Dubai, UAE",
-    linkedin: "https://linkedin.com/in/shuhaib-haris",
-    twitter: "https://twitter.com/shuhaib_haris",
-    email: "shuhaib@tawaaq.com",
-    achievements: [
-      "Founded 3 successful startups",
-      "Led 200+ team expansion",
-      "Industry recognition 2023",
-    ],
-    expertise: ["Strategic Planning", "Business Development", "Leadership"],
-  },
-  {
-    id: 2,
-    name: "Mishab Abdul Samad",
-    role: "CTO & Co-Founder",
-    position: "Chief Technology Officer",
-    image:
-      "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=400&h=400&fit=crop&crop=face",
-    bio: "Tech innovator and software architect with deep expertise in scalable systems and cutting-edge technologies. Building the future of fleet management.",
-    experience: "6+ Years",
-    location: "Dubai, UAE",
-    linkedin: "https://linkedin.com/in/mishab-samad",
-    email: "mishab@tawaaq.com",
-    achievements: [
-      "Built 15+ scalable platforms",
-      "AI/ML implementation expert",
-      "Patent holder for fleet tech",
-    ],
-    expertise: ["Software Architecture", "AI/ML", "Cloud Technologies"],
-  },
-  {
-    id: 3,
-    name: "Ajnas P K",
-    role: "GM & Co-Founder",
-    position: "General Manager",
-    image:
-      "https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?w=400&h=400&fit=crop&crop=face",
-    bio: "Operations specialist and business strategist with proven track record in scaling operations and building high-performing teams across multiple markets.",
-    experience: "7+ Years",
-    location: "Dubai, UAE",
-    linkedin: "https://linkedin.com/in/ajnas-pk",
-    email: "ajnas@tawaaq.com",
-    achievements: [
-      "Managed 500+ operations",
-      "99.9% operational efficiency",
-      "Market expansion expert",
-    ],
-    expertise: ["Operations Management", "Team Building", "Market Strategy"],
-  },
-];
+const teamMembers: TeamMember[] = [];
 
 const Team = () => {
   const containerVariants = {
@@ -183,6 +124,7 @@ const Team = () => {
         </motion.div>
 
         {/* Team Members Grid */}
+        {teamMembers.length > 0 && (
         <motion.div
           variants={containerVariants}
           initial="hidden"
@@ -324,6 +266,7 @@ const Team = () => {
             </motion.div>
           ))}
         </motion.div>
+        )}
 
         {/* Company Values Section */}
         <motion.div

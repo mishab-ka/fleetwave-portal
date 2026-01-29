@@ -61,6 +61,19 @@ const SubmitReport = () => {
   const [countdown, setCountdown] = useState(5);
   const [existingReportForDate, setExistingReportForDate] = useState<any>(null);
   const [serviceDayAdjustmentDiscount, setServiceDayAdjustmentDiscount] = useState(0);
+  const [paymentBreakdown, setPaymentBreakdown] = useState({
+    totalEarnings: 0,
+    toll: 0,
+    totalIncome: 0,
+    cashCollected: 0,
+    baseRent: 0,
+    penalty: 0,
+    otherFees: 0,
+    depositCutting: 0,
+    serviceDayDiscount: 0,
+    totalDeductions: 0,
+    finalAmount: 0,
+  });
 
   // Paying cash option: checkbox + amount + manager
   const [payingCash, setPayingCash] = useState(false);
@@ -369,14 +382,21 @@ const SubmitReport = () => {
       message = ` Pay ₹${Math.abs(amount).toFixed(2)}`;
     }
 
-    // Add breakdown information
-    let breakdown = [];
-    if (dailyPenaltyAmount > 0) {
-      breakdown.push(`Penalty: ₹${dailyPenaltyAmount.toFixed(2)}`);
-    }
-    if (depositCutting > 0) {
-      breakdown.push(`Deposit: ₹${depositCutting.toFixed(2)}`);
-    }
+    // Calculate and store payment breakdown
+    const totalDeductions = totalRentWithExtras;
+    setPaymentBreakdown({
+      totalEarnings: Number(formData.total_earnings) || 0,
+      toll: Number(formData.toll) || 0,
+      totalIncome: tollandEarnings,
+      cashCollected: cashcollect,
+      baseRent: rent,
+      penalty: dailyPenaltyAmount,
+      otherFees: otherFee,
+      depositCutting: depositCutting,
+      serviceDayDiscount: serviceDayAdjustmentDiscount,
+      totalDeductions: totalDeductions,
+      finalAmount: amount,
+    });
 
     setPaymentMessage(message);
     setFormData((prev) => ({
@@ -1112,6 +1132,141 @@ const SubmitReport = () => {
                 </p>
               </div>
             )} */}
+
+            {/* Payment Breakdown */}
+            {(formData.total_earnings || formData.toll || formData.total_cashcollect) && (
+              <div className="mb-4 p-4 bg-white border border-gray-300 rounded-md shadow-sm">
+                <h3 className="text-lg font-semibold text-gray-800 mb-4">
+                  Payment Breakdown
+                </h3>
+                
+                {/* Income Section */}
+                <div className="mb-4">
+                  <h4 className="text-sm font-medium text-gray-700 mb-2">
+                    Income
+                  </h4>
+                  <div className="space-y-1 pl-4">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-600">Total Earnings:</span>
+                      <span className="font-medium text-gray-800">
+                        ₹{paymentBreakdown.totalEarnings.toFixed(2)}
+                      </span>
+                    </div>
+                    {paymentBreakdown.toll > 0 && (
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-600">Toll:</span>
+                        <span className="font-medium text-gray-800">
+                          ₹{paymentBreakdown.toll.toFixed(2)}
+                        </span>
+                      </div>
+                    )}
+                    <div className="flex justify-between text-sm pt-2 border-t border-gray-200">
+                      <span className="font-semibold text-gray-700">
+                        Total Income:
+                      </span>
+                      <span className="font-bold text-green-600">
+                        ₹{paymentBreakdown.totalIncome.toFixed(2)}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Deductions Section */}
+                <div className="mb-4">
+                  <h4 className="text-sm font-medium text-gray-700 mb-2">
+                    Deductions
+                  </h4>
+                  <div className="space-y-1 pl-4">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-600">Base Rent:</span>
+                      <span className="font-medium text-gray-800">
+                        ₹{paymentBreakdown.baseRent.toFixed(2)}
+                      </span>
+                    </div>
+                    {paymentBreakdown.penalty > 0 && (
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-600">Penalty:</span>
+                        <span className="font-medium text-red-600">
+                          ₹{paymentBreakdown.penalty.toFixed(2)}
+                        </span>
+                      </div>
+                    )}
+                    {paymentBreakdown.otherFees > 0 && (
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-600">Other Fees/Expenses:</span>
+                        <span className="font-medium text-gray-800">
+                          ₹{paymentBreakdown.otherFees.toFixed(2)}
+                        </span>
+                      </div>
+                    )}
+                    {paymentBreakdown.depositCutting > 0 && (
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-600">Deposit Cutting:</span>
+                        <span className="font-medium text-blue-600">
+                          ₹{paymentBreakdown.depositCutting.toFixed(2)}
+                        </span>
+                      </div>
+                    )}
+                    {paymentBreakdown.serviceDayDiscount > 0 && (
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-600">
+                          Service Day Discount:
+                        </span>
+                        <span className="font-medium text-purple-600">
+                          -₹{paymentBreakdown.serviceDayDiscount.toFixed(2)}
+                        </span>
+                      </div>
+                    )}
+                    <div className="flex justify-between text-sm pt-2 border-t border-gray-200">
+                      <span className="font-semibold text-gray-700">
+                        Total Deductions:
+                      </span>
+                      <span className="font-bold text-red-600">
+                        ₹{paymentBreakdown.totalDeductions.toFixed(2)}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Cash Collected */}
+                <div className="mb-4">
+                  <div className="flex justify-between text-sm pl-4">
+                    <span className="text-gray-600">Cash Collected:</span>
+                    <span className="font-medium text-gray-800">
+                      ₹{paymentBreakdown.cashCollected.toFixed(2)}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Final Amount */}
+                <div className="pt-3 border-t-2 border-gray-300">
+                  <div className="flex justify-between">
+                    <span className="text-base font-bold text-gray-800">
+                      {paymentBreakdown.finalAmount > 0
+                        ? "Refund Amount:"
+                        : paymentBreakdown.finalAmount < 0
+                        ? "Pay Amount:"
+                        : "Balance:"}
+                    </span>
+                    <span
+                      className={`text-lg font-bold ${
+                        paymentBreakdown.finalAmount > 0
+                          ? "text-green-600"
+                          : paymentBreakdown.finalAmount < 0
+                          ? "text-red-600"
+                          : "text-gray-600"
+                      }`}
+                    >
+                      {paymentBreakdown.finalAmount > 0
+                        ? `₹${Math.abs(paymentBreakdown.finalAmount).toFixed(2)}`
+                        : paymentBreakdown.finalAmount < 0
+                        ? `₹${Math.abs(paymentBreakdown.finalAmount).toFixed(2)}`
+                        : "₹0.00"}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            )}
 
             <div
               className={`mb-4 p-4 bg-gray-100 border border-gray-300 rounded-md ${
