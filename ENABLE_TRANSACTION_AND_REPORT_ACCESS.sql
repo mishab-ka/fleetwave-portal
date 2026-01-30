@@ -5,7 +5,7 @@
 -- This script ensures:
 -- - INSERT: Admin, Manager, Accountant can add transactions and reports
 -- - DELETE: Only Admin can delete transactions and reports
--- - UPDATE: Admin, Manager, Accountant can update transactions and reports
+-- - UPDATE: Only Admin can update transactions and reports (drivers can update their own reports)
 -- - SELECT: Users can see their own data, staff can see all
 -- ============================================
 
@@ -100,7 +100,7 @@ USING (
     )
 );
 
--- UPDATE: Allow Admin, Manager, Accountant to UPDATE
+-- UPDATE: Only Admin can UPDATE
 CREATE POLICY "allow_update_penalty"
 ON public.driver_penalty_transactions
 FOR UPDATE
@@ -110,7 +110,7 @@ USING (
         SELECT 1 
         FROM public.users 
         WHERE id = auth.uid() 
-        AND role IN ('admin', 'super_admin', 'manager', 'accountant')
+        AND role IN ('admin', 'super_admin')
     )
 )
 WITH CHECK (
@@ -118,7 +118,7 @@ WITH CHECK (
         SELECT 1 
         FROM public.users 
         WHERE id = auth.uid() 
-        AND role IN ('admin', 'super_admin', 'manager', 'accountant')
+        AND role IN ('admin', 'super_admin')
     )
 );
 
@@ -180,7 +180,7 @@ USING (
     )
 );
 
--- UPDATE: Allow Admin, Manager, Accountant to UPDATE
+-- UPDATE: Only Admin can UPDATE
 CREATE POLICY "allow_update_balance"
 ON public.driver_balance_transactions
 FOR UPDATE
@@ -190,7 +190,7 @@ USING (
         SELECT 1 
         FROM public.users 
         WHERE id = auth.uid() 
-        AND role IN ('admin', 'super_admin', 'manager', 'accountant')
+        AND role IN ('admin', 'super_admin')
     )
 )
 WITH CHECK (
@@ -198,7 +198,7 @@ WITH CHECK (
         SELECT 1 
         FROM public.users 
         WHERE id = auth.uid() 
-        AND role IN ('admin', 'super_admin', 'manager', 'accountant')
+        AND role IN ('admin', 'super_admin')
     )
 );
 
@@ -253,7 +253,7 @@ USING (
     )
 );
 
--- UPDATE: Allow Admin, Manager, Accountant to UPDATE
+-- UPDATE: Drivers can update their own reports, Admin can update any report
 CREATE POLICY "allow_update_fleet_reports"
 ON public.fleet_reports
 FOR UPDATE
@@ -262,24 +262,24 @@ USING (
     -- Drivers can update their own reports
     auth.uid() = user_id
     OR
-    -- Staff can update any report
+    -- Only Admin can update any report
     EXISTS (
         SELECT 1 
         FROM public.users 
         WHERE id = auth.uid() 
-        AND role IN ('admin', 'super_admin', 'manager', 'accountant')
+        AND role IN ('admin', 'super_admin')
     )
 )
 WITH CHECK (
     -- Drivers can update their own reports
     auth.uid() = user_id
     OR
-    -- Staff can update any report
+    -- Only Admin can update any report
     EXISTS (
         SELECT 1 
         FROM public.users 
         WHERE id = auth.uid() 
-        AND role IN ('admin', 'super_admin', 'manager', 'accountant')
+        AND role IN ('admin', 'super_admin')
     )
 );
 
@@ -329,7 +329,7 @@ USING (
     )
 );
 
--- UPDATE: Allow Admin, Manager, Accountant to UPDATE
+-- UPDATE: Only Admin can UPDATE
 CREATE POLICY "allow_update_vehicle_audits"
 ON public.vehicle_audits
 FOR UPDATE
@@ -339,7 +339,7 @@ USING (
         SELECT 1 
         FROM public.users 
         WHERE id = auth.uid() 
-        AND role IN ('admin', 'super_admin', 'manager', 'accountant')
+        AND role IN ('admin', 'super_admin')
     )
 )
 WITH CHECK (
@@ -347,7 +347,7 @@ WITH CHECK (
         SELECT 1 
         FROM public.users 
         WHERE id = auth.uid() 
-        AND role IN ('admin', 'super_admin', 'manager', 'accountant')
+        AND role IN ('admin', 'super_admin')
     )
 );
 
