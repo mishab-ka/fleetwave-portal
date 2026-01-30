@@ -75,7 +75,6 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { Switch } from "@/components/ui/switch";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Tooltip,
@@ -219,7 +218,7 @@ export function UberAuditManager() {
           `
           user_id,
           rent_date,
-          users!inner(
+          users!user_id(
             id,
             name,
             email_id,
@@ -407,46 +406,6 @@ export function UberAuditManager() {
     }
   };
 
-  const handleOnlineToggle = async (userId: string, currentStatus: boolean) => {
-    try {
-      const { error } = await supabase
-        .from("users")
-        .update({ online: !currentStatus })
-        .eq("id", userId);
-
-      if (error) throw error;
-
-      // Update local state
-      setAudits(
-        audits.map((audit) => {
-          if (audit.user_id === userId) {
-            return {
-              ...audit,
-              user: {
-                ...audit.user,
-                online: !currentStatus,
-              },
-            };
-          }
-          return audit;
-        })
-      );
-
-      toast({
-        title: "Success",
-        description: `Driver marked as ${
-          !currentStatus ? "online" : "offline"
-        }`,
-      });
-    } catch (error) {
-      console.error("Error updating online status:", error);
-      toast({
-        title: "Error",
-        description: "Failed to update online status",
-        variant: "destructive",
-      });
-    }
-  };
 
   const getStatusBadge = (status: AuditStatus) => {
     const variants = {
@@ -1341,9 +1300,6 @@ export function UberAuditManager() {
                   <TableHead className="py-4 font-semibold text-slate-900">
                     Last Verified
                   </TableHead>
-                  <TableHead className="py-4 font-semibold text-slate-900">
-                    Online Status
-                  </TableHead>
                   <TableHead className="py-4 font-semibold text-slate-900 text-right">
                     Actions
                   </TableHead>
@@ -1407,26 +1363,6 @@ export function UberAuditManager() {
                                 "MMM dd, yyyy HH:mm"
                               )
                             : "Never"}
-                        </span>
-                      </div>
-                    </TableCell>
-                    <TableCell className="py-3">
-                      <div className="flex items-center gap-2">
-                        <Switch
-                          checked={audit.user.online}
-                          onCheckedChange={() =>
-                            handleOnlineToggle(audit.user_id, audit.user.online)
-                          }
-                        />
-                        <span
-                          className={cn(
-                            "text-xs font-medium",
-                            audit.user.online
-                              ? "text-green-600"
-                              : "text-slate-500"
-                          )}
-                        >
-                          {audit.user.online ? "Online" : "Offline"}
                         </span>
                       </div>
                     </TableCell>
