@@ -37,6 +37,7 @@ import {
   CheckSquare,
   Activity,
   Calculator,
+  AlertTriangle,
 } from "lucide-react";
 import { Button } from "./ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "./ui/sheet";
@@ -231,6 +232,12 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children, title }) => {
           path: "/admin/shift-leave-management",
           allowedRoles: ["admin", "manager"] as UserRole[],
         },
+        {
+          label: "Accident Submission",
+          icon: <AlertTriangle size={14} />,
+          path: "/admin/submit-accident-report",
+          allowedRoles: ["admin", "manager", "accountant", "driver", "hr", "hr_manager", "hr_staff"] as UserRole[],
+        },
       ],
     },
     {
@@ -297,6 +304,12 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children, title }) => {
           label: "Accountant Reports",
           icon: <Calculator size={14} />,
           path: "/admin/accountant-reports",
+          allowedRoles: ["admin", "manager", "accountant"] as UserRole[],
+        },
+        {
+          label: "Accident Reports",
+          icon: <AlertTriangle size={14} />,
+          path: "/admin/accident-reports",
           allowedRoles: ["admin", "manager", "accountant"] as UserRole[],
         },
       ],
