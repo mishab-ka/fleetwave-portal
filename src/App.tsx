@@ -13,6 +13,8 @@ import { ManagerProvider } from "./context/ManagerContext";
 import Profile from "./pages/Profile";
 import SubmitReport from "./pages/SubmitReport";
 import SubmitReportAutomated from "./pages/SubmitReportAutomated";
+import SubmitHRReport from "./pages/SubmitHRReport";
+import SubmitAccountantReport from "./pages/SubmitAccountantReport";
 import OCRTestComponent from "./components/OCRTestComponent";
 import AdminDashboard from "./pages/admin/AdminDashboard";
 import AdminDrivers from "./pages/admin/AdminDrivers";
@@ -53,6 +55,8 @@ import CommonAdjustments from "./pages/admin/CommonAdjustments";
 import AdminTaskManager from "./pages/admin/AdminTaskManager";
 import VehiclePerformanceOverview from "./pages/admin/VehiclePerformanceOverview";
 import StaffActivityMonitor from "./pages/admin/StaffActivityMonitor";
+import AdminHRReports from "./pages/admin/AdminHRReports";
+import AdminAccountantReports from "./pages/admin/AdminAccountantReports";
 
 // Create a new query client instance
 const queryClient = new QueryClient({
@@ -83,6 +87,11 @@ const App = () => (
                   <Route
                     path="/submit-report-automated"
                     element={<SubmitReportAutomated />}
+                  />
+                  <Route path="/submit-hr-report" element={<SubmitHRReport />} />
+                  <Route
+                    path="/submit-accountant-report"
+                    element={<SubmitAccountantReport />}
                   />
                   <Route path="/ocr-test" element={<OCRTestComponent />} />
                   {/* Admin Routes */}
@@ -197,6 +206,14 @@ const App = () => (
                   <Route
                     path="/admin/service-day-adjustments"
                     element={<CommonAdjustments />}
+                  />
+                  <Route
+                    path="/admin/hr-reports"
+                    element={<AdminHRReports />}
+                  />
+                  <Route
+                    path="/admin/accountant-reports"
+                    element={<AdminAccountantReports />}
                   />
                   <Route
                     path="/admin/common-adjustments"
