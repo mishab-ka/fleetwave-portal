@@ -96,6 +96,7 @@ interface VehicleInfo {
   total_trips: number;
 }
 
+
 // Helper function to format date as YYYY-MM-DD without timezone issues
 const formatDateLocal = (date: Date): string => {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(
@@ -200,6 +201,7 @@ const AdminReports = () => {
   // Track which report is currently being processed to prevent duplicate clicks
   const [processingReportId, setProcessingReportId] = useState<string | null>(null);
 
+
   // Statistics state - single state that responds to filters
   const [statistics, setStatistics] = useState({
     totalEarnings: 0,
@@ -227,6 +229,8 @@ const AdminReports = () => {
     serviceDayFilter,
     weekOffset,
   ]);
+
+
 
   // Log page view
   useEffect(() => {

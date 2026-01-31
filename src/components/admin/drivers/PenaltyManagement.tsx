@@ -1078,7 +1078,7 @@ Your refund has been processed and credited to your account. Thank you for your 
         <CardHeader className="pb-3">
           <CardTitle className="text-lg font-medium flex justify-between items-center">
             Penalties & Refunds
-            {!isEditingPenalties && (
+            {!isEditingPenalties && isAdmin && (
               <Button variant="outline" size="sm" onClick={handleEditPenalties}>
                 <Edit className="h-4 w-4 mr-1" /> Edit Penalties
               </Button>
@@ -1477,15 +1477,17 @@ Your refund has been processed and credited to your account. Thank you for your 
                               </TableCell>
                               <TableCell>
                                 <div className="flex space-x-2">
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    onClick={() =>
-                                      handleEditTransaction(transaction)
-                                    }
-                                  >
-                                    <Edit className="h-4 w-4" />
-                                  </Button>
+                                  {isAdmin && (
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={() =>
+                                        handleEditTransaction(transaction)
+                                      }
+                                    >
+                                      <Edit className="h-4 w-4" />
+                                    </Button>
+                                  )}
 
                                   {isAdmin && (
                                     <AlertDialog>
@@ -1603,13 +1605,15 @@ Your refund has been processed and credited to your account. Thank you for your 
                         {new Date(transaction.created_at).toLocaleDateString()}
                       </span>
                       <div className="flex space-x-2">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleEditTransaction(transaction)}
-                        >
-                          <Edit className="h-4 w-4" />
-                        </Button>
+                        {isAdmin && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleEditTransaction(transaction)}
+                          >
+                            <Edit className="h-4 w-4" />
+                          </Button>
+                        )}
 
                         {isAdmin && (
                           <AlertDialog>

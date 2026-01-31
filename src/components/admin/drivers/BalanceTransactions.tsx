@@ -445,7 +445,7 @@ export const BalanceTransactions = ({
         <CardHeader className="pb-3">
           <CardTitle className="text-lg font-medium flex justify-between items-center">
             Current Balance
-            {!isEditingBalance && (
+            {!isEditingBalance && isAdmin && (
               <Button variant="outline" size="sm" onClick={handleEditBalance}>
                 <Edit className="h-4 w-4 mr-1" /> Edit Balance
               </Button>
@@ -746,15 +746,17 @@ export const BalanceTransactions = ({
                               </TableCell>
                               <TableCell>
                                 <div className="flex space-x-2">
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    onClick={() =>
-                                      handleEditTransaction(transaction)
-                                    }
-                                  >
-                                    <Edit className="h-4 w-4" />
-                                  </Button>
+                                  {isAdmin && (
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={() =>
+                                        handleEditTransaction(transaction)
+                                      }
+                                    >
+                                      <Edit className="h-4 w-4" />
+                                    </Button>
+                                  )}
 
                                   {isAdmin && (
                                     <AlertDialog>
@@ -859,13 +861,15 @@ export const BalanceTransactions = ({
                         {new Date(transaction.created_at).toLocaleDateString()}
                       </span>
                       <div className="flex space-x-2">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleEditTransaction(transaction)}
-                        >
-                          <Edit className="h-4 w-4" />
-                        </Button>
+                        {isAdmin && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleEditTransaction(transaction)}
+                          >
+                            <Edit className="h-4 w-4" />
+                          </Button>
+                        )}
 
                         {isAdmin && (
                           <AlertDialog>

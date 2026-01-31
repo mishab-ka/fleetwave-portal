@@ -44,9 +44,11 @@ import {
 } from "@/components/ui/table";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { useAdmin } from "@/context/AdminContext";
 
 const AdminVehicleAuditReports = () => {
   const navigate = useNavigate();
+  const { isAdmin } = useAdmin();
   const [auditReports, setAuditReports] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -443,22 +445,26 @@ const AdminVehicleAuditReports = () => {
                             Verify
                           </Button>
                         )}
-                        <Button
-                          onClick={() => handleEdit(report)}
-                          className="bg-blue-500 text-white hover:bg-blue-600 px-3 py-1 h-8"
-                          size="sm"
-                        >
-                          <Edit className="h-4 w-4 mr-1" />
-                          Edit
-                        </Button>
-                        <Button
-                          onClick={() => handleDeleteConfirm(report)}
-                          className="bg-red-500 text-white hover:bg-red-600 px-3 py-1 h-8"
-                          size="sm"
-                        >
-                          <Trash2 className="h-4 w-4 mr-1" />
-                          Delete
-                        </Button>
+                        {isAdmin && (
+                          <Button
+                            onClick={() => handleEdit(report)}
+                            className="bg-blue-500 text-white hover:bg-blue-600 px-3 py-1 h-8"
+                            size="sm"
+                          >
+                            <Edit className="h-4 w-4 mr-1" />
+                            Edit
+                          </Button>
+                        )}
+                        {isAdmin && (
+                          <Button
+                            onClick={() => handleDeleteConfirm(report)}
+                            className="bg-red-500 text-white hover:bg-red-600 px-3 py-1 h-8"
+                            size="sm"
+                          >
+                            <Trash2 className="h-4 w-4 mr-1" />
+                            Delete
+                          </Button>
+                        )}
                       </div>
                     </TableCell>
                     <TableCell>

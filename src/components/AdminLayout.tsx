@@ -36,6 +36,7 @@ import {
   Wrench,
   CheckSquare,
   Activity,
+  Calculator,
 } from "lucide-react";
 import { Button } from "./ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "./ui/sheet";
@@ -260,13 +261,13 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children, title }) => {
     {
       label: "Reports",
       icon: <FileText size={20} />,
-      allowedRoles: ["admin", "manager", "accountant"] as UserRole[],
+      allowedRoles: ["admin", "manager", "accountant", "hr", "hr_manager", "hr_staff"] as UserRole[],
       subItems: [
         {
           label: "Fleet Reports",
           icon: <FileText size={14} />,
           path: "/admin/reports",
-          allowedRoles: ["admin"] as UserRole[],
+          allowedRoles: ["admin", "manager", "accountant"] as UserRole[],
         },
         {
           label: "Manager Reports",
@@ -285,6 +286,18 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children, title }) => {
           icon: <Wrench size={14} />,
           path: "/admin/service-day-adjustments",
           allowedRoles: ["admin", "manager"] as UserRole[],
+        },
+        {
+          label: "HR Reports",
+          icon: <UserPlus size={14} />,
+          path: "/admin/hr-reports",
+          allowedRoles: ["admin", "manager", "accountant", "hr", "hr_manager", "hr_staff"] as UserRole[],
+        },
+        {
+          label: "Accountant Reports",
+          icon: <Calculator size={14} />,
+          path: "/admin/accountant-reports",
+          allowedRoles: ["admin", "manager", "accountant"] as UserRole[],
         },
       ],
     },
