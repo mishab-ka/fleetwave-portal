@@ -57,6 +57,8 @@ import VehiclePerformanceOverview from "./pages/admin/VehiclePerformanceOverview
 import StaffActivityMonitor from "./pages/admin/StaffActivityMonitor";
 import AdminHRReports from "./pages/admin/AdminHRReports";
 import AdminAccountantReports from "./pages/admin/AdminAccountantReports";
+import SubmitAccidentReport from "./pages/admin/SubmitAccidentReport";
+import AdminAccidentReports from "./pages/admin/AdminAccidentReports";
 
 // Create a new query client instance
 const queryClient = new QueryClient({
@@ -214,6 +216,14 @@ const App = () => (
                   <Route
                     path="/admin/accountant-reports"
                     element={<AdminAccountantReports />}
+                  />
+                  <Route
+                    path="/admin/submit-accident-report"
+                    element={<SubmitAccidentReport />}
+                  />
+                  <Route
+                    path="/admin/accident-reports"
+                    element={<AdminAccidentReports />}
                   />
                   <Route
                     path="/admin/common-adjustments"
