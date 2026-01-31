@@ -192,7 +192,7 @@ const AdminCalendar = () => {
           `
           id, user_id, driver_name, vehicle_number, submission_date, 
           rent_date, shift, rent_paid_status, rent_paid_amount, status,
-          remarks, created_at, users!inner(joining_date, online, offline_from_date)
+          remarks, created_at, users!fleet_reports_user_id_fkey!inner(joining_date, online, offline_from_date)
         `
         )
         .gte("rent_date", formattedStartDate)

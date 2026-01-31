@@ -36,6 +36,10 @@ import {
 } from "@/components/ui/dialog";
 
 import { subDays, startOfWeek, endOfWeek, format } from "date-fns";
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { CalendarIcon } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 interface Vehicle {
   vehicle_number: string;
@@ -44,6 +48,11 @@ interface Vehicle {
   online: boolean | null;
   deposit: number | null;
   created_at: string | null;
+  rent_start_from: string | null;
+  current_rent_slab: number | null;
+  rent_slab_last_updated: string | null;
+  online_from_date: string | null;
+  offline_from_date: string | null;
 }
 
 const AdminVehicles = () => {
@@ -73,6 +82,9 @@ const AdminVehicles = () => {
     vehicle_number: string;
     currentStatus: boolean | null;
   } | null>(null);
+  const [rentStartDate, setRentStartDate] = useState<Date | undefined>(undefined);
+  const [showActivateDialog, setShowActivateDialog] = useState(false);
+  const [vehicleToActivate, setVehicleToActivate] = useState<string | null>(null);
 
   useEffect(() => {
     fetchVehicles();
@@ -209,20 +221,33 @@ const AdminVehicles = () => {
         toast.error("Failed to check assigned drivers");
         return;
       }
+      
+      // If no drivers assigned, proceed with deactivation
+      await performStatusUpdate(vehicle_number, currentStatus);
+    } else {
+      // Activating vehicle - show date picker dialog
+      setVehicleToActivate(vehicle_number);
+      setRentStartDate(new Date()); // Default to today
+      setShowActivateDialog(true);
     }
-
-    // If activating or no drivers assigned, proceed with status update
-    await performStatusUpdate(vehicle_number, currentStatus);
   };
 
   const performStatusUpdate = async (
     vehicle_number: string,
-    currentStatus: boolean | null
+    currentStatus: boolean | null,
+    rentStartDate?: Date | undefined
   ) => {
     try {
+      const updateData: any = { online: !currentStatus };
+      
+      // When activating vehicle, set rent_start_from if provided
+      if (!currentStatus && rentStartDate) {
+        updateData.rent_start_from = rentStartDate.toISOString();
+      }
+      
       const { error } = await supabase
         .from("vehicles")
-        .update({ online: !currentStatus })
+        .update(updateData)
         .eq("vehicle_number", vehicle_number);
 
       if (error) throw error;
@@ -230,12 +255,15 @@ const AdminVehicles = () => {
       setVehicles(
         vehicles.map((vehicle) =>
           vehicle.vehicle_number === vehicle_number
-            ? { ...vehicle, online: !currentStatus }
+            ? { ...vehicle, online: !currentStatus, rent_start_from: rentStartDate?.toISOString() || vehicle.rent_start_from }
             : vehicle
         )
       );
 
       toast.success(`Vehicle status updated successfully`);
+      
+      // Refresh vehicles to get updated rent_slab from trigger
+      await fetchVehicles();
     } catch (error) {
       console.error("Error updating vehicle:", error);
       toast.error("Failed to update vehicle status");
@@ -251,6 +279,15 @@ const AdminVehicles = () => {
       setShowAssignedDriversDialog(false);
       setAssignedDrivers([]);
       setVehicleToDeactivate(null);
+    }
+  };
+
+  const handleActivateVehicle = async () => {
+    if (vehicleToActivate && rentStartDate) {
+      await performStatusUpdate(vehicleToActivate, false, rentStartDate);
+      setShowActivateDialog(false);
+      setVehicleToActivate(null);
+      setRentStartDate(undefined);
     }
   };
 
@@ -555,6 +592,7 @@ const AdminVehicles = () => {
                     <TableHead>Fleet Name</TableHead>
                     <TableHead>Deposit Amount</TableHead>
                     <TableHead>Total Trips</TableHead>
+                    <TableHead>Rent Slab</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Added On</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
@@ -563,7 +601,7 @@ const AdminVehicles = () => {
                 <TableBody>
                   {filteredVehicles.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={7} className="text-center py-8">
+                      <TableCell colSpan={9} className="text-center py-8">
                         No vehicles found
                       </TableCell>
                     </TableRow>
@@ -588,6 +626,18 @@ const AdminVehicles = () => {
                           >
                             {vehicle.total_trips || 0}
                           </p>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex flex-col">
+                            <span className="font-semibold text-purple-600">
+                              {vehicle.current_rent_slab || 0} days
+                            </span>
+                            {vehicle.rent_start_from && (
+                              <span className="text-xs text-gray-500">
+                                Since {format(new Date(vehicle.rent_start_from), "MMM d, yyyy")}
+                              </span>
+                            )}
+                          </div>
                         </TableCell>
                         <TableCell>
                           <Badge
@@ -867,6 +917,71 @@ const AdminVehicles = () => {
             >
               Deactivate Anyway
             </Button> */}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Vehicle Activation with Rent Start Date Dialog */}
+      <Dialog open={showActivateDialog} onOpenChange={setShowActivateDialog}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Activate Vehicle</DialogTitle>
+            <DialogDescription>
+              Set the rent start date for tracking rental days. This will be used to calculate the Rent Slab automatically.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+              <p className="text-sm text-blue-800">
+                <strong>Vehicle:</strong> {vehicleToActivate}
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Rent Start From Date</label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className={cn(
+                      "w-full justify-start text-left font-normal",
+                      !rentStartDate && "text-muted-foreground"
+                    )}
+                  >
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {rentStartDate ? format(rentStartDate, "PPP") : <span>Pick a date</span>}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0">
+                  <Calendar
+                    mode="single"
+                    selected={rentStartDate}
+                    onSelect={setRentStartDate}
+                    initialFocus
+                  />
+                </PopoverContent>
+              </Popover>
+              <p className="text-xs text-gray-500">
+                The system will count rental days from this date and auto-calculate the Rent Slab weekly (Monday-Sunday).
+              </p>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowActivateDialog(false);
+                setVehicleToActivate(null);
+                setRentStartDate(undefined);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button onClick={handleActivateVehicle} disabled={!rentStartDate}>
+              Activate Vehicle
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

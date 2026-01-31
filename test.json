@@ -1,0 +1,30 @@
+{
+  "body": {
+    "p_leads": {
+      "id": "l:2347941738964677",
+      "name": "Muraleedharan Raghavan",
+      "phone": "+919656704659",
+      "email": "",
+      "source": "fb",
+      "status": "cold_lead",
+      "action": "CALL_LATER"
+    }
+  },
+  "headers": {
+    "apikey": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVwbmh4c2h3enBiY2ZtdW1jbHd6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDIzOTAyMzgsImV4cCI6MjA1Nzk2NjIzOH0.hVFRmd9UtrVPuufJawg6aJGcVQoxSVzKsBrz3_4lkCc",
+    "authorization": "**hidden**",
+    "content-type": "application/json",
+    "accept": "application/json,text/html,application/xhtml+xml,application/xml,text/*;q=0.9, image/*;q=0.8, */*;q=0.7"
+  },
+  "method": "POST",
+  "uri": "https://upnhxshwzpbcfmumclwz.supabase.co/rest/v1/rpc/add_hr_leads_from_sheets_active_only",
+  "gzip": true,
+  "rejectUnauthorized": true,
+  "followRedirect": true,
+  "resolveWithFullResponse": true,
+  "followAllRedirects": true,
+  "timeout": 300000,
+  "encoding": null,
+  "json": false,
+  "useStream": true
+}

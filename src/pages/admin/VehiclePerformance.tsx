@@ -112,36 +112,56 @@ const getWeekDates = (
   offset: number = 0
 ): { start: Date; end: Date; startStr: string; endStr: string } => {
   const today = new Date();
-  const dayOfWeek = today.getDay(); // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
 
-  // Calculate start of current week (Monday to Sunday) using local dates
-  let daysToGoBack;
-  if (dayOfWeek === 0) {
-    // If today is Sunday, go back 6 days to Monday
-    daysToGoBack = 6;
-  } else {
-    // For Monday to Saturday, go back to Monday
-    daysToGoBack = dayOfWeek - 1;
-  }
+  // Get Monday of the current week using date-fns
+  const currentWeekStart = startOfWeek(today, { weekStartsOn: 1 }); // 1 = Monday
 
-  // Calculate Monday of the week (with offset)
-  const startDate = new Date(
-    today.getFullYear(),
-    today.getMonth(),
-    today.getDate() - daysToGoBack + offset * 7
-  );
-  const endDate = new Date(
-    today.getFullYear(),
-    today.getMonth(),
-    today.getDate() - daysToGoBack + offset * 7 + 6
-  );
+  // Apply offset (positive = future weeks, negative = past weeks)
+  const targetWeekStart = addDays(currentWeekStart, offset * 7);
+  const targetWeekEnd = addDays(targetWeekStart, 6); // Sunday is 6 days after Monday
 
   return {
-    start: startDate,
-    end: endDate,
-    startStr: formatDateLocal(startDate),
-    endStr: formatDateLocal(endDate),
+    start: targetWeekStart,
+    end: targetWeekEnd,
+    startStr: formatDateLocal(targetWeekStart),
+    endStr: formatDateLocal(targetWeekEnd),
   };
+};
+
+// Calculate rent slab days for a vehicle in the viewed week (matches DB logic)
+const calculateRentSlabDays = (
+  rentStartFrom: string | null,
+  weekStart: Date,
+  weekEnd: Date,
+  asOfDate: Date,
+  offlineFromDate?: string | null
+): number => {
+  if (!rentStartFrom) return 0;
+
+  const rentStart = format(new Date(rentStartFrom), "yyyy-MM-dd");
+  const weekStartStr = format(weekStart, "yyyy-MM-dd");
+  const weekEndStr = format(weekEnd, "yyyy-MM-dd");
+
+  // Use offline date as cap if vehicle was deactivated during the week
+  let effectiveEnd = asOfDate;
+  if (offlineFromDate) {
+    const offlineDate = new Date(offlineFromDate);
+    if (offlineDate < effectiveEnd) effectiveEnd = offlineDate;
+  }
+  const asOfStr = format(effectiveEnd, "yyyy-MM-dd");
+
+  if (asOfStr < rentStart) return 0;
+
+  const rangeStart = rentStart > weekStartStr ? rentStart : weekStartStr;
+  const rangeEnd = asOfStr < weekEndStr ? asOfStr : weekEndStr;
+
+  if (rangeStart > rangeEnd) return 0;
+
+  const start = new Date(rangeStart);
+  const end = new Date(rangeEnd);
+  const days = Math.floor((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+
+  return Math.max(0, days);
 };
 
 const VehiclePerformance = () => {
@@ -175,11 +195,6 @@ const VehiclePerformance = () => {
   const [editingVehicle, setEditingVehicle] = useState<string | null>(null);
   const [tempWorkingDays, setTempWorkingDays] = useState(1);
   const [savingWorkingDays, setSavingWorkingDays] = useState(false);
-  const [editingExactWorkingDays, setEditingExactWorkingDays] = useState<
-    string | null
-  >(null);
-  const [tempExactWorkingDays, setTempExactWorkingDays] = useState(7);
-  const [savingExactWorkingDays, setSavingExactWorkingDays] = useState(false);
   const [vehicleActualRents, setVehicleActualRents] = useState<
     Map<string, number>
   >(new Map());
@@ -489,6 +504,50 @@ const VehiclePerformance = () => {
         console.error("Error loading saved data:", error);
       }
 
+      // Fetch rent slab data for ALL vehicles (online and offline) - need rent_start_from for calculation
+      const { data: vehicleRentSlabs, error: rentSlabError } = await supabase
+        .from("vehicles")
+        .select("vehicle_number, current_rent_slab, rent_start_from, online, offline_from_date");
+
+      if (rentSlabError) {
+        console.error("Error fetching vehicle rent slabs:", rentSlabError);
+      }
+
+      // Create map of rent slab data by vehicle number
+      const rentSlabDataMap = new Map<
+        string,
+        {
+          rent_start_from: string | null;
+          offline_from_date: string | null;
+          online: boolean;
+        }
+      >();
+      vehicleRentSlabs?.forEach((v) => {
+        rentSlabDataMap.set(v.vehicle_number, {
+          rent_start_from: v.rent_start_from ?? null,
+          offline_from_date: v.offline_from_date ?? null,
+          online: v.online ?? true,
+        });
+      });
+
+      // Helper to get rent slab days for the viewed week
+      // Logic: count days from rent_start_from within week; cap at offline_from_date if vehicle is offline
+      const asOfDate =
+        weekDates.end > new Date() ? new Date() : weekDates.end;
+      const getRentSlabForVehicle = (vehicleNumber: string): number => {
+        const data = rentSlabDataMap.get(vehicleNumber);
+        if (!data || !data.rent_start_from) return 0;
+        // Only use offline_from_date when vehicle is currently offline
+        const capAtOffline = !data.online ? data.offline_from_date : null;
+        return calculateRentSlabDays(
+          data.rent_start_from,
+          weekDates.start,
+          weekDates.end,
+          asOfDate,
+          capAtOffline
+        );
+      };
+
       // Fetch fleet reports for the date range
       let query = supabase
         .from("fleet_reports")
@@ -520,10 +579,18 @@ const VehiclePerformance = () => {
 
         // Initialize vehicle stats if not exists
         if (!vehicleStats.has(vehicleNumber)) {
-          // Use saved working days if available, otherwise use default
-          const workingDaysMultiplier = getDefaultWorkingDays();
-          const exactWorkingDays =
-            savedExactWorkingDaysMap.get(vehicleNumber) || 7;
+          // Rent slab = days from rent_start_from in this week, capped at offline_from_date if inactive
+          const rentSlabDays =
+            getRentSlabForVehicle(vehicleNumber) ||
+            (savedExactWorkingDaysMap.get(vehicleNumber) ?? 0);
+
+          const workingDaysMultiplier =
+            rentSlabDays > 0
+              ? rentSlabDays
+              : savedWorkingDaysMap.get(vehicleNumber) || getDefaultWorkingDays();
+
+          // exact_working_days = rent slab days (Fleet Rent = dailyRent × rent slab days)
+          const exactWorkingDays = rentSlabDays;
 
           vehicleStats.set(vehicleNumber, {
             vehicle_number: vehicleNumber,
@@ -536,7 +603,7 @@ const VehiclePerformance = () => {
             worked_days: 0,
             avg_trips_per_day: 0,
             avg_earnings_per_day: 0,
-            rent_slab: "",
+            rent_slab: `${rentSlabDays} days`,
             performance_status: "break_even",
             working_days_multiplier: workingDaysMultiplier,
             exact_working_days: exactWorkingDays,
@@ -650,13 +717,11 @@ const VehiclePerformance = () => {
               `${vehicle.vehicle_number} - Using actual rent: ₹${actualRent}`
             );
           } else {
-            // Calculate based on trips * exact_working_days (defaults to 7 if not set)
+            // Calculate based on trips * exact_working_days
+            // Fleet Rent = daily rent (from trips) × rent slab days
             const dailyRent = getFleetRent(vehicle.total_trips);
-            const exactWorkingDays = vehicle.exact_working_days || 7;
-            totalRent = dailyRent * exactWorkingDays;
-            console.log(
-              `${vehicle.vehicle_number} - Calculated rent: ₹${dailyRent} × ${exactWorkingDays} days = ₹${totalRent}`
-            );
+            const rentSlabDays = vehicle.exact_working_days ?? 0;
+            totalRent = dailyRent * rentSlabDays;
           }
 
           vehicle.total_rent = totalRent;
@@ -886,15 +951,6 @@ const VehiclePerformance = () => {
   const openVehicleSettings = (vehicleNumber: string, currentDays: number) => {
     setEditingVehicle(vehicleNumber);
     setTempWorkingDays(currentDays);
-    setIsSettingsOpen(true);
-  };
-
-  const openExactWorkingDaysEdit = (
-    vehicleNumber: string,
-    currentExactDays: number
-  ) => {
-    setEditingExactWorkingDays(vehicleNumber);
-    setTempExactWorkingDays(currentExactDays || 7);
     setIsSettingsOpen(true);
   };
 
@@ -1998,23 +2054,13 @@ const VehiclePerformance = () => {
                                 </div>
                               </TableCell>
                               <TableCell>
-                                <div className="flex items-center gap-2">
+                                <div className="flex flex-col">
                                   <span className="font-medium text-purple-600">
-                                    {vehicle.exact_working_days || 7} days
+                                    {vehicle.exact_working_days || 0} days
                                   </span>
-                                  <Button
-                                    size="sm"
-                                    variant="ghost"
-                                    onClick={() =>
-                                      openExactWorkingDaysEdit(
-                                        vehicle.vehicle_number,
-                                        vehicle.exact_working_days || 7
-                                      )
-                                    }
-                                    className="h-6 w-6 p-0"
-                                  >
-                                    <Settings className="h-3 w-3" />
-                                  </Button>
+                                  <span className="text-xs text-gray-500">
+                                    Auto-calculated
+                                  </span>
                                 </div>
                               </TableCell>
                               <TableCell className="text-sm">
@@ -2220,23 +2266,16 @@ const VehiclePerformance = () => {
                                 </div>
                               </TableCell>
                               <TableCell>
-                                <div className="flex items-center gap-2">
+                                <div className="flex flex-col">
                                   <span className="font-medium text-purple-600">
-                                    {vehicle.exact_working_days || 7} days
+                                    {vehicle.exact_working_days ||
+                                      vehicle.working_days_multiplier ||
+                                      0}{" "}
+                                    days
                                   </span>
-                                  <Button
-                                    size="sm"
-                                    variant="ghost"
-                                    onClick={() =>
-                                      openExactWorkingDaysEdit(
-                                        vehicle.vehicle_number,
-                                        vehicle.exact_working_days || 7
-                                      )
-                                    }
-                                    className="h-6 w-6 p-0"
-                                  >
-                                    <Settings className="h-3 w-3" />
-                                  </Button>
+                                  <span className="text-xs text-gray-500">
+                                    Auto-calculated
+                                  </span>
                                 </div>
                               </TableCell>
                               <TableCell className="text-sm">
@@ -2436,23 +2475,16 @@ const VehiclePerformance = () => {
                                 </div>
                               </TableCell>
                               <TableCell>
-                                <div className="flex items-center gap-2">
+                                <div className="flex flex-col">
                                   <span className="font-medium text-purple-600">
-                                    {vehicle.exact_working_days || 7} days
+                                    {vehicle.exact_working_days ||
+                                      vehicle.working_days_multiplier ||
+                                      0}{" "}
+                                    days
                                   </span>
-                                  <Button
-                                    size="sm"
-                                    variant="ghost"
-                                    onClick={() =>
-                                      openExactWorkingDaysEdit(
-                                        vehicle.vehicle_number,
-                                        vehicle.exact_working_days || 7
-                                      )
-                                    }
-                                    className="h-6 w-6 p-0"
-                                  >
-                                    <Settings className="h-3 w-3" />
-                                  </Button>
+                                  <span className="text-xs text-gray-500">
+                                    Auto-calculated
+                                  </span>
                                 </div>
                               </TableCell>
                               <TableCell>
@@ -2651,23 +2683,16 @@ const VehiclePerformance = () => {
                                 </div>
                               </TableCell>
                               <TableCell>
-                                <div className="flex items-center gap-2">
+                                <div className="flex flex-col">
                                   <span className="font-medium text-purple-600">
-                                    {vehicle.exact_working_days || 7} days
+                                    {vehicle.exact_working_days ||
+                                      vehicle.working_days_multiplier ||
+                                      0}{" "}
+                                    days
                                   </span>
-                                  <Button
-                                    size="sm"
-                                    variant="ghost"
-                                    onClick={() =>
-                                      openExactWorkingDaysEdit(
-                                        vehicle.vehicle_number,
-                                        vehicle.exact_working_days || 7
-                                      )
-                                    }
-                                    className="h-6 w-6 p-0"
-                                  >
-                                    <Settings className="h-3 w-3" />
-                                  </Button>
+                                  <span className="text-xs text-gray-500">
+                                    Auto-calculated
+                                  </span>
                                 </div>
                               </TableCell>
                               <TableCell>
@@ -2835,146 +2860,6 @@ const VehiclePerformance = () => {
                 disabled={savingWorkingDays}
               >
                 {savingWorkingDays ? "Saving..." : "Save Changes"}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-        {/* Exact Working Days Edit Dialog */}
-        <Dialog
-          open={editingExactWorkingDays !== null}
-          onOpenChange={(open) => {
-            if (!open) {
-              setEditingExactWorkingDays(null);
-            }
-          }}
-        >
-          <DialogContent className="sm:max-w-[425px]">
-            <DialogHeader>
-              <DialogTitle>Edit Exact Working Days</DialogTitle>
-              <DialogDescription>
-                Set the exact working days for vehicle:{" "}
-                {editingExactWorkingDays}
-                <br />
-                <span className="text-xs text-muted-foreground">
-                  Fleet Rent will be calculated as: Daily Rent × Exact Working
-                  Days
-                </span>
-              </DialogDescription>
-            </DialogHeader>
-            <div className="grid gap-4 py-4">
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="exactWorkingDays" className="text-right">
-                  Exact Working Days
-                </Label>
-                <Input
-                  id="exactWorkingDays"
-                  type="number"
-                  min="1"
-                  max="30"
-                  value={tempExactWorkingDays}
-                  onChange={(e) =>
-                    setTempExactWorkingDays(Number(e.target.value))
-                  }
-                  className="col-span-3"
-                />
-              </div>
-              <div className="text-sm text-muted-foreground space-y-1">
-                <div>
-                  Formula: Daily Rent (based on total trips) ×{" "}
-                  {tempExactWorkingDays} days = Total Rent
-                </div>
-                <div className="text-xs">
-                  Default value is 7 days. This value is used to calculate Fleet
-                  Rent.
-                </div>
-              </div>
-            </div>
-            <DialogFooter>
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setEditingExactWorkingDays(null);
-                }}
-              >
-                Cancel
-              </Button>
-              <Button
-                onClick={async () => {
-                  if (editingExactWorkingDays) {
-                    try {
-                      setSavingExactWorkingDays(true);
-
-                      // Update the vehicle exact working days in state
-                      updateExactWorkingDays(
-                        editingExactWorkingDays,
-                        tempExactWorkingDays
-                      );
-
-                      // Automatically save to database
-                      const vehicleToSave = vehicles.find(
-                        (v) => v.vehicle_number === editingExactWorkingDays
-                      );
-                      if (vehicleToSave) {
-                        const updatedVehicle = {
-                          ...vehicleToSave,
-                          exact_working_days: tempExactWorkingDays,
-                          // Recalculate total rent with new exact working days
-                          total_rent:
-                            getFleetRent(vehicleToSave.total_trips) *
-                            tempExactWorkingDays,
-                        };
-
-                        // Recalculate profit/loss
-                        const globalIncome = adjustmentCategories
-                          .filter(
-                            (cat) => cat.type === "income" && cat.isActive
-                          )
-                          .reduce((sum, cat) => sum + cat.amount, 0);
-                        const globalExpenses = adjustmentCategories
-                          .filter(
-                            (cat) => cat.type === "expense" && cat.isActive
-                          )
-                          .reduce((sum, cat) => sum + cat.amount, 0);
-
-                        const totalIncome =
-                          updatedVehicle.additional_income + globalIncome;
-                        const totalExpenses =
-                          updatedVehicle.expenses + globalExpenses;
-
-                        updatedVehicle.profit_loss =
-                          updatedVehicle.total_earnings +
-                          totalIncome +
-                          (updatedVehicle.transaction_net || 0) -
-                          updatedVehicle.total_rent -
-                          totalExpenses;
-
-                        updatedVehicle.performance_status =
-                          updatedVehicle.profit_loss > 0
-                            ? "profit"
-                            : updatedVehicle.profit_loss < 0
-                            ? "loss"
-                            : ("break_even" as const);
-
-                        // Save to database
-                        await saveVehiclePerformance(updatedVehicle);
-                      }
-
-                      toast.success(
-                        `Exact working days updated and saved: ${tempExactWorkingDays} for ${editingExactWorkingDays}`
-                      );
-
-                      setEditingExactWorkingDays(null);
-                    } catch (error) {
-                      console.error("Error saving exact working days:", error);
-                      toast.error("Failed to save exact working days");
-                    } finally {
-                      setSavingExactWorkingDays(false);
-                    }
-                  }
-                }}
-                disabled={savingExactWorkingDays}
-              >
-                {savingExactWorkingDays ? "Saving..." : "Save Changes"}
               </Button>
             </DialogFooter>
           </DialogContent>

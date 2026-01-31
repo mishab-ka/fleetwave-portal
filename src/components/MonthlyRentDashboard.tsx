@@ -206,7 +206,7 @@ const MonthlyRentDashboard: React.FC = () => {
           driver_name,
           rent_date,
           status,
-          users!inner(
+          users!fleet_reports_user_id_fkey!inner(
             id,
             name,
             phone_number,
