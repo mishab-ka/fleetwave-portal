@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import AdminLayout from "@/components/AdminLayout";
 import { supabase } from "@/integrations/supabase/client";
+import { useAdmin } from "@/context/AdminContext";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Car,
@@ -122,13 +124,22 @@ interface CEOInsight {
   value?: number;
 }
 
-
 const AdminDashboard = () => {
-
+  const navigate = useNavigate();
+  const { isAdmin, isManager, userRole, loading: adminLoading } = useAdmin();
   const [loading, setLoading] = useState(true);
-  const [financialMetrics, setFinancialMetrics] = useState<FinancialMetrics | null>(null);
-  const [operationalMetrics, setOperationalMetrics] = useState<OperationalMetrics | null>(null);
-  const [efficiencyMetrics, setEfficiencyMetrics] = useState<EfficiencyMetrics | null>(null);
+
+  useEffect(() => {
+    if (!adminLoading && isManager && !isAdmin && userRole === "manager") {
+      navigate("/admin/drivers", { replace: true });
+    }
+  }, [adminLoading, isAdmin, isManager, userRole, navigate]);
+  const [financialMetrics, setFinancialMetrics] =
+    useState<FinancialMetrics | null>(null);
+  const [operationalMetrics, setOperationalMetrics] =
+    useState<OperationalMetrics | null>(null);
+  const [efficiencyMetrics, setEfficiencyMetrics] =
+    useState<EfficiencyMetrics | null>(null);
   const [ceoInsights, setCeoInsights] = useState<CEOInsight[]>([]);
   const [trendData, setTrendData] = useState<any[]>([]);
   const [stats, setStats] = useState({
@@ -147,7 +158,9 @@ const AdminDashboard = () => {
     totalResignedDrivers: 0,
   });
 
-  const [driverUpdatesFilter, setDriverUpdatesFilter] = useState<"today" | "yesterday" | "weekly" | "monthly" | "custom">("today");
+  const [driverUpdatesFilter, setDriverUpdatesFilter] = useState<
+    "today" | "yesterday" | "weekly" | "monthly" | "custom"
+  >("today");
   const [customStartDate, setCustomStartDate] = useState<Date | null>(null);
   const [customEndDate, setCustomEndDate] = useState<Date | null>(null);
   const [driverUpdates, setDriverUpdates] = useState({
@@ -164,9 +177,8 @@ const AdminDashboard = () => {
     fetchDriverUpdates();
   }, [driverUpdatesFilter, customStartDate, customEndDate]);
 
-
   const fetchAllMetrics = async () => {
-      try {
+    try {
       setLoading(true);
       const now = new Date();
       const currentMonthStart = startOfMonth(now);
@@ -195,7 +207,9 @@ const AdminDashboard = () => {
         leaveReportsToday,
         approvedLeaveApplications,
       ] = await Promise.all([
-        supabase.from("users").select("id, online, role, resigning_date, created_at"),
+        supabase
+          .from("users")
+          .select("id, online, role, resigning_date, created_at"),
         supabase.from("vehicles").select("id, online"),
         supabase
           .from("fleet_reports")
@@ -253,28 +267,48 @@ const AdminDashboard = () => {
       const drivers = driversData.data || [];
       const vehicles = vehiclesData.data || [];
       const allReportsData = allReports.data || [];
-      const activeDrivers = drivers.filter((d) => d.online && !d.resigning_date && d.role === "driver").length;
+      const activeDrivers = drivers.filter(
+        (d) => d.online && !d.resigning_date && d.role === "driver"
+      ).length;
       const activeVehicles = vehicles.filter((v) => v.online).length;
-      const approvedReports = allReportsData.filter((r) => r.status === "approved").length;
-      const pendingReports = allReportsData.filter((r) => r.status === "pending_verification").length;
-      const rejectedReports = allReportsData.filter((r) => r.status === "rejected").length;
-      const totalTrips = allReportsData.reduce((sum, r) => sum + (r.total_trips || 0), 0);
-      const outstandingDeposits = (depositsData.data || []).reduce((sum, d) => sum + (Number(d.pending_balance) || 0), 0);
+      const approvedReports = allReportsData.filter(
+        (r) => r.status === "approved"
+      ).length;
+      const pendingReports = allReportsData.filter(
+        (r) => r.status === "pending_verification"
+      ).length;
+      const rejectedReports = allReportsData.filter(
+        (r) => r.status === "rejected"
+      ).length;
+      const totalTrips = allReportsData.reduce(
+        (sum, r) => sum + (r.total_trips || 0),
+        0
+      );
+      const outstandingDeposits = (depositsData.data || []).reduce(
+        (sum, d) => sum + (Number(d.pending_balance) || 0),
+        0
+      );
 
       // Calculate driver statistics
-      const totalJoinedDrivers = drivers.filter((d) => d.role === "driver").length;
-      const totalResignedDrivers = drivers.filter((d) => d.resigning_date && d.role === "driver").length;
-      
+      const totalJoinedDrivers = drivers.filter(
+        (d) => d.role === "driver"
+      ).length;
+      const totalResignedDrivers = drivers.filter(
+        (d) => d.resigning_date && d.role === "driver"
+      ).length;
+
       // Calculate leave drivers: from fleet_reports with status='leave' for today
       const leaveReportsTodayData = leaveReportsToday.data || [];
-      const leaveDriverIdsFromReports = new Set(leaveReportsTodayData.map((r) => r.user_id));
-      
+      const leaveDriverIdsFromReports = new Set(
+        leaveReportsTodayData.map((r) => r.user_id)
+      );
+
       // Also check approved leave applications that cover today
       const approvedLeaveApps = approvedLeaveApplications.data || [];
       const leaveDriverIdsFromApps = new Set(
         approvedLeaveApps.map((app) => app.user_id)
       );
-      
+
       // Combine both sources and get unique driver IDs
       const allLeaveDriverIds = new Set([
         ...leaveDriverIdsFromReports,
@@ -282,7 +316,7 @@ const AdminDashboard = () => {
       ]);
       const totalLeaveDrivers = allLeaveDriverIds.size;
 
-        setStats({
+      setStats({
         totalDrivers: totalJoinedDrivers,
         activeDrivers,
         totalVehicles: vehicles.length,
@@ -300,18 +334,41 @@ const AdminDashboard = () => {
 
       // Calculate financial metrics
       const calcFinancials = (reports: any[]) => {
-        const revenue = reports.reduce((sum, r) => sum + (Number(r.total_earnings) || 0), 0);
-        const rentExpenses = reports.reduce((sum, r) => sum + (Number(r.rent_paid_amount) || 0), 0);
-        const tolls = reports.reduce((sum, r) => sum + (Number(r.toll) || 0), 0);
-        const cashCollected = reports.reduce((sum, r) => sum + (Number(r.total_cashcollect) || 0), 0);
+        const revenue = reports.reduce(
+          (sum, r) => sum + (Number(r.total_earnings) || 0),
+          0
+        );
+        const rentExpenses = reports.reduce(
+          (sum, r) => sum + (Number(r.rent_paid_amount) || 0),
+          0
+        );
+        const tolls = reports.reduce(
+          (sum, r) => sum + (Number(r.toll) || 0),
+          0
+        );
+        const cashCollected = reports.reduce(
+          (sum, r) => sum + (Number(r.total_cashcollect) || 0),
+          0
+        );
         const expenses = rentExpenses + tolls;
         const profit = revenue - expenses;
-        return { revenue, expenses, profit, cashCollected, penalties: 0, tolls };
+        return {
+          revenue,
+          expenses,
+          profit,
+          cashCollected,
+          penalties: 0,
+          tolls,
+        };
       };
 
-      const currentMonthFinancials = calcFinancials(reportsCurrentMonth.data || []);
+      const currentMonthFinancials = calcFinancials(
+        reportsCurrentMonth.data || []
+      );
       const lastMonthFinancials = calcFinancials(reportsLastMonth.data || []);
-      const currentWeekFinancials = calcFinancials(reportsCurrentWeek.data || []);
+      const currentWeekFinancials = calcFinancials(
+        reportsCurrentWeek.data || []
+      );
       const lastWeekFinancials = calcFinancials(reportsLastWeek.data || []);
 
       // Add penalties
@@ -326,7 +383,7 @@ const AdminDashboard = () => {
         lastMonth: lastMonthFinancials,
         currentWeek: currentWeekFinancials,
         lastWeek: lastWeekFinancials,
-        });
+      });
 
       // Calculate operational metrics
       const expectedReports = activeDrivers * 30; // Assuming 30 working days
@@ -337,17 +394,25 @@ const AdminDashboard = () => {
         return isSameDay(rentDate, submissionDate);
       }).length;
 
-      const fleetUtilization = vehicles.length > 0 ? (activeVehicles / vehicles.length) * 100 : 0;
-      const driverUtilization = stats.totalDrivers > 0 ? (activeDrivers / stats.totalDrivers) * 100 : 0;
-      const reportSubmissionRate = expectedReports > 0 ? (submittedReports / expectedReports) * 100 : 0;
-      const reportApprovalRate = submittedReports > 0 ? (approvedReports / submittedReports) * 100 : 0;
-      const onTimeReportRate = submittedReports > 0 ? (onTimeReports / submittedReports) * 100 : 0;
-      const complianceRate = submittedReports > 0 ? (approvedReports / submittedReports) * 100 : 0;
+      const fleetUtilization =
+        vehicles.length > 0 ? (activeVehicles / vehicles.length) * 100 : 0;
+      const driverUtilization =
+        stats.totalDrivers > 0 ? (activeDrivers / stats.totalDrivers) * 100 : 0;
+      const reportSubmissionRate =
+        expectedReports > 0 ? (submittedReports / expectedReports) * 100 : 0;
+      const reportApprovalRate =
+        submittedReports > 0 ? (approvedReports / submittedReports) * 100 : 0;
+      const onTimeReportRate =
+        submittedReports > 0 ? (onTimeReports / submittedReports) * 100 : 0;
+      const complianceRate =
+        submittedReports > 0 ? (approvedReports / submittedReports) * 100 : 0;
 
       const leaveDays = (leaveData.data || []).reduce((sum, l) => {
         const start = new Date(l.start_date);
         const end = new Date(l.end_date);
-        const days = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+        const days =
+          Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) +
+          1;
         return sum + days;
       }, 0);
       const leaveRate = (leaveDays / (activeDrivers * 30)) * 100;
@@ -370,22 +435,32 @@ const AdminDashboard = () => {
       });
 
       // Calculate efficiency metrics
-      const revenuePerDriver = activeDrivers > 0 ? currentMonthFinancials.revenue / activeDrivers : 0;
-      const revenuePerVehicle = activeVehicles > 0 ? currentMonthFinancials.revenue / activeVehicles : 0;
-      const revenuePerTrip = totalTrips > 0 ? currentMonthFinancials.revenue / totalTrips : 0;
+      const revenuePerDriver =
+        activeDrivers > 0 ? currentMonthFinancials.revenue / activeDrivers : 0;
+      const revenuePerVehicle =
+        activeVehicles > 0
+          ? currentMonthFinancials.revenue / activeVehicles
+          : 0;
+      const revenuePerTrip =
+        totalTrips > 0 ? currentMonthFinancials.revenue / totalTrips : 0;
       const tripsPerDriver = activeDrivers > 0 ? totalTrips / activeDrivers : 0;
-      const tripsPerVehicle = activeVehicles > 0 ? totalTrips / activeVehicles : 0;
+      const tripsPerVehicle =
+        activeVehicles > 0 ? totalTrips / activeVehicles : 0;
       const expenseRatio =
         currentMonthFinancials.revenue > 0
-          ? (currentMonthFinancials.expenses / currentMonthFinancials.revenue) * 100
+          ? (currentMonthFinancials.expenses / currentMonthFinancials.revenue) *
+            100
           : 0;
       const profitMargin =
         currentMonthFinancials.revenue > 0
-          ? (currentMonthFinancials.profit / currentMonthFinancials.revenue) * 100
+          ? (currentMonthFinancials.profit / currentMonthFinancials.revenue) *
+            100
           : 0;
       const cashCollectionRate =
         currentMonthFinancials.revenue > 0
-          ? (currentMonthFinancials.cashCollected / currentMonthFinancials.revenue) * 100
+          ? (currentMonthFinancials.cashCollected /
+              currentMonthFinancials.revenue) *
+            100
           : 0;
 
       setEfficiencyMetrics({
@@ -403,14 +478,18 @@ const AdminDashboard = () => {
       const insights: CEOInsight[] = [];
       const revenueMoMChange =
         lastMonthFinancials.revenue > 0
-          ? ((currentMonthFinancials.revenue - lastMonthFinancials.revenue) / lastMonthFinancials.revenue) * 100
+          ? ((currentMonthFinancials.revenue - lastMonthFinancials.revenue) /
+              lastMonthFinancials.revenue) *
+            100
           : 0;
 
       if (revenueMoMChange < -10) {
         insights.push({
           priority: "high",
           title: "Revenue Decline Alert",
-          message: `Revenue decreased by ${Math.abs(revenueMoMChange).toFixed(1)}% compared to last month. Immediate review recommended.`,
+          message: `Revenue decreased by ${Math.abs(revenueMoMChange).toFixed(
+            1
+          )}% compared to last month. Immediate review recommended.`,
           metric: "Revenue MoM",
           value: revenueMoMChange,
         });
@@ -418,7 +497,9 @@ const AdminDashboard = () => {
         insights.push({
           priority: "medium",
           title: "Revenue Decline Warning",
-          message: `Revenue decreased by ${Math.abs(revenueMoMChange).toFixed(1)}% compared to last month. Monitor closely.`,
+          message: `Revenue decreased by ${Math.abs(revenueMoMChange).toFixed(
+            1
+          )}% compared to last month. Monitor closely.`,
           metric: "Revenue MoM",
           value: revenueMoMChange,
         });
@@ -428,7 +509,9 @@ const AdminDashboard = () => {
         insights.push({
           priority: "high",
           title: "Low Fleet Utilization",
-          message: `Fleet utilization is ${fleetUtilization.toFixed(1)}%. Consider optimizing vehicle assignments or reducing fleet size.`,
+          message: `Fleet utilization is ${fleetUtilization.toFixed(
+            1
+          )}%. Consider optimizing vehicle assignments or reducing fleet size.`,
           metric: "Fleet Utilization",
           value: fleetUtilization,
         });
@@ -436,7 +519,9 @@ const AdminDashboard = () => {
         insights.push({
           priority: "medium",
           title: "Fleet Utilization Opportunity",
-          message: `Fleet utilization is ${fleetUtilization.toFixed(1)}%. There's room for improvement.`,
+          message: `Fleet utilization is ${fleetUtilization.toFixed(
+            1
+          )}%. There's room for improvement.`,
           metric: "Fleet Utilization",
           value: fleetUtilization,
         });
@@ -446,7 +531,9 @@ const AdminDashboard = () => {
         insights.push({
           priority: "high",
           title: "Low Report Submission Rate",
-          message: `Only ${reportSubmissionRate.toFixed(1)}% of expected reports submitted. Follow up with drivers required.`,
+          message: `Only ${reportSubmissionRate.toFixed(
+            1
+          )}% of expected reports submitted. Follow up with drivers required.`,
           metric: "Submission Rate",
           value: reportSubmissionRate,
         });
@@ -456,7 +543,9 @@ const AdminDashboard = () => {
         insights.push({
           priority: "high",
           title: "Driver Retention Concern",
-          message: `Driver retention rate is ${driverRetention.toFixed(1)}%. Review retention strategies.`,
+          message: `Driver retention rate is ${driverRetention.toFixed(
+            1
+          )}%. Review retention strategies.`,
           metric: "Retention Rate",
           value: driverRetention,
         });
@@ -466,7 +555,9 @@ const AdminDashboard = () => {
         insights.push({
           priority: "medium",
           title: "High Outstanding Deposits",
-          message: `Outstanding deposits total ₹${(outstandingDeposits / 1000).toFixed(0)}K. Consider collection strategy.`,
+          message: `Outstanding deposits total ₹${(
+            outstandingDeposits / 1000
+          ).toFixed(0)}K. Consider collection strategy.`,
           metric: "Outstanding Deposits",
           value: outstandingDeposits,
         });
@@ -476,7 +567,9 @@ const AdminDashboard = () => {
         insights.push({
           priority: "medium",
           title: "Report Approval Rate",
-          message: `Approval rate is ${reportApprovalRate.toFixed(1)}%. Review rejection reasons and improve compliance.`,
+          message: `Approval rate is ${reportApprovalRate.toFixed(
+            1
+          )}%. Review rejection reasons and improve compliance.`,
           metric: "Approval Rate",
           value: reportApprovalRate,
         });
@@ -486,7 +579,8 @@ const AdminDashboard = () => {
         insights.push({
           priority: "low",
           title: "All Systems Operational",
-          message: "All key metrics are within healthy ranges. Company is performing well.",
+          message:
+            "All key metrics are within healthy ranges. Company is performing well.",
         });
       }
 
@@ -494,12 +588,16 @@ const AdminDashboard = () => {
 
       // Prepare trend data for charts
       const trendReportsData = trendReports.data || [];
-      const trendMap = new Map<string, { revenue: number; expenses: number; profit: number }>();
+      const trendMap = new Map<
+        string,
+        { revenue: number; expenses: number; profit: number }
+      >();
 
       trendReportsData.forEach((report) => {
         const date = format(new Date(report.rent_date), "MMM dd");
         const revenue = Number(report.total_earnings) || 0;
-        const expenses = (Number(report.rent_paid_amount) || 0) + (Number(report.toll) || 0);
+        const expenses =
+          (Number(report.rent_paid_amount) || 0) + (Number(report.toll) || 0);
         const profit = revenue - expenses;
 
         if (trendMap.has(date)) {
@@ -514,15 +612,19 @@ const AdminDashboard = () => {
 
       const chartData = Array.from(trendMap.entries())
         .map(([date, data]) => ({ date, ...data }))
-        .sort((a, b) => new Date(a.date + " 2024").getTime() - new Date(b.date + " 2024").getTime());
+        .sort(
+          (a, b) =>
+            new Date(a.date + " 2024").getTime() -
+            new Date(b.date + " 2024").getTime()
+        );
 
       setTrendData(chartData);
-      } catch (error) {
+    } catch (error) {
       console.error("Error fetching metrics:", error);
-      } finally {
-        setLoading(false);
-      }
-    };
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const fetchDriverUpdates = async () => {
     try {
@@ -599,7 +701,7 @@ const AdminDashboard = () => {
 
       // Calculate unique leave drivers
       const leaveDriverIds = new Set<string>();
-      
+
       // Add drivers from leave reports
       if (leaveReports) {
         leaveReports.forEach((report) => {
@@ -650,7 +752,6 @@ const AdminDashboard = () => {
     }
   };
 
-
   if (loading) {
     return (
       <AdminLayout title="Company Overview">
@@ -671,7 +772,10 @@ const AdminDashboard = () => {
 
   const profitMoMChange =
     financialMetrics && financialMetrics.lastMonth.profit > 0
-      ? calculateChange(financialMetrics.currentMonth.profit, financialMetrics.lastMonth.profit)
+      ? calculateChange(
+          financialMetrics.currentMonth.profit,
+          financialMetrics.lastMonth.profit
+        )
       : financialMetrics?.currentMonth.profit || 0 > 0
       ? 100
       : 0;
@@ -695,7 +799,9 @@ const AdminDashboard = () => {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-violet-900">
-              {financialMetrics ? formatCurrency(financialMetrics.currentMonth.revenue) : "₹0"}
+              {financialMetrics
+                ? formatCurrency(financialMetrics.currentMonth.revenue)
+                : "₹0"}
             </div>
             <div
               className={cn(
@@ -704,11 +810,13 @@ const AdminDashboard = () => {
               )}
             >
               {revenueMoMChange >= 0 ? (
-              <ArrowUpRight className="h-4 w-4 mr-1" />
+                <ArrowUpRight className="h-4 w-4 mr-1" />
               ) : (
                 <ArrowDownRight className="h-4 w-4 mr-1" />
               )}
-              <span>{Math.abs(revenueMoMChange).toFixed(1)}% from last month</span>
+              <span>
+                {Math.abs(revenueMoMChange).toFixed(1)}% from last month
+              </span>
             </div>
           </CardContent>
         </Card>
@@ -722,14 +830,23 @@ const AdminDashboard = () => {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-rose-900">
-              {financialMetrics ? formatCurrency(financialMetrics.currentMonth.profit) : "₹0"}
+              {financialMetrics
+                ? formatCurrency(financialMetrics.currentMonth.profit)
+                : "₹0"}
             </div>
             <div className="flex items-center gap-2 text-xs text-rose-600 mt-2">
               <span>
-                Margin: {efficiencyMetrics ? formatPercentage(efficiencyMetrics.profitMargin) : "0%"}
+                Margin:{" "}
+                {efficiencyMetrics
+                  ? formatPercentage(efficiencyMetrics.profitMargin)
+                  : "0%"}
               </span>
               {profitMoMChange !== 0 && (
-                <span className={cn(profitMoMChange >= 0 ? "text-green-600" : "text-red-600")}>
+                <span
+                  className={cn(
+                    profitMoMChange >= 0 ? "text-green-600" : "text-red-600"
+                  )}
+                >
                   ({profitMoMChange >= 0 ? "+" : ""}
                   {profitMoMChange.toFixed(1)}%)
                 </span>
@@ -746,11 +863,16 @@ const AdminDashboard = () => {
             <Car className="h-5 w-5 text-sky-600" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-sky-900">{stats.activeVehicles}</div>
+            <div className="text-2xl font-bold text-sky-900">
+              {stats.activeVehicles}
+            </div>
             <div className="flex items-center text-xs text-sky-600 mt-2">
               <Activity className="h-4 w-4 mr-1" />
               <span>
-                Utilization: {operationalMetrics ? formatPercentage(operationalMetrics.fleetUtilization) : "0%"}
+                Utilization:{" "}
+                {operationalMetrics
+                  ? formatPercentage(operationalMetrics.fleetUtilization)
+                  : "0%"}
               </span>
             </div>
           </CardContent>
@@ -764,11 +886,16 @@ const AdminDashboard = () => {
             <Users className="h-5 w-5 text-emerald-600" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-emerald-900">{stats.activeDrivers}</div>
+            <div className="text-2xl font-bold text-emerald-900">
+              {stats.activeDrivers}
+            </div>
             <div className="flex items-center text-xs text-emerald-600 mt-2">
               <Percent className="h-4 w-4 mr-1" />
               <span>
-                Utilization: {operationalMetrics ? formatPercentage(operationalMetrics.driverUtilization) : "0%"}
+                Utilization:{" "}
+                {operationalMetrics
+                  ? formatPercentage(operationalMetrics.driverUtilization)
+                  : "0%"}
               </span>
             </div>
           </CardContent>
@@ -791,17 +918,21 @@ const AdminDashboard = () => {
               size="sm"
               onClick={() => setDriverUpdatesFilter("today")}
               className={cn(
-                driverUpdatesFilter === "today" && "bg-fleet-purple text-white hover:bg-fleet-purple/90"
+                driverUpdatesFilter === "today" &&
+                  "bg-fleet-purple text-white hover:bg-fleet-purple/90"
               )}
             >
               Today
             </Button>
             <Button
-              variant={driverUpdatesFilter === "yesterday" ? "default" : "outline"}
+              variant={
+                driverUpdatesFilter === "yesterday" ? "default" : "outline"
+              }
               size="sm"
               onClick={() => setDriverUpdatesFilter("yesterday")}
               className={cn(
-                driverUpdatesFilter === "yesterday" && "bg-fleet-purple text-white hover:bg-fleet-purple/90"
+                driverUpdatesFilter === "yesterday" &&
+                  "bg-fleet-purple text-white hover:bg-fleet-purple/90"
               )}
             >
               Yesterday
@@ -811,17 +942,21 @@ const AdminDashboard = () => {
               size="sm"
               onClick={() => setDriverUpdatesFilter("weekly")}
               className={cn(
-                driverUpdatesFilter === "weekly" && "bg-fleet-purple text-white hover:bg-fleet-purple/90"
+                driverUpdatesFilter === "weekly" &&
+                  "bg-fleet-purple text-white hover:bg-fleet-purple/90"
               )}
             >
               Weekly
             </Button>
             <Button
-              variant={driverUpdatesFilter === "monthly" ? "default" : "outline"}
+              variant={
+                driverUpdatesFilter === "monthly" ? "default" : "outline"
+              }
               size="sm"
               onClick={() => setDriverUpdatesFilter("monthly")}
               className={cn(
-                driverUpdatesFilter === "monthly" && "bg-fleet-purple text-white hover:bg-fleet-purple/90"
+                driverUpdatesFilter === "monthly" &&
+                  "bg-fleet-purple text-white hover:bg-fleet-purple/90"
               )}
             >
               Monthly
@@ -831,7 +966,8 @@ const AdminDashboard = () => {
               size="sm"
               onClick={() => setDriverUpdatesFilter("custom")}
               className={cn(
-                driverUpdatesFilter === "custom" && "bg-fleet-purple text-white hover:bg-fleet-purple/90"
+                driverUpdatesFilter === "custom" &&
+                  "bg-fleet-purple text-white hover:bg-fleet-purple/90"
               )}
             >
               Custom Date Range
@@ -895,7 +1031,9 @@ const AdminDashboard = () => {
                       selected={customEndDate || undefined}
                       onSelect={(date) => setCustomEndDate(date || null)}
                       initialFocus
-                      disabled={(date) => customStartDate ? date < customStartDate : false}
+                      disabled={(date) =>
+                        customStartDate ? date < customStartDate : false
+                      }
                     />
                   </PopoverContent>
                 </Popover>
@@ -919,8 +1057,13 @@ const AdminDashboard = () => {
                 <div className="flex items-center text-xs text-indigo-600 mt-2">
                   <Users className="h-4 w-4 mr-1" />
                   <span>
-                    {driverUpdatesFilter === "custom" && customStartDate && customEndDate
-                      ? `Joined from ${format(customStartDate, "dd MMM")} to ${format(customEndDate, "dd MMM yyyy")}`
+                    {driverUpdatesFilter === "custom" &&
+                    customStartDate &&
+                    customEndDate
+                      ? `Joined from ${format(
+                          customStartDate,
+                          "dd MMM"
+                        )} to ${format(customEndDate, "dd MMM yyyy")}`
                       : driverUpdatesFilter === "today"
                       ? "Joined today"
                       : driverUpdatesFilter === "yesterday"
@@ -947,8 +1090,13 @@ const AdminDashboard = () => {
                 <div className="flex items-center text-xs text-amber-600 mt-2">
                   <AlertCircle className="h-4 w-4 mr-1" />
                   <span>
-                    {driverUpdatesFilter === "custom" && customStartDate && customEndDate
-                      ? `On leave from ${format(customStartDate, "dd MMM")} to ${format(customEndDate, "dd MMM yyyy")}`
+                    {driverUpdatesFilter === "custom" &&
+                    customStartDate &&
+                    customEndDate
+                      ? `On leave from ${format(
+                          customStartDate,
+                          "dd MMM"
+                        )} to ${format(customEndDate, "dd MMM yyyy")}`
                       : driverUpdatesFilter === "today"
                       ? "On leave today"
                       : driverUpdatesFilter === "yesterday"
@@ -975,8 +1123,13 @@ const AdminDashboard = () => {
                 <div className="flex items-center text-xs text-rose-600 mt-2">
                   <TrendingDown className="h-4 w-4 mr-1" />
                   <span>
-                    {driverUpdatesFilter === "custom" && customStartDate && customEndDate
-                      ? `Resigned from ${format(customStartDate, "dd MMM")} to ${format(customEndDate, "dd MMM yyyy")}`
+                    {driverUpdatesFilter === "custom" &&
+                    customStartDate &&
+                    customEndDate
+                      ? `Resigned from ${format(
+                          customStartDate,
+                          "dd MMM"
+                        )} to ${format(customEndDate, "dd MMM yyyy")}`
                       : driverUpdatesFilter === "today"
                       ? "Resigned today"
                       : driverUpdatesFilter === "yesterday"
@@ -1017,19 +1170,27 @@ const AdminDashboard = () => {
             <div className="flex justify-between items-center">
               <span className="text-sm text-gray-600">Profit Margin</span>
               <span className="font-semibold">
-                {efficiencyMetrics ? formatPercentage(efficiencyMetrics.profitMargin) : "0%"}
+                {efficiencyMetrics
+                  ? formatPercentage(efficiencyMetrics.profitMargin)
+                  : "0%"}
               </span>
             </div>
             <div className="flex justify-between items-center">
               <span className="text-sm text-gray-600">Expense Ratio</span>
               <span className="font-semibold">
-                {efficiencyMetrics ? formatPercentage(efficiencyMetrics.expenseRatio) : "0%"}
+                {efficiencyMetrics
+                  ? formatPercentage(efficiencyMetrics.expenseRatio)
+                  : "0%"}
               </span>
             </div>
             <div className="flex justify-between items-center">
-              <span className="text-sm text-gray-600">Cash Collection Rate</span>
+              <span className="text-sm text-gray-600">
+                Cash Collection Rate
+              </span>
               <span className="font-semibold">
-                {efficiencyMetrics ? formatPercentage(efficiencyMetrics.cashCollectionRate) : "0%"}
+                {efficiencyMetrics
+                  ? formatPercentage(efficiencyMetrics.cashCollectionRate)
+                  : "0%"}
               </span>
             </div>
           </CardContent>
@@ -1046,25 +1207,33 @@ const AdminDashboard = () => {
             <div className="flex justify-between items-center">
               <span className="text-sm text-gray-600">Fleet Utilization</span>
               <span className="font-semibold">
-                {operationalMetrics ? formatPercentage(operationalMetrics.fleetUtilization) : "0%"}
+                {operationalMetrics
+                  ? formatPercentage(operationalMetrics.fleetUtilization)
+                  : "0%"}
               </span>
             </div>
             <div className="flex justify-between items-center">
               <span className="text-sm text-gray-600">Submission Rate</span>
               <span className="font-semibold">
-                {operationalMetrics ? formatPercentage(operationalMetrics.reportSubmissionRate) : "0%"}
+                {operationalMetrics
+                  ? formatPercentage(operationalMetrics.reportSubmissionRate)
+                  : "0%"}
               </span>
             </div>
             <div className="flex justify-between items-center">
               <span className="text-sm text-gray-600">Approval Rate</span>
               <span className="font-semibold">
-                {operationalMetrics ? formatPercentage(operationalMetrics.reportApprovalRate) : "0%"}
+                {operationalMetrics
+                  ? formatPercentage(operationalMetrics.reportApprovalRate)
+                  : "0%"}
               </span>
             </div>
             <div className="flex justify-between items-center">
               <span className="text-sm text-gray-600">On-Time Report Rate</span>
               <span className="font-semibold">
-                {operationalMetrics ? formatPercentage(operationalMetrics.onTimeReportRate) : "0%"}
+                {operationalMetrics
+                  ? formatPercentage(operationalMetrics.onTimeReportRate)
+                  : "0%"}
               </span>
             </div>
           </CardContent>
@@ -1081,25 +1250,33 @@ const AdminDashboard = () => {
             <div className="flex justify-between items-center">
               <span className="text-sm text-gray-600">Revenue per Driver</span>
               <span className="font-semibold">
-                {efficiencyMetrics ? formatCurrency(efficiencyMetrics.revenuePerDriver) : "₹0"}
+                {efficiencyMetrics
+                  ? formatCurrency(efficiencyMetrics.revenuePerDriver)
+                  : "₹0"}
               </span>
             </div>
             <div className="flex justify-between items-center">
               <span className="text-sm text-gray-600">Revenue per Vehicle</span>
               <span className="font-semibold">
-                {efficiencyMetrics ? formatCurrency(efficiencyMetrics.revenuePerVehicle) : "₹0"}
+                {efficiencyMetrics
+                  ? formatCurrency(efficiencyMetrics.revenuePerVehicle)
+                  : "₹0"}
               </span>
             </div>
             <div className="flex justify-between items-center">
               <span className="text-sm text-gray-600">Revenue per Trip</span>
               <span className="font-semibold">
-                {efficiencyMetrics ? formatCurrency(efficiencyMetrics.revenuePerTrip) : "₹0"}
+                {efficiencyMetrics
+                  ? formatCurrency(efficiencyMetrics.revenuePerTrip)
+                  : "₹0"}
               </span>
             </div>
             <div className="flex justify-between items-center">
               <span className="text-sm text-gray-600">Trips per Driver</span>
               <span className="font-semibold">
-                {efficiencyMetrics ? efficiencyMetrics.tripsPerDriver.toFixed(1) : "0"}
+                {efficiencyMetrics
+                  ? efficiencyMetrics.tripsPerDriver.toFixed(1)
+                  : "0"}
               </span>
             </div>
           </CardContent>
@@ -1118,15 +1295,31 @@ const AdminDashboard = () => {
                 <ResponsiveContainer width="100%" height="100%">
                   <AreaChart data={trendData}>
                     <defs>
-                      <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#8B5CF6" stopOpacity={0.3} />
-                        <stop offset="95%" stopColor="#8B5CF6" stopOpacity={0} />
+                      <linearGradient
+                        id="colorRevenue"
+                        x1="0"
+                        y1="0"
+                        x2="0"
+                        y2="1"
+                      >
+                        <stop
+                          offset="5%"
+                          stopColor="#8B5CF6"
+                          stopOpacity={0.3}
+                        />
+                        <stop
+                          offset="95%"
+                          stopColor="#8B5CF6"
+                          stopOpacity={0}
+                        />
                       </linearGradient>
                     </defs>
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis dataKey="date" />
                     <YAxis tickFormatter={(value) => formatCurrency(value)} />
-                    <Tooltip formatter={(value: number) => formatCurrency(value)} />
+                    <Tooltip
+                      formatter={(value: number) => formatCurrency(value)}
+                    />
                     <Area
                       type="monotone"
                       dataKey="revenue"
@@ -1151,10 +1344,22 @@ const AdminDashboard = () => {
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis dataKey="date" />
                     <YAxis tickFormatter={(value) => formatCurrency(value)} />
-                    <Tooltip formatter={(value: number) => formatCurrency(value)} />
+                    <Tooltip
+                      formatter={(value: number) => formatCurrency(value)}
+                    />
                     <Legend />
-                    <Line type="monotone" dataKey="profit" stroke="#22c55e" strokeWidth={2} />
-                    <Line type="monotone" dataKey="expenses" stroke="#ef4444" strokeWidth={2} />
+                    <Line
+                      type="monotone"
+                      dataKey="profit"
+                      stroke="#22c55e"
+                      strokeWidth={2}
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="expenses"
+                      stroke="#ef4444"
+                      strokeWidth={2}
+                    />
                   </LineChart>
                 </ResponsiveContainer>
               </div>
@@ -1200,7 +1405,10 @@ const AdminDashboard = () => {
                     <p className="text-sm mt-1">{insight.message}</p>
                     {insight.metric && insight.value !== undefined && (
                       <p className="text-xs mt-2 opacity-75">
-                        {insight.metric}: {typeof insight.value === "number" ? insight.value.toFixed(1) : insight.value}
+                        {insight.metric}:{" "}
+                        {typeof insight.value === "number"
+                          ? insight.value.toFixed(1)
+                          : insight.value}
                       </p>
                     )}
                   </div>
@@ -1228,12 +1436,33 @@ const AdminDashboard = () => {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-indigo-900">
-              {financialMetrics ? formatCurrency(financialMetrics.currentMonth.expenses) : "₹0"}
+              {financialMetrics
+                ? formatCurrency(financialMetrics.currentMonth.expenses)
+                : "₹0"}
             </div>
             <div className="text-xs text-indigo-600 mt-2 space-y-1">
-              <div>Rent: {financialMetrics ? formatCurrency(financialMetrics.currentMonth.expenses - financialMetrics.currentMonth.tolls - financialMetrics.currentMonth.penalties) : "₹0"}</div>
-              <div>Tolls: {financialMetrics ? formatCurrency(financialMetrics.currentMonth.tolls) : "₹0"}</div>
-              <div>Penalties: {financialMetrics ? formatCurrency(financialMetrics.currentMonth.penalties) : "₹0"}</div>
+              <div>
+                Rent:{" "}
+                {financialMetrics
+                  ? formatCurrency(
+                      financialMetrics.currentMonth.expenses -
+                        financialMetrics.currentMonth.tolls -
+                        financialMetrics.currentMonth.penalties
+                    )
+                  : "₹0"}
+              </div>
+              <div>
+                Tolls:{" "}
+                {financialMetrics
+                  ? formatCurrency(financialMetrics.currentMonth.tolls)
+                  : "₹0"}
+              </div>
+              <div>
+                Penalties:{" "}
+                {financialMetrics
+                  ? formatCurrency(financialMetrics.currentMonth.penalties)
+                  : "₹0"}
+              </div>
             </div>
           </CardContent>
         </Card>
@@ -1246,19 +1475,27 @@ const AdminDashboard = () => {
             <FileText className="h-5 w-5 text-purple-600" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-purple-900">{stats.totalReports}</div>
+            <div className="text-2xl font-bold text-purple-900">
+              {stats.totalReports}
+            </div>
             <div className="text-xs text-purple-600 mt-2 space-y-1">
               <div className="flex justify-between">
                 <span>Approved:</span>
-                <span className="font-semibold text-green-600">{stats.approvedReports}</span>
+                <span className="font-semibold text-green-600">
+                  {stats.approvedReports}
+                </span>
               </div>
               <div className="flex justify-between">
                 <span>Pending:</span>
-                <span className="font-semibold text-yellow-600">{stats.pendingReports}</span>
+                <span className="font-semibold text-yellow-600">
+                  {stats.pendingReports}
+                </span>
               </div>
               <div className="flex justify-between">
                 <span>Rejected:</span>
-                <span className="font-semibold text-red-600">{stats.rejectedReports}</span>
+                <span className="font-semibold text-red-600">
+                  {stats.rejectedReports}
+                </span>
               </div>
             </div>
           </CardContent>
@@ -1282,7 +1519,6 @@ const AdminDashboard = () => {
           </CardContent>
         </Card>
       </div>
-
     </AdminLayout>
   );
 };

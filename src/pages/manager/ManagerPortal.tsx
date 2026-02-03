@@ -50,6 +50,7 @@ import {
   RefreshCw,
   User,
   Home,
+  LayoutGrid,
 } from "lucide-react";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 
@@ -679,6 +680,19 @@ const ManagerPortal = () => {
                     <Calendar className="mr-2 h-4 w-4" />
                     Rent Calendar
                   </Button>
+                  <div className="my-2 border-t pt-2">
+                    <Button
+                      variant="outline"
+                      className="w-full justify-start"
+                      onClick={() => {
+                        navigate("/admin/drivers");
+                        setIsMenuOpen(false);
+                      }}
+                    >
+                      <LayoutGrid className="mr-2 h-4 w-4" />
+                      Admin Portal
+                    </Button>
+                  </div>
                 </nav>
                 <div className="absolute bottom-0 left-0 right-0 p-4 border-t">
                   <Button
@@ -697,6 +711,15 @@ const ManagerPortal = () => {
             </h1>
           </div>
           <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => navigate("/admin/drivers")}
+              className="hidden md:flex"
+            >
+              <LayoutGrid className="mr-2 h-4 w-4" />
+              Admin Portal
+            </Button>
             <Button
               variant="ghost"
               size="icon"

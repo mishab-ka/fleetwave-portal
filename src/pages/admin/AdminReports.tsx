@@ -1,6 +1,8 @@
 import React, { useEffect, useState, useCallback, useMemo } from "react";
+import { useNavigate } from "react-router-dom";
 import AdminLayout from "@/components/AdminLayout";
 import { supabase } from "@/integrations/supabase/client";
+import { useAdmin } from "@/context/AdminContext";
 import { useAdminSettings } from "@/hooks/useAdminSettings";
 import { useAuth } from "@/context/AuthContext";
 import { useActivityLogger } from "@/hooks/useActivityLogger";
@@ -96,7 +98,6 @@ interface VehicleInfo {
   total_trips: number;
 }
 
-
 // Helper function to format date as YYYY-MM-DD without timezone issues
 const formatDateLocal = (date: Date): string => {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(
@@ -143,12 +144,20 @@ const getWeekDates = (
 };
 
 const AdminReports = () => {
+  const navigate = useNavigate();
+  const { isAdmin, isManager, userRole, loading: adminLoading } = useAdmin();
   const {
     calculateFleetRent,
     calculateCompanyEarnings,
     calculateCompanyEarnings24hr,
   } = useAdminSettings();
   const { user } = useAuth();
+
+  useEffect(() => {
+    if (!adminLoading && isManager && !isAdmin && userRole === "manager") {
+      navigate("/admin/drivers", { replace: true });
+    }
+  }, [adminLoading, isAdmin, isManager, userRole, navigate]);
   const { logActivity } = useActivityLogger();
   const [reports, setReports] = useState<Report[]>([]);
   const [loading, setLoading] = useState(true);
@@ -197,10 +206,11 @@ const AdminReports = () => {
   const [managerNames, setManagerNames] = useState<Record<string, string>>({});
   const [balanceType, setBalanceType] = useState<"due" | "refund">("due");
   const [serviceDayAdjustments, setServiceDayAdjustments] = useState<any[]>([]);
-  
-  // Track which report is currently being processed to prevent duplicate clicks
-  const [processingReportId, setProcessingReportId] = useState<string | null>(null);
 
+  // Track which report is currently being processed to prevent duplicate clicks
+  const [processingReportId, setProcessingReportId] = useState<string | null>(
+    null
+  );
 
   // Statistics state - single state that responds to filters
   const [statistics, setStatistics] = useState({
@@ -229,8 +239,6 @@ const AdminReports = () => {
     serviceDayFilter,
     weekOffset,
   ]);
-
-
 
   // Log page view
   useEffect(() => {
@@ -429,7 +437,11 @@ const AdminReports = () => {
       const { data, error } = await query;
 
       if (error) throw error;
-      console.log(`AdminReports: Fetched ${data?.length || 0} adjustments (approved or applied)`);
+      console.log(
+        `AdminReports: Fetched ${
+          data?.length || 0
+        } adjustments (approved or applied)`
+      );
       setServiceDayAdjustments(data || []);
     } catch (error) {
       console.error("Error fetching adjustments:", error);
@@ -706,7 +718,7 @@ const AdminReports = () => {
 
     try {
       setProcessingReportId(id); // Mark as processing
-      
+
       // Get the report details first
       const report = reports.find((r) => r.id === id);
       if (!report) {
@@ -749,11 +761,11 @@ const AdminReports = () => {
 
           // Get vehicle_number from adjustment (adjustments are vehicle-based)
           const vehicleNumber = adjustments[0].vehicle_number;
-          
+
           if (vehicleNumber) {
             // Calculate date for vehicle_performance lookup
             const reportDate = report.rent_date;
-            
+
             // Try to find existing vehicle_performance record
             const { data: vpData, error: vpError } = await supabase
               .from("vehicle_performance")
@@ -765,15 +777,18 @@ const AdminReports = () => {
             if (vpData) {
               // Update existing record
               const currentOtherExpenses = Number(vpData.other_expenses) || 0;
-              const newOtherExpenses = currentOtherExpenses + totalAdjustmentAmount;
-              
+              const newOtherExpenses =
+                currentOtherExpenses + totalAdjustmentAmount;
+
               await supabase
                 .from("vehicle_performance")
                 .update({ other_expenses: newOtherExpenses })
                 .eq("id", vpData.id);
-              
-              console.log(`Updated vehicle_performance for ${vehicleNumber} on ${reportDate}: other_expenses = ${newOtherExpenses}`);
-            } else if (!vpError || vpError.code === 'PGRST116') {
+
+              console.log(
+                `Updated vehicle_performance for ${vehicleNumber} on ${reportDate}: other_expenses = ${newOtherExpenses}`
+              );
+            } else if (!vpError || vpError.code === "PGRST116") {
               // PGRST116 = no rows returned, which is fine - we'll create a new record
               // Create new vehicle_performance record with adjustment
               const { error: insertError } = await supabase
@@ -797,21 +812,31 @@ const AdminReports = () => {
                   working_days_multiplier: 1,
                   exact_working_days: 0,
                 });
-              
+
               if (insertError) {
-                console.error(`Error creating vehicle_performance record for ${vehicleNumber}:`, insertError);
+                console.error(
+                  `Error creating vehicle_performance record for ${vehicleNumber}:`,
+                  insertError
+                );
               } else {
-                console.log(`Created new vehicle_performance record for ${vehicleNumber} on ${reportDate} with adjustment: ${totalAdjustmentAmount}`);
+                console.log(
+                  `Created new vehicle_performance record for ${vehicleNumber} on ${reportDate} with adjustment: ${totalAdjustmentAmount}`
+                );
               }
             } else {
-              console.error(`Error fetching vehicle_performance for ${vehicleNumber}:`, vpError);
+              console.error(
+                `Error fetching vehicle_performance for ${vehicleNumber}:`,
+                vpError
+              );
             }
 
             // Create vehicle_transaction entries for each adjustment with their descriptions
             for (const adjustment of adjustments) {
               const adjustmentAmount = Math.abs(adjustment.amount);
-              const description = adjustment.description || `Adjustment for ${report.driver_name}`;
-              
+              const description =
+                adjustment.description ||
+                `Adjustment for ${report.driver_name}`;
+
               const { error: txError } = await supabase
                 .from("vehicle_transactions")
                 .insert({
@@ -824,13 +849,20 @@ const AdminReports = () => {
                 });
 
               if (txError) {
-                console.error(`Error creating vehicle transaction for adjustment ${adjustment.id}:`, txError);
+                console.error(
+                  `Error creating vehicle transaction for adjustment ${adjustment.id}:`,
+                  txError
+                );
               } else {
-                console.log(`Created vehicle transaction for adjustment: ${description} - ₹${adjustmentAmount}`);
+                console.log(
+                  `Created vehicle transaction for adjustment: ${description} - ₹${adjustmentAmount}`
+                );
               }
             }
           } else {
-            console.warn("Adjustment has no vehicle_number, skipping vehicle_performance update");
+            console.warn(
+              "Adjustment has no vehicle_number, skipping vehicle_performance update"
+            );
           }
 
           // Mark adjustments as applied
@@ -981,12 +1013,19 @@ const AdminReports = () => {
       );
 
       toast.success(`Report marked as ${newStatus}`);
-      
+
       // Log activity
       await logActivity({
-        actionType: newStatus === "approved" ? "approve_report" : "reject_report",
+        actionType:
+          newStatus === "approved" ? "approve_report" : "reject_report",
         actionCategory: "reports",
-        description: `${newStatus === "approved" ? "Approved" : "Rejected"} report for driver ${report.driver_name} (${report.vehicle_number}) on ${report.rent_date} - ${report.shift} shift - Earnings: ₹${report.total_earnings}`,
+        description: `${
+          newStatus === "approved" ? "Approved" : "Rejected"
+        } report for driver ${report.driver_name} (${
+          report.vehicle_number
+        }) on ${report.rent_date} - ${report.shift} shift - Earnings: ₹${
+          report.total_earnings
+        }`,
         metadata: {
           report_id: id,
           driver_name: report.driver_name,
@@ -1067,10 +1106,10 @@ const AdminReports = () => {
       // Step 1: First, unlink any adjustments that are applied to this report
       const { error: unlinkError } = await supabase
         .from("common_adjustments")
-        .update({ 
+        .update({
           applied_to_report: null,
-          status: 'approved', // Reset status back to approved (not applied)
-          applied_at: null
+          status: "approved", // Reset status back to approved (not applied)
+          applied_at: null,
         })
         .eq("applied_to_report", selectedReport.id);
 
@@ -2053,22 +2092,32 @@ const AdminReports = () => {
                   </button>
                 </span>
               </div>
-              
+
               {/* Adjustment Legend */}
               <div className="mb-4 p-3 bg-gray-50 border border-gray-200 rounded-lg">
                 <div className="flex items-center gap-4 flex-wrap text-xs">
-                  <span className="font-semibold text-gray-700">Adjustment Indicators:</span>
+                  <span className="font-semibold text-gray-700">
+                    Adjustment Indicators:
+                  </span>
                   <div className="flex items-center gap-2">
                     <div className="w-4 h-4 bg-purple-100 border-2 border-purple-500 rounded"></div>
-                    <span className="text-gray-600">Pending Adjustment (Not Applied)</span>
+                    <span className="text-gray-600">
+                      Pending Adjustment (Not Applied)
+                    </span>
                   </div>
                   <div className="flex items-center gap-2">
                     <div className="w-4 h-4 bg-blue-100 border-2 border-blue-500 rounded"></div>
-                    <span className="text-gray-600">Applied Adjustment (Verified)</span>
+                    <span className="text-gray-600">
+                      Applied Adjustment (Verified)
+                    </span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <span className="inline-flex items-center justify-center w-5 h-5 bg-purple-500 text-white rounded-full text-[10px] font-bold">N</span>
-                    <span className="text-gray-600">Number shows adjustment count & amount</span>
+                    <span className="inline-flex items-center justify-center w-5 h-5 bg-purple-500 text-white rounded-full text-[10px] font-bold">
+                      N
+                    </span>
+                    <span className="text-gray-600">
+                      Number shows adjustment count & amount
+                    </span>
                   </div>
                 </div>
               </div>
@@ -2111,24 +2160,28 @@ const AdminReports = () => {
                       ) : (
                         reports.map((report, index) => {
                           // Check if this report has any adjustment
-                          const reportAdjustments = serviceDayAdjustments.filter(
-                            (adj) =>
-                              adj.user_id === report.user_id &&
-                              adj.adjustment_date === report.rent_date
-                          );
-                          
+                          const reportAdjustments =
+                            serviceDayAdjustments.filter(
+                              (adj) =>
+                                adj.user_id === report.user_id &&
+                                adj.adjustment_date === report.rent_date
+                            );
+
                           const hasAdjustment = reportAdjustments.length > 0;
                           const appliedAdjustments = reportAdjustments.filter(
-                            (adj) => adj.status === "applied" && adj.applied_to_report === report.id
+                            (adj) =>
+                              adj.status === "applied" &&
+                              adj.applied_to_report === report.id
                           );
                           const pendingAdjustments = reportAdjustments.filter(
                             (adj) => adj.status === "approved"
                           );
-                          
-                          const totalAdjustmentAmount = reportAdjustments.reduce(
-                            (sum, adj) => sum + Math.abs(adj.amount),
-                            0
-                          );
+
+                          const totalAdjustmentAmount =
+                            reportAdjustments.reduce(
+                              (sum, adj) => sum + Math.abs(adj.amount),
+                              0
+                            );
 
                           return (
                             <TableRow
@@ -2177,12 +2230,20 @@ const AdminReports = () => {
                                 ₹{report.rent_paid_amount.toLocaleString()}
                               </TableCell>
                               <TableCell className="whitespace-nowrap text-sm">
-                                {report.paying_cash && report.cash_amount != null ? (
+                                {report.paying_cash &&
+                                report.cash_amount != null ? (
                                   <span className="text-green-700 font-medium">
-                                    ₹{Number(report.cash_amount).toLocaleString()}
+                                    ₹
+                                    {Number(
+                                      report.cash_amount
+                                    ).toLocaleString()}
                                     {report.cash_manager_id && (
                                       <span className="text-muted-foreground font-normal">
-                                        {" "}({managerNames[report.cash_manager_id] ?? "—"})
+                                        {" "}
+                                        (
+                                        {managerNames[report.cash_manager_id] ??
+                                          "—"}
+                                        )
                                       </span>
                                     )}
                                   </span>
@@ -2255,7 +2316,10 @@ const AdminReports = () => {
                                     onClick={() =>
                                       updateReportStatus(report.id, "approved")
                                     }
-                                    disabled={report.status === "approved" || processingReportId === report.id}
+                                    disabled={
+                                      report.status === "approved" ||
+                                      processingReportId === report.id
+                                    }
                                   >
                                     {processingReportId === report.id ? (
                                       <div className="h-4 w-4 rounded-full border-2 border-t-transparent border-green-600 animate-spin"></div>
@@ -2270,7 +2334,10 @@ const AdminReports = () => {
                                     onClick={() =>
                                       updateReportStatus(report.id, "rejected")
                                     }
-                                    disabled={report.status === "rejected" || processingReportId === report.id}
+                                    disabled={
+                                      report.status === "rejected" ||
+                                      processingReportId === report.id
+                                    }
                                   >
                                     {processingReportId === report.id ? (
                                       <div className="h-4 w-4 rounded-full border-2 border-t-transparent border-red-600 animate-spin"></div>
@@ -2491,21 +2558,21 @@ const AdminReports = () => {
                   />
                 </div>
                 <div className="space-y-2">
-                <label>Other Fee / Expenses (₹)</label>
-                <Input
-                  type="number"
-                  value={selectedReport?.other_fee}
-                  onChange={(e) =>
-                    updateSelectedReportField(
-                      "other_fee",
-                      Number(e.target.value)
-                    )
-                  }
-                />
-                <p className="text-xs text-gray-500">
-                  Platform fee, fuel, maintenance, or any other expenses
-                </p>
-              </div>
+                  <label>Other Fee / Expenses (₹)</label>
+                  <Input
+                    type="number"
+                    value={selectedReport?.other_fee}
+                    onChange={(e) =>
+                      updateSelectedReportField(
+                        "other_fee",
+                        Number(e.target.value)
+                      )
+                    }
+                  />
+                  <p className="text-xs text-gray-500">
+                    Platform fee, fuel, maintenance, or any other expenses
+                  </p>
+                </div>
               </div>
               <div className="space-y-2">
                 <label>Total Earnings</label>
@@ -2552,7 +2619,7 @@ const AdminReports = () => {
                   }
                 />
               </div>
-              
+
               <div className="space-y-2">
                 <label>Rent Paid Amount (Auto)</label>
                 <Input
@@ -2587,7 +2654,9 @@ const AdminReports = () => {
                 <label className="font-medium">Paying by cash</label>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   <div>
-                    <label className="text-xs text-muted-foreground">Cash amount (₹)</label>
+                    <label className="text-xs text-muted-foreground">
+                      Cash amount (₹)
+                    </label>
                     <Input
                       type="number"
                       min={0}
@@ -2595,14 +2664,18 @@ const AdminReports = () => {
                       onChange={(e) =>
                         setSelectedReport((prev) => ({
                           ...prev!,
-                          cash_amount: e.target.value ? Number(e.target.value) : null,
+                          cash_amount: e.target.value
+                            ? Number(e.target.value)
+                            : null,
                         }))
                       }
                       placeholder="Amount"
                     />
                   </div>
                   <div>
-                    <label className="text-xs text-muted-foreground">Manager</label>
+                    <label className="text-xs text-muted-foreground">
+                      Manager
+                    </label>
                     <Select
                       value={selectedReport?.cash_manager_id ?? ""}
                       onValueChange={(value) =>
@@ -2700,7 +2773,9 @@ const AdminReports = () => {
                 );
 
                 const appliedAdjs = reportAdjustments.filter(
-                  (adj) => adj.status === "applied" && adj.applied_to_report === selectedReport?.id
+                  (adj) =>
+                    adj.status === "applied" &&
+                    adj.applied_to_report === selectedReport?.id
                 );
                 const pendingAdjs = reportAdjustments.filter(
                   (adj) => adj.status === "approved"
@@ -2713,17 +2788,23 @@ const AdminReports = () => {
                   );
 
                   return (
-                    <div className={`space-y-2 p-4 border-2 rounded-lg ${
-                      appliedAdjs.length > 0
-                        ? "bg-blue-50 border-blue-300"
-                        : "bg-purple-50 border-purple-300"
-                    }`}>
+                    <div
+                      className={`space-y-2 p-4 border-2 rounded-lg ${
+                        appliedAdjs.length > 0
+                          ? "bg-blue-50 border-blue-300"
+                          : "bg-purple-50 border-purple-300"
+                      }`}
+                    >
                       <div className="flex items-center justify-between mb-2">
                         <div className="flex items-center gap-2">
                           <span className="text-2xl">💰</span>
-                          <label className={`font-semibold ${
-                            appliedAdjs.length > 0 ? "text-blue-900" : "text-purple-900"
-                          }`}>
+                          <label
+                            className={`font-semibold ${
+                              appliedAdjs.length > 0
+                                ? "text-blue-900"
+                                : "text-purple-900"
+                            }`}
+                          >
                             {appliedAdjs.length > 0
                               ? "Adjustments (Applied to Report)"
                               : "Adjustments (Pending Application)"}
@@ -2740,13 +2821,15 @@ const AdminReports = () => {
 
                       {appliedAdjs.length > 0 && (
                         <div className="text-xs text-blue-700 bg-blue-100 p-2 rounded-md mb-2">
-                          ✓ These adjustments have been applied and added to Vehicle Performance "Other Expense"
+                          ✓ These adjustments have been applied and added to
+                          Vehicle Performance "Other Expense"
                         </div>
                       )}
 
                       {pendingAdjs.length > 0 && (
                         <div className="text-xs text-purple-700 bg-purple-100 p-2 rounded-md mb-2">
-                          ⏳ These adjustments will be applied when you verify this report
+                          ⏳ These adjustments will be applied when you verify
+                          this report
                         </div>
                       )}
 
@@ -2765,12 +2848,16 @@ const AdminReports = () => {
                                 <span className="text-sm font-medium text-gray-900 capitalize">
                                   {adj.category.replace(/_/g, " ")}
                                 </span>
-                                <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${
-                                  adj.status === "applied"
-                                    ? "bg-blue-100 text-blue-700"
-                                    : "bg-purple-100 text-purple-700"
-                                }`}>
-                                  {adj.status === "applied" ? "Applied" : "Pending"}
+                                <span
+                                  className={`text-xs px-2 py-0.5 rounded-full font-semibold ${
+                                    adj.status === "applied"
+                                      ? "bg-blue-100 text-blue-700"
+                                      : "bg-purple-100 text-purple-700"
+                                  }`}
+                                >
+                                  {adj.status === "applied"
+                                    ? "Applied"
+                                    : "Pending"}
                                 </span>
                               </div>
                               <span className="text-lg font-bold text-red-600">
@@ -2789,19 +2876,29 @@ const AdminReports = () => {
                             )}
                           </div>
                         ))}
-                        <div className={`flex items-center justify-between p-3 rounded-md ${
-                          appliedAdjs.length > 0
-                            ? "bg-blue-100"
-                            : "bg-purple-100"
-                        }`}>
-                          <span className={`font-semibold ${
-                            appliedAdjs.length > 0 ? "text-blue-900" : "text-purple-900"
-                          }`}>
+                        <div
+                          className={`flex items-center justify-between p-3 rounded-md ${
+                            appliedAdjs.length > 0
+                              ? "bg-blue-100"
+                              : "bg-purple-100"
+                          }`}
+                        >
+                          <span
+                            className={`font-semibold ${
+                              appliedAdjs.length > 0
+                                ? "text-blue-900"
+                                : "text-purple-900"
+                            }`}
+                          >
                             Total Adjustment Amount:
                           </span>
-                          <span className={`text-lg font-bold ${
-                            appliedAdjs.length > 0 ? "text-blue-900" : "text-purple-900"
-                          }`}>
+                          <span
+                            className={`text-lg font-bold ${
+                              appliedAdjs.length > 0
+                                ? "text-blue-900"
+                                : "text-purple-900"
+                            }`}
+                          >
                             ₹{totalAmount.toFixed(0)}
                           </span>
                         </div>
@@ -2891,7 +2988,8 @@ const AdminReports = () => {
                           selectedReport?.deposit_cutting_amount,
                         paying_cash: selectedReport?.paying_cash ?? false,
                         cash_amount: selectedReport?.cash_amount ?? null,
-                        cash_manager_id: selectedReport?.cash_manager_id ?? null,
+                        cash_manager_id:
+                          selectedReport?.cash_manager_id ?? null,
                         is_service_day: selectedReport?.is_service_day,
                         remarks: selectedReport?.remarks,
                         status: selectedReport?.status,
