@@ -23,11 +23,19 @@ import {
   Bed,
   Phone,
   Users,
+  MessageSquare,
 } from "lucide-react";
 import { format } from "date-fns";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Link } from "react-router-dom";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -82,6 +90,16 @@ const UserProfile = () => {
   const [partnerDrivers, setPartnerDrivers] = useState<
     { id: string; name: string | null; phone_number: string; shift: string | null }[]
   >([]);
+
+  // Resigned Feedback
+  const [resignedFeedbackOpen, setResignedFeedbackOpen] = useState(false);
+  const [resignedFeedbackSubmitting, setResignedFeedbackSubmitting] = useState(false);
+  const [resignedFeedbackForm, setResignedFeedbackForm] = useState({
+    feedback_text: "",
+    overall_experience: "",
+    would_recommend: null as boolean | null,
+    additional_comments: "",
+  });
 
   useEffect(() => {
     const fetchUserProfile = async () => {
@@ -527,6 +545,52 @@ const UserProfile = () => {
       setRefundRequestSubmitting(false);
     }
   };
+
+  // Check if driver is resigned
+  const isResigned = profileData?.driver_status === "resigning" || profileData?.resigning_date;
+
+  const submitResignedFeedback = async () => {
+    if (!user?.id || !profileData) {
+      toast.error("You must be logged in");
+      return;
+    }
+
+    if (!resignedFeedbackForm.feedback_text.trim()) {
+      toast.error("Please provide your feedback");
+      return;
+    }
+
+    try {
+      setResignedFeedbackSubmitting(true);
+      const { error } = await supabase.from("resigned_feedback").insert({
+        user_id: user.id,
+        driver_name: profileData.name || "",
+        driver_id: profileData.driver_id || null,
+        vehicle_number: profileData.vehicle_number || null,
+        resigning_date: profileData.resigning_date || null,
+        resignation_reason: profileData.resignation_reason || null,
+        feedback_text: resignedFeedbackForm.feedback_text.trim(),
+        overall_experience: resignedFeedbackForm.overall_experience || null,
+        would_recommend: resignedFeedbackForm.would_recommend,
+        additional_comments: resignedFeedbackForm.additional_comments.trim() || null,
+      });
+
+      if (error) throw error;
+      toast.success("Thank you for your feedback!");
+      setResignedFeedbackOpen(false);
+      setResignedFeedbackForm({
+        feedback_text: "",
+        overall_experience: "",
+        would_recommend: null,
+        additional_comments: "",
+      });
+    } catch (e) {
+      console.error("Error submitting resigned feedback:", e);
+      toast.error("Failed to submit feedback");
+    } finally {
+      setResignedFeedbackSubmitting(false);
+    }
+  };
   return (
     <div className="space-y-6">
       <Card>
@@ -764,6 +828,22 @@ const UserProfile = () => {
                   </>
                 )}
               </div>
+
+              {/* Resigned Feedback Button - Only show for resigned drivers */}
+              {isResigned && (
+                <div className="border-t pt-6">
+                  <div className="flex items-center justify-center">
+                    <Button
+                      onClick={() => setResignedFeedbackOpen(true)}
+                      className="bg-orange-500 hover:bg-orange-600 text-white"
+                      size="lg"
+                    >
+                      <MessageSquare className="mr-2 h-4 w-4" />
+                      Submit Resigned Feedback
+                    </Button>
+                  </div>
+                </div>
+              )}
 
               {/* Account Details and DOB Section */}
               <div className="border-t pt-6">
@@ -1184,6 +1264,140 @@ const UserProfile = () => {
               </Button>
               <Button onClick={submitRefundRequest} disabled={refundRequestSubmitting}>
                 {refundRequestSubmitting ? "Submitting..." : "Submit Request"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Resigned Feedback Modal */}
+      <Dialog open={resignedFeedbackOpen} onOpenChange={setResignedFeedbackOpen}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Resigned Feedback</DialogTitle>
+            <DialogDescription>
+              We value your feedback. Please share your experience with us.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="feedback_text">
+                Feedback <span className="text-red-500">*</span>
+              </Label>
+              <Textarea
+                id="feedback_text"
+                value={resignedFeedbackForm.feedback_text}
+                onChange={(e) =>
+                  setResignedFeedbackForm({
+                    ...resignedFeedbackForm,
+                    feedback_text: e.target.value,
+                  })
+                }
+                rows={5}
+                placeholder="Please share your overall experience, what you liked, what could be improved, etc."
+                required
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="overall_experience">Overall Experience</Label>
+              <Select
+                value={resignedFeedbackForm.overall_experience}
+                onValueChange={(value) =>
+                  setResignedFeedbackForm({
+                    ...resignedFeedbackForm,
+                    overall_experience: value,
+                  })
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select experience" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="excellent">Excellent</SelectItem>
+                  <SelectItem value="good">Good</SelectItem>
+                  <SelectItem value="average">Average</SelectItem>
+                  <SelectItem value="poor">Poor</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Would you recommend us to others?</Label>
+              <div className="flex gap-4">
+                <Button
+                  type="button"
+                  variant={
+                    resignedFeedbackForm.would_recommend === true
+                      ? "default"
+                      : "outline"
+                  }
+                  onClick={() =>
+                    setResignedFeedbackForm({
+                      ...resignedFeedbackForm,
+                      would_recommend: true,
+                    })
+                  }
+                >
+                  Yes
+                </Button>
+                <Button
+                  type="button"
+                  variant={
+                    resignedFeedbackForm.would_recommend === false
+                      ? "default"
+                      : "outline"
+                  }
+                  onClick={() =>
+                    setResignedFeedbackForm({
+                      ...resignedFeedbackForm,
+                      would_recommend: false,
+                    })
+                  }
+                >
+                  No
+                </Button>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="additional_comments">Additional Comments (optional)</Label>
+              <Textarea
+                id="additional_comments"
+                value={resignedFeedbackForm.additional_comments}
+                onChange={(e) =>
+                  setResignedFeedbackForm({
+                    ...resignedFeedbackForm,
+                    additional_comments: e.target.value,
+                  })
+                }
+                rows={3}
+                placeholder="Any additional comments or suggestions..."
+              />
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setResignedFeedbackOpen(false);
+                  setResignedFeedbackForm({
+                    feedback_text: "",
+                    overall_experience: "",
+                    would_recommend: null,
+                    additional_comments: "",
+                  });
+                }}
+                disabled={resignedFeedbackSubmitting}
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={submitResignedFeedback}
+                disabled={resignedFeedbackSubmitting}
+              >
+                {resignedFeedbackSubmitting ? "Submitting..." : "Submit Feedback"}
               </Button>
             </div>
           </div>

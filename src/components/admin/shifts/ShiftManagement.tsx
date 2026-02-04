@@ -536,7 +536,7 @@ const ShiftManagement = () => {
   };
 
   const handleLeaveResigningSelection = async (
-    status: "leave" | "resigning" | "offline"
+    status: "leave" | "resigning" | "offline" | "going_to_24hr"
   ) => {
     if (!selectedDriverForStatus) return;
 
@@ -553,6 +553,40 @@ const ShiftManagement = () => {
       setShowLeaveResigningModal(false);
       setLeaveReturnDate(null);
       setShowLeaveReturnDateModal(true);
+      return;
+    }
+
+    // If going to 24hr, handle directly
+    if (status === "going_to_24hr") {
+      const id = selectedDriverForStatus.id;
+      setIsUpdating(id);
+      setShowLeaveResigningModal(false);
+
+      try {
+        const updateData: any = {
+          online: false,
+          offline_from_date: new Date().toISOString().split("T")[0],
+          driver_status: "going_to_24hr",
+        };
+
+        const { error } = await supabase
+          .from("users")
+          .update(updateData)
+          .eq("id", id);
+
+        if (error) throw error;
+
+        toast.success(`Driver is now marked as Going to 24hr`);
+
+        // Refresh data
+        await Promise.all([updateShiftAssignments(), fetchDriversAndVehicles()]);
+      } catch (error) {
+        console.error("Error updating driver status:", error);
+        toast.error("Failed to update driver status");
+      } finally {
+        setIsUpdating(null);
+        setSelectedDriverForStatus(null);
+      }
       return;
     }
 
@@ -2856,6 +2890,22 @@ const ShiftManagement = () => {
                   </span>
                   <span className="text-sm text-gray-500">
                     No specific status, just taking offline
+                  </span>
+                </div>
+              </Button>
+
+              <Button
+                variant="outline"
+                className="w-full justify-start h-auto py-4 text-left"
+                onClick={() => handleLeaveResigningSelection("going_to_24hr")}
+                disabled={isUpdating === selectedDriverForStatus?.id}
+              >
+                <div className="flex flex-col items-start">
+                  <span className="font-semibold text-blue-600">
+                    Going to 24hr
+                  </span>
+                  <span className="text-sm text-gray-500">
+                    Driver is transitioning to 24hr shift
                   </span>
                 </div>
               </Button>

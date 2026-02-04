@@ -123,7 +123,7 @@ const AdminDrivers = () => {
     driverCategory: "all" as string,
 
     // Driver status
-    driverStatus: "all" as string, // online, offline, leave, resigning, all
+    driverStatus: "all" as string, // online, offline, leave, resigning, going_to_24hr, all
 
     // Document status
     documentStatus: "all" as string, // complete, incomplete, all
@@ -585,6 +585,8 @@ const AdminDrivers = () => {
           query = query.or(
             "driver_status.eq.resigning,resigning_date.not.is.null"
           );
+        } else if (advancedFilters.driverStatus === "going_to_24hr") {
+          query = query.eq("driver_status", "going_to_24hr");
         }
       }
 
@@ -1071,7 +1073,7 @@ const AdminDrivers = () => {
   };
 
   const handleLeaveResigningSelection = async (
-    status: "leave" | "resigning" | "offline"
+    status: "leave" | "resigning" | "offline" | "going_to_24hr"
   ) => {
     if (!selectedDriverForStatus) return;
 
@@ -1088,6 +1090,65 @@ const AdminDrivers = () => {
       setShowLeaveResigningModal(false);
       setLeaveReturnDate(null);
       setShowLeaveReturnDateModal(true);
+      return;
+    }
+
+    // If going to 24hr, handle directly
+    if (status === "going_to_24hr") {
+      const id = selectedDriverForStatus.id;
+      setIsUpdating(id);
+      setShowLeaveResigningModal(false);
+
+      try {
+        const updateData: any = {
+          online: false,
+          offline_from_date: new Date().toISOString().split("T")[0],
+          driver_status: "going_to_24hr",
+        };
+
+        const { error } = await supabase
+          .from("users")
+          .update(updateData)
+          .eq("id", id);
+
+        if (error) throw error;
+
+        setDrivers(
+          drivers.map((driver) =>
+            driver.id === id
+              ? {
+                  ...driver,
+                  online: false,
+                  offline_from_date: updateData.offline_from_date,
+                  driver_status: updateData.driver_status,
+                }
+              : driver
+          )
+        );
+
+        toast.success(`Driver is now marked as Going to 24hr`);
+
+        // Log activity
+        await logActivity({
+          actionType: "driver_status_update",
+          actionCategory: "drivers",
+          description: `Set driver ${selectedDriverForStatus.name} status to Going to 24hr`,
+          metadata: {
+            driverId: id,
+            driverName: selectedDriverForStatus.name,
+            status: "going_to_24hr",
+          },
+        });
+
+        // Refresh statistics
+        fetchStatistics();
+      } catch (error) {
+        console.error("Error updating driver status:", error);
+        toast.error("Failed to update driver status");
+      } finally {
+        setIsUpdating(null);
+        setSelectedDriverForStatus(null);
+      }
       return;
     }
 
@@ -2455,6 +2516,7 @@ const AdminDrivers = () => {
                       <SelectItem value="offline">Offline</SelectItem>
                       <SelectItem value="leave">Leave</SelectItem>
                       <SelectItem value="resigning">Resigning</SelectItem>
+                      <SelectItem value="going_to_24hr">Going to 24hr</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -3327,6 +3389,22 @@ const AdminDrivers = () => {
                   </span>
                   <span className="text-sm text-gray-500">
                     No specific status, just taking offline
+                  </span>
+                </div>
+              </Button>
+
+              <Button
+                variant="outline"
+                className="w-full justify-start h-auto py-4 text-left"
+                onClick={() => handleLeaveResigningSelection("going_to_24hr")}
+                disabled={isUpdating === selectedDriverForStatus?.id}
+              >
+                <div className="flex flex-col items-start">
+                  <span className="font-semibold text-blue-600">
+                    Going to 24hr
+                  </span>
+                  <span className="text-sm text-gray-500">
+                    Driver is transitioning to 24hr shift
                   </span>
                 </div>
               </Button>

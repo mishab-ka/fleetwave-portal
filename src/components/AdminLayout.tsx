@@ -38,6 +38,7 @@ import {
   Activity,
   Calculator,
   AlertTriangle,
+  MessageSquare,
 } from "lucide-react";
 import { Button } from "./ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "./ui/sheet";
@@ -310,6 +311,12 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children, title }) => {
           label: "Accident Reports",
           icon: <AlertTriangle size={14} />,
           path: "/admin/accident-reports",
+          allowedRoles: ["admin", "manager", "accountant"] as UserRole[],
+        },
+        {
+          label: "Resigned Reports",
+          icon: <MessageSquare size={14} />,
+          path: "/admin/resigned-reports",
           allowedRoles: ["admin", "manager", "accountant"] as UserRole[],
         },
       ],
