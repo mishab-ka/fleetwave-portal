@@ -104,6 +104,8 @@ const AdminDrivers = () => {
   const [isUpdating, setIsUpdating] = useState<string | null>(null);
   const [showLowDeposit, setShowLowDeposit] = useState(false);
   const [showNegativeBalance, setShowNegativeBalance] = useState(false);
+  const [showBelow7RentalDays, setShowBelow7RentalDays] = useState(false);
+  const [show14AndAboveRentalDays, setShow14AndAboveRentalDays] = useState(false);
 
   // Advanced filter states
   const [advancedFilters, setAdvancedFilters] = useState({
@@ -394,6 +396,8 @@ const AdminDrivers = () => {
     verificationFilter,
     showLowDeposit,
     showNegativeBalance,
+    showBelow7RentalDays,
+    show14AndAboveRentalDays,
     advancedFilters,
   ]);
 
@@ -410,6 +414,33 @@ const AdminDrivers = () => {
 
     return () => clearTimeout(timer);
   }, [searchQuery]);
+
+  const fetchRentalDaysByDriver = async (
+    driverIds: string[]
+  ): Promise<Record<string, number>> => {
+    if (!driverIds.length) return {};
+    try {
+      const { data, error } = await supabase
+        .from("fleet_reports")
+        .select("user_id")
+        .in("user_id", driverIds)
+        .eq("status", "approved");
+
+      if (error) throw error;
+
+      const countByDriver: Record<string, number> = {};
+      driverIds.forEach((id) => (countByDriver[id] = 0));
+      (data || []).forEach((row: { user_id: string }) => {
+        if (row.user_id && countByDriver[row.user_id] !== undefined) {
+          countByDriver[row.user_id] += 1;
+        }
+      });
+      return countByDriver;
+    } catch (e) {
+      console.error("Error fetching rental days:", e);
+      return {};
+    }
+  };
 
   const fetchPenaltySummaries = async (
     driverList: any[]
@@ -628,13 +659,15 @@ const AdminDrivers = () => {
         }
       }
 
-      // Check if we need client-side filtering (R&F balance, document status)
+      // Check if we need client-side filtering (R&F balance, document status, rental days)
       // These require calculated values, so we must fetch all matching drivers first
       const needsClientSideFiltering =
         showNegativeBalance ||
         advancedFilters.rAndFBalanceMin ||
         advancedFilters.rAndFBalanceMax ||
-        advancedFilters.documentStatus !== "all";
+        advancedFilters.documentStatus !== "all" ||
+        showBelow7RentalDays ||
+        show14AndAboveRentalDays;
 
       let allDrivers;
       let totalCountValue;
@@ -705,6 +738,21 @@ const AdminDrivers = () => {
             } else if (advancedFilters.documentStatus === "incomplete") {
               return !docCheck.allUploaded;
             }
+            return true;
+          });
+        }
+
+        // Apply rental days filter (quick switches)
+        if (showBelow7RentalDays || show14AndAboveRentalDays) {
+          const driverIds = filteredDrivers.map((d: any) => d.id).filter(Boolean);
+          const rentalDaysMap = await fetchRentalDaysByDriver(driverIds);
+          filteredDrivers = filteredDrivers.filter((driver) => {
+            const days = rentalDaysMap[driver.id] ?? 0;
+            if (showBelow7RentalDays && show14AndAboveRentalDays) {
+              return days < 7 || days >= 14;
+            }
+            if (showBelow7RentalDays) return days < 7;
+            if (show14AndAboveRentalDays) return days >= 14;
             return true;
           });
         }
@@ -1459,6 +1507,18 @@ const AdminDrivers = () => {
     setCurrentPage(1);
   };
 
+  const handleBelow7RentalDaysToggle = (checked: boolean) => {
+    setShowBelow7RentalDays(checked);
+    if (checked) setShow14AndAboveRentalDays(false);
+    setCurrentPage(1);
+  };
+
+  const handle14AndAboveRentalDaysToggle = (checked: boolean) => {
+    setShow14AndAboveRentalDays(checked);
+    if (checked) setShowBelow7RentalDays(false);
+    setCurrentPage(1);
+  };
+
   const getActiveFilterCount = () => {
     let count = 0;
     if (searchQuery.trim() !== "") count++;
@@ -1481,6 +1541,8 @@ const AdminDrivers = () => {
     if (advancedFilters.vehicleAssignment !== "all") count++;
     if (advancedFilters.resigningDateFrom) count++;
     if (advancedFilters.resigningDateTo) count++;
+    if (showBelow7RentalDays) count++;
+    if (show14AndAboveRentalDays) count++;
     return count;
   };
 
@@ -1491,6 +1553,8 @@ const AdminDrivers = () => {
     setShowOnlineOnly(false);
     setShowLowDeposit(false);
     setShowNegativeBalance(false);
+    setShowBelow7RentalDays(false);
+    setShow14AndAboveRentalDays(false);
     setAdvancedFilters({
       joiningDateFrom: null,
       joiningDateTo: null,
@@ -1565,6 +1629,21 @@ const AdminDrivers = () => {
               ? summary.netPenalties
               : fallbackValue;
           return Number.isFinite(rAndFValue) && rAndFValue < 0;
+        });
+      }
+
+      // If filtering by rental days, filter drivers
+      if (showBelow7RentalDays || show14AndAboveRentalDays) {
+        const driverIds = driversToExport.map((d: any) => d.id).filter(Boolean);
+        const rentalDaysMap = await fetchRentalDaysByDriver(driverIds);
+        driversToExport = driversToExport.filter((driver) => {
+          const days = rentalDaysMap[driver.id] ?? 0;
+          if (showBelow7RentalDays && show14AndAboveRentalDays) {
+            return days < 7 || days >= 14;
+          }
+          if (showBelow7RentalDays) return days < 7;
+          if (show14AndAboveRentalDays) return days >= 14;
+          return true;
         });
       }
 
@@ -2123,6 +2202,34 @@ const AdminDrivers = () => {
                   className="text-sm whitespace-nowrap"
                 >
                   Negative R &amp; F balance
+                </Label>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <Switch
+                  id="below-7-rental-days-filter"
+                  checked={showBelow7RentalDays}
+                  onCheckedChange={handleBelow7RentalDaysToggle}
+                />
+                <Label
+                  htmlFor="below-7-rental-days-filter"
+                  className="text-sm whitespace-nowrap"
+                >
+                  Below 7 rental days
+                </Label>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <Switch
+                  id="14-and-above-rental-days-filter"
+                  checked={show14AndAboveRentalDays}
+                  onCheckedChange={handle14AndAboveRentalDaysToggle}
+                />
+                <Label
+                  htmlFor="14-and-above-rental-days-filter"
+                  className="text-sm whitespace-nowrap"
+                >
+                  14 days and above
                 </Label>
               </div>
 

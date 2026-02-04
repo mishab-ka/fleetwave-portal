@@ -89,7 +89,7 @@ const Login = () => {
       case "admin":
         return "/admin";
       case "manager":
-        return "/admin/reports";
+        return "/manager";
       case "user":
         return "/profile";
       default:

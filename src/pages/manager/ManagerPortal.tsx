@@ -53,6 +53,7 @@ import {
   LayoutGrid,
 } from "lucide-react";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
+import RoomBedManagement from "@/components/RoomBedManagement";
 
 // Types
 interface Driver {
@@ -680,6 +681,19 @@ const ManagerPortal = () => {
                     <Calendar className="mr-2 h-4 w-4" />
                     Rent Calendar
                   </Button>
+                  <Button
+                    variant={
+                      activeTab === "accommodation" ? "default" : "ghost"
+                    }
+                    className="w-full justify-start"
+                    onClick={() => {
+                      setActiveTab("accommodation");
+                      setIsMenuOpen(false);
+                    }}
+                  >
+                    <Home className="mr-2 h-4 w-4" />
+                    Accommodation
+                  </Button>
                   <div className="my-2 border-t pt-2">
                     <Button
                       variant="outline"
@@ -792,12 +806,24 @@ const ManagerPortal = () => {
               <Calendar className="h-4 w-4" />
               Rent Calendar
             </button>
+            <button
+              onClick={() => setActiveTab("accommodation")}
+              className={cn(
+                "flex items-center gap-2 px-4 py-3 border-b-2 transition-colors",
+                activeTab === "accommodation"
+                  ? "border-purple-600 text-purple-600"
+                  : "border-transparent text-gray-500 hover:text-gray-700"
+              )}
+            >
+              <Home className="h-4 w-4" />
+              Accommodation
+            </button>
           </div>
         </div>
 
         {/* Mobile Bottom Tab Navigation */}
         <div className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t z-50">
-          <div className="grid grid-cols-4 gap-1 p-2">
+          <div className="grid grid-cols-5 gap-1 p-2">
             <button
               onClick={() => setActiveTab("drivers")}
               className={cn(
@@ -845,6 +871,18 @@ const ManagerPortal = () => {
             >
               <Calendar className="h-5 w-5" />
               <span className="text-xs mt-1">Calendar</span>
+            </button>
+            <button
+              onClick={() => setActiveTab("accommodation")}
+              className={cn(
+                "flex flex-col items-center py-2 rounded-lg transition-colors",
+                activeTab === "accommodation"
+                  ? "bg-purple-100 text-purple-600"
+                  : "text-gray-500"
+              )}
+            >
+              <Home className="h-5 w-5" />
+              <span className="text-xs mt-1">Rooms</span>
             </button>
           </div>
         </div>
@@ -1634,6 +1672,13 @@ const ManagerPortal = () => {
                 )}
               </CardContent>
             </Card>
+          </div>
+        )}
+
+        {/* ACCOMMODATION TAB */}
+        {activeTab === "accommodation" && (
+          <div className="space-y-4">
+            <RoomBedManagement />
           </div>
         )}
       </main>

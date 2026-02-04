@@ -24,7 +24,19 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { format } from "date-fns";
+import { Edit, Trash } from "lucide-react";
 
 type RefundRequestStatus = "pending" | "approved" | "rejected";
 
@@ -69,6 +81,16 @@ export default function RefundRequestsList() {
   const [reviewNotes, setReviewNotes] = useState("");
   const [selected, setSelected] = useState<RefundRequestRow | null>(null);
   const [saving, setSaving] = useState(false);
+
+  // Edit modal state
+  const [editModalOpen, setEditModalOpen] = useState(false);
+  const [editAmount, setEditAmount] = useState("");
+  const [editNotes, setEditNotes] = useState("");
+  const [editSelected, setEditSelected] = useState<RefundRequestRow | null>(null);
+  const [editSaving, setEditSaving] = useState(false);
+
+  // Delete state
+  const [deleting, setDeleting] = useState(false);
 
   const fetchRequests = async () => {
     try {
@@ -146,7 +168,55 @@ export default function RefundRequestsList() {
         .eq("status", "pending");
 
       if (error) throw error;
-      toast.success(`Request ${nextStatus}`);
+
+      // If approved, create a P&R transaction to deduct the amount
+      if (nextStatus === "approved") {
+        // Get current driver penalties
+        const { data: driverData, error: driverError } = await supabase
+          .from("users")
+          .select("total_penalties")
+          .eq("id", selected.driver_id)
+          .single();
+
+        if (driverError) {
+          console.error("Error fetching driver data:", driverError);
+        } else {
+          const currentPenalties = driverData?.total_penalties || 0;
+
+          // Create a "due" type transaction to deduct from P&R balance
+          const { error: txError } = await supabase
+            .from("driver_penalty_transactions")
+            .insert({
+              user_id: selected.driver_id,
+              amount: selected.amount,
+              type: "due",
+              description: `Refund Payout - Request approved${reviewNotes.trim() ? `: ${reviewNotes.trim()}` : ""}`,
+              created_by: user.id,
+            });
+
+          if (txError) {
+            console.error("Error creating P&R transaction:", txError);
+            toast.error("Refund approved but failed to create P&R transaction");
+          } else {
+            // Update driver's total_penalties (due adds to penalties)
+            const { error: updateError } = await supabase
+              .from("users")
+              .update({
+                total_penalties: currentPenalties + selected.amount,
+              })
+              .eq("id", selected.driver_id);
+
+            if (updateError) {
+              console.error("Error updating driver penalties:", updateError);
+            } else {
+              toast.success("Refund approved and deducted from P&R balance");
+            }
+          }
+        }
+      } else {
+        toast.success(`Request ${nextStatus}`);
+      }
+
       setReviewModalOpen(false);
       setSelected(null);
       await fetchRequests();
@@ -155,6 +225,64 @@ export default function RefundRequestsList() {
       toast.error("Failed to update request");
     } finally {
       setSaving(false);
+    }
+  };
+
+  // Handle edit refund request
+  const openEditModal = (row: RefundRequestRow) => {
+    setEditSelected(row);
+    setEditAmount(row.amount.toString());
+    setEditNotes(row.notes || "");
+    setEditModalOpen(true);
+  };
+
+  const submitEdit = async () => {
+    if (!user?.id || !editSelected) return;
+    const amountNum = parseFloat(editAmount);
+    if (!amountNum || amountNum <= 0) {
+      toast.error("Please enter a valid amount");
+      return;
+    }
+    try {
+      setEditSaving(true);
+      const { error } = await supabase
+        .from("driver_refund_requests")
+        .update({
+          amount: amountNum,
+          notes: editNotes.trim() || null,
+        })
+        .eq("id", editSelected.id);
+
+      if (error) throw error;
+      toast.success("Refund request updated");
+      setEditModalOpen(false);
+      setEditSelected(null);
+      await fetchRequests();
+    } catch (e) {
+      console.error("Error updating refund request:", e);
+      toast.error("Failed to update refund request");
+    } finally {
+      setEditSaving(false);
+    }
+  };
+
+  // Handle delete refund request
+  const handleDelete = async (id: string) => {
+    try {
+      setDeleting(true);
+      const { error } = await supabase
+        .from("driver_refund_requests")
+        .delete()
+        .eq("id", id);
+
+      if (error) throw error;
+      toast.success("Refund request deleted");
+      await fetchRequests();
+    } catch (e) {
+      console.error("Error deleting refund request:", e);
+      toast.error("Failed to delete refund request");
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -244,6 +372,46 @@ export default function RefundRequestsList() {
                           <div className="flex justify-end gap-2">
                             <Button
                               size="sm"
+                              variant="ghost"
+                              onClick={() => openEditModal(r)}
+                              title="Edit"
+                            >
+                              <Edit className="h-4 w-4" />
+                            </Button>
+                            <AlertDialog>
+                              <AlertDialogTrigger asChild>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="text-red-500 hover:text-red-700"
+                                  title="Delete"
+                                >
+                                  <Trash className="h-4 w-4" />
+                                </Button>
+                              </AlertDialogTrigger>
+                              <AlertDialogContent>
+                                <AlertDialogHeader>
+                                  <AlertDialogTitle>Delete Refund Request?</AlertDialogTitle>
+                                  <AlertDialogDescription>
+                                    This will permanently delete this refund request for{" "}
+                                    {r.driver?.name || "Unknown"} ({formatMoney(r.amount)}).
+                                    This action cannot be undone.
+                                  </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                  <AlertDialogAction
+                                    onClick={() => handleDelete(r.id)}
+                                    className="bg-red-500 hover:bg-red-600"
+                                    disabled={deleting}
+                                  >
+                                    {deleting ? "Deleting..." : "Delete"}
+                                  </AlertDialogAction>
+                                </AlertDialogFooter>
+                              </AlertDialogContent>
+                            </AlertDialog>
+                            <Button
+                              size="sm"
                               variant="outline"
                               onClick={() => openReview(r, "reject")}
                             >
@@ -254,10 +422,44 @@ export default function RefundRequestsList() {
                             </Button>
                           </div>
                         ) : (
-                          <div className="text-xs text-muted-foreground">
-                            {r.reviewed_at
-                              ? `Reviewed ${format(new Date(r.reviewed_at), "dd MMM yyyy")}`
-                              : "Reviewed"}
+                          <div className="flex justify-end gap-2 items-center">
+                            <div className="text-xs text-muted-foreground">
+                              {r.reviewed_at
+                                ? `Reviewed ${format(new Date(r.reviewed_at), "dd MMM yyyy")}`
+                                : "Reviewed"}
+                            </div>
+                            <AlertDialog>
+                              <AlertDialogTrigger asChild>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="text-red-500 hover:text-red-700"
+                                  title="Delete"
+                                >
+                                  <Trash className="h-4 w-4" />
+                                </Button>
+                              </AlertDialogTrigger>
+                              <AlertDialogContent>
+                                <AlertDialogHeader>
+                                  <AlertDialogTitle>Delete Refund Request?</AlertDialogTitle>
+                                  <AlertDialogDescription>
+                                    This will permanently delete this refund request for{" "}
+                                    {r.driver?.name || "Unknown"} ({formatMoney(r.amount)}).
+                                    This action cannot be undone.
+                                  </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                  <AlertDialogAction
+                                    onClick={() => handleDelete(r.id)}
+                                    className="bg-red-500 hover:bg-red-600"
+                                    disabled={deleting}
+                                  >
+                                    {deleting ? "Deleting..." : "Delete"}
+                                  </AlertDialogAction>
+                                </AlertDialogFooter>
+                              </AlertDialogContent>
+                            </AlertDialog>
                           </div>
                         )}
                       </TableCell>
@@ -283,6 +485,12 @@ export default function RefundRequestsList() {
               </div>
               {selected?.notes && <div className="text-muted-foreground mt-1">Request notes: {selected.notes}</div>}
             </div>
+            {reviewAction === "approve" && (
+              <div className="rounded-md bg-yellow-50 border border-yellow-200 p-3 text-sm text-yellow-800">
+                <strong>Note:</strong> Approving this request will automatically deduct{" "}
+                {formatMoney(selected?.amount || 0)} from the driver's P&R balance.
+              </div>
+            )}
             <div className="space-y-1">
               <Label htmlFor="review-notes">Review notes (optional)</Label>
               <Textarea
@@ -299,6 +507,52 @@ export default function RefundRequestsList() {
               </Button>
               <Button onClick={submitReview} disabled={saving}>
                 {saving ? "Saving..." : reviewAction === "approve" ? "Approve" : "Reject"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Refund Request Modal */}
+      <Dialog open={editModalOpen} onOpenChange={setEditModalOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Edit Refund Request</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="rounded-md bg-muted/30 p-3 text-sm">
+              <div className="font-medium">{editSelected?.driver?.name || "Unknown"}</div>
+              <div className="text-xs text-muted-foreground">
+                {editSelected?.driver?.phone_number || "—"} • {editSelected?.driver?.vehicle_number || "—"}
+              </div>
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="edit-amount">Amount</Label>
+              <Input
+                id="edit-amount"
+                type="number"
+                min={1}
+                value={editAmount}
+                onChange={(e) => setEditAmount(e.target.value)}
+                placeholder="Enter amount"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="edit-notes">Notes (optional)</Label>
+              <Textarea
+                id="edit-notes"
+                value={editNotes}
+                onChange={(e) => setEditNotes(e.target.value)}
+                rows={3}
+                placeholder="Any details for the request..."
+              />
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="outline" onClick={() => setEditModalOpen(false)} disabled={editSaving}>
+                Cancel
+              </Button>
+              <Button onClick={submitEdit} disabled={editSaving}>
+                {editSaving ? "Saving..." : "Save Changes"}
               </Button>
             </div>
           </div>

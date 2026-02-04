@@ -1,16 +1,14 @@
 import React, { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Home, Bed, User, Calendar, DollarSign } from "lucide-react";
+import { Home, Bed, Calendar } from "lucide-react";
 
 interface RoomBedInfo {
   room_number: number;
   room_name: string;
   bed_number: number;
   bed_name: string;
-  shift: string;
   assigned_date: string;
   daily_rent: number;
   monthly_rent: number;
@@ -74,7 +72,6 @@ const DriverRoomBedInfo: React.FC<DriverRoomBedInfoProps> = ({
           room_name: room.room_name,
           bed_number: bed.bed_number,
           bed_name: bed.bed_name,
-          shift: assignment.shift,
           assigned_date: assignment.assigned_date,
           daily_rent: bed.daily_rent,
           monthly_rent: bed.daily_rent * 30, // Approximate monthly rent
@@ -194,24 +191,6 @@ const DriverRoomBedInfo: React.FC<DriverRoomBedInfoProps> = ({
                 <p className="text-sm text-gray-600">Bed</p>
                 <p className="font-semibold">{roomBedInfo.bed_name}</p>
               </div>
-            </div>
-          </div>
-
-          {/* Shift Information */}
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-purple-100 rounded-lg">
-              <User className="w-5 h-5 text-purple-600" />
-            </div>
-            <div>
-              <p className="text-sm text-gray-600">Shift</p>
-              <Badge
-                variant={
-                  roomBedInfo.shift === "morning" ? "default" : "secondary"
-                }
-                className="capitalize"
-              >
-                {roomBedInfo.shift} Shift
-              </Badge>
             </div>
           </div>
 

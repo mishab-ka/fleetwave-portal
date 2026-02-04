@@ -652,22 +652,62 @@ const VehiclePerformance = () => {
         }
       });
 
+      // Add all active vehicles (online) that have no reports in this week
+      rentSlabDataMap.forEach((data, vehicleNumber) => {
+        if (!data.online || vehicleStats.has(vehicleNumber)) return;
+
+        const rentSlabDays =
+          getRentSlabForVehicle(vehicleNumber) ||
+          (savedExactWorkingDaysMap.get(vehicleNumber) ?? 0);
+
+        const workingDaysMultiplier =
+          rentSlabDays > 0
+            ? rentSlabDays
+            : savedWorkingDaysMap.get(vehicleNumber) || getDefaultWorkingDays();
+
+        const exactWorkingDays = rentSlabDays;
+
+        vehicleStats.set(vehicleNumber, {
+          vehicle_number: vehicleNumber,
+          total_trips: 0,
+          total_earnings: 0,
+          total_rent: 0,
+          additional_income: 0,
+          expenses: 0,
+          profit_loss: 0,
+          worked_days: 0,
+          avg_trips_per_day: 0,
+          avg_earnings_per_day: 0,
+          rent_slab: `${rentSlabDays} days`,
+          performance_status: "break_even",
+          working_days_multiplier: workingDaysMultiplier,
+          exact_working_days: exactWorkingDays,
+          other_income: 0,
+          bonus_income: 0,
+          fuel_expense: 0,
+          maintenance_expense: 0,
+          room_rent: 0,
+          other_expenses: 0,
+        });
+
+        vehicleWorkingDates.set(vehicleNumber, new Set<string>());
+        vehicleApprovedReportCount.set(vehicleNumber, 0);
+      });
+
       // Update worked_days based on approved report count (1 report = 0.5 days)
       vehicleApprovedReportCount.forEach((reportCount, vehicleNumber) => {
         const stats = vehicleStats.get(vehicleNumber);
         if (stats) {
-          // Calculate working days: 1 report = 0.5 days, 2 reports = 1 day
           const calculatedWorkingDays = reportCount / 2;
           stats.worked_days = calculatedWorkingDays;
-          // Use calculated working days or saved multiplier if available
           const savedWorkingDays = savedWorkingDaysMap.get(vehicleNumber);
+          // For vehicles with reports: use saved or calculated. For 0 reports: keep rent slab value
           stats.working_days_multiplier =
-            savedWorkingDays || calculatedWorkingDays;
-
-          // Debug log to verify working days calculation
-          console.log(
-            `${vehicleNumber} - Approved reports: ${reportCount} = ${calculatedWorkingDays} working days (${reportCount} reports ÷ 2)`
-          );
+            savedWorkingDays !== undefined && savedWorkingDays !== null
+              ? savedWorkingDays
+              : reportCount > 0
+                ? calculatedWorkingDays
+                : stats.working_days_multiplier;
         }
       });
 

@@ -38,6 +38,7 @@ import HRPerformanceAnalytics from "@/components/HRPerformanceAnalytics";
 import HREnhancedAnalytics from "@/components/HREnhancedAnalytics";
 import HRMobileView from "@/components/HRMobileView";
 import HRJoiningCalendar from "@/components/HRJoiningCalendar";
+import HRJoiningReports from "@/components/HRJoiningReports";
 import HRPerformanceAnalyticsEnhanced from "@/components/HRPerformanceAnalyticsEnhanced";
 import HRLiveActivityDashboard from "@/components/HRLiveActivityDashboard";
 import HRAlertCenter from "@/components/HRAlertCenter";
@@ -77,6 +78,7 @@ const HRDashboard: React.FC = () => {
     | "daily_history"
     | "manipulation_monitor"
     | "working_hours"
+    | "joining_reports"
   >("overview");
   const [userRole, setUserRole] = useState<
     "hr_manager" | "hr_staff" | "admin" | null
@@ -283,6 +285,11 @@ const HRDashboard: React.FC = () => {
           icon: <Calendar className="w-4 h-4" />,
         },
         {
+          id: "joining_reports",
+          label: "Joining Reports",
+          icon: <UserCheck className="w-4 h-4" />,
+        },
+        {
           id: "performance",
           label: "Team Performance",
           icon: <BarChart3 className="w-4 h-4" />,
@@ -354,6 +361,11 @@ const HRDashboard: React.FC = () => {
           id: "daily_history",
           label: "Daily History",
           icon: <Calendar className="w-4 h-4" />,
+        },
+        {
+          id: "joining_reports",
+          label: "Joining Reports",
+          icon: <UserCheck className="w-4 h-4" />,
         },
         {
           id: "working_hours",
@@ -761,6 +773,22 @@ const HRDashboard: React.FC = () => {
                               </div>
                             </Button>
                             <Button
+                              onClick={() => setActiveTab("joining_reports")}
+                              className="flex items-center gap-4 h-24 bg-gradient-to-r from-teal-500 to-cyan-600 hover:from-cyan-600 hover:to-teal-500 text-white shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-105"
+                            >
+                              <div className="w-12 h-12 bg-white/20 rounded-full flex items-center justify-center">
+                                <UserCheck className="w-6 h-6" />
+                              </div>
+                              <div className="text-left">
+                                <div className="font-semibold text-lg">
+                                  Joining Reports
+                                </div>
+                                <div className="text-sm opacity-90">
+                                  Mark drivers as joined
+                                </div>
+                              </div>
+                            </Button>
+                            <Button
                               onClick={() => setActiveTab("whatsapp")}
                               className="flex items-center gap-4 h-24 bg-gradient-to-r from-green-500 to-emerald-600 hover:from-emerald-600 hover:to-green-500 text-white shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-105"
                             >
@@ -878,6 +906,13 @@ const HRDashboard: React.FC = () => {
             {activeTab === "calendar" && (
               <div className="bg-white rounded-lg shadow-lg border border-gray-200 p-6">
                 <HRJoiningCalendar />
+              </div>
+            )}
+
+            {/* Joining Reports Tab - For All HR Users */}
+            {activeTab === "joining_reports" && (
+              <div className="bg-white rounded-lg shadow-lg border border-gray-200 p-6">
+                <HRJoiningReports />
               </div>
             )}
 

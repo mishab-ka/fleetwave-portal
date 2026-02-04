@@ -38,6 +38,7 @@ import {
   Activity,
   Calculator,
   AlertTriangle,
+  ClipboardList,
 } from "lucide-react";
 import { Button } from "./ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "./ui/sheet";
@@ -131,13 +132,13 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children, title }) => {
     {
       label: "Dashboard",
       icon: <LayoutDashboard size={20} />,
-      allowedRoles: ["admin", "manager", "hr", "accountant"] as UserRole[],
+      allowedRoles: ["admin", "hr", "accountant"] as UserRole[],
       subItems: [
         {
           label: "Company Overview",
           icon: <LayoutDashboard size={14} />,
           path: "/admin",
-          allowedRoles: ["admin", "manager", "hr", "accountant"] as UserRole[],
+          allowedRoles: ["admin", "hr", "accountant"] as UserRole[],
         },
         {
           label: "Vehicle Performance Overview",
@@ -223,7 +224,7 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children, title }) => {
         {
           label: "Shift Management",
           icon: <CalendarClock size={14} />,
-          path: "/admin/Shift",
+          path: "/admin/shift",
           allowedRoles: ["admin", "manager"] as UserRole[],
         },
         {
@@ -236,7 +237,15 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children, title }) => {
           label: "Accident Submission",
           icon: <AlertTriangle size={14} />,
           path: "/admin/submit-accident-report",
-          allowedRoles: ["admin", "manager", "accountant", "driver", "hr", "hr_manager", "hr_staff"] as UserRole[],
+          allowedRoles: [
+            "admin",
+            "manager",
+            "accountant",
+            "driver",
+            "hr",
+            "hr_manager",
+            "hr_staff",
+          ] as UserRole[],
         },
       ],
     },
@@ -249,32 +258,39 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children, title }) => {
     {
       label: "Accommodation",
       icon: <Home size={20} />,
-      allowedRoles: ["admin"] as UserRole[],
+      allowedRoles: ["admin", "manager"] as UserRole[],
       subItems: [
         {
           label: "Room & Bed Management",
           icon: <Bed size={14} />,
           path: "/admin/room-bed-management",
-          allowedRoles: ["admin"] as UserRole[],
+          allowedRoles: ["admin", "manager"] as UserRole[],
         },
         {
           label: "Monthly Rent Dashboard",
           icon: <TrendingUp size={14} />,
           path: "/admin/monthly-rent-dashboard",
-          allowedRoles: ["admin"] as UserRole[],
+          allowedRoles: ["admin", "manager"] as UserRole[],
         },
       ],
     },
     {
       label: "Reports",
       icon: <FileText size={20} />,
-      allowedRoles: ["admin", "manager", "accountant", "hr", "hr_manager", "hr_staff"] as UserRole[],
+      allowedRoles: [
+        "admin",
+        "manager",
+        "accountant",
+        "hr",
+        "hr_manager",
+        "hr_staff",
+      ] as UserRole[],
       subItems: [
         {
           label: "Fleet Reports",
           icon: <FileText size={14} />,
           path: "/admin/reports",
-          allowedRoles: ["admin", "manager", "accountant"] as UserRole[],
+          allowedRoles: ["admin", "accountant"] as UserRole[],
         },
         {
           label: "Manager Reports",
@@ -298,7 +314,20 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children, title }) => {
           label: "HR Reports",
           icon: <UserPlus size={14} />,
           path: "/admin/hr-reports",
-          allowedRoles: ["admin", "manager", "accountant", "hr", "hr_manager", "hr_staff"] as UserRole[],
+          allowedRoles: [
+            "admin",
+            "manager",
+            "accountant",
+            "hr",
+            "hr_manager",
+            "hr_staff",
+          ] as UserRole[],
+        },
+        {
+          label: "Joining Reports",
+          icon: <ClipboardList size={14} />,
+          path: "/admin/joining-reports",
+          allowedRoles: ["admin", "manager", "hr", "hr_manager"] as UserRole[],
         },
         {
           label: "Accountant Reports",
@@ -324,7 +353,7 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children, title }) => {
       label: "Task Manager",
       icon: <CheckSquare size={20} />,
       path: "/admin/task-manager",
-      allowedRoles: ["admin", "manager"] as UserRole[],
+      allowedRoles: ["admin"] as UserRole[],
     },
     {
       label: "HR",

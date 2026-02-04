@@ -25,10 +25,7 @@ import {
 import { format, parseISO } from "date-fns";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-import {
-  processReportData,
-  determineOverdueStatus,
-} from "@/components/admin/calendar/CalendarUtils";
+import { getDriverBlockingIssues } from "@/utils/driverReportOverdueCheck";
 import { Calendar } from "@/components/ui/calendar";
 import {
   Popover,
@@ -337,117 +334,6 @@ const ShiftManagement = () => {
     }
   };
 
-  const getDriverBlockingIssues = async (
-    driver: any
-  ): Promise<{
-    overdueCount: number;
-    rejectedCount: number;
-  }> => {
-    if (!driver) return { overdueCount: 0, rejectedCount: 0 };
-
-    try {
-      const today = new Date();
-
-      // Determine start date: last 30 days or from joining date, whichever is later
-      const baseStart = new Date();
-      baseStart.setDate(baseStart.getDate() - 30);
-
-      const joiningDate = driver.joining_date
-        ? new Date(driver.joining_date)
-        : null;
-
-      let startDate = baseStart;
-      if (joiningDate && joiningDate > startDate) {
-        startDate = new Date(
-          joiningDate.getFullYear(),
-          joiningDate.getMonth(),
-          joiningDate.getDate()
-        );
-      }
-
-      const endDate = today;
-      const startDateStr = format(startDate, "yyyy-MM-dd");
-      const endDateStr = format(endDate, "yyyy-MM-dd");
-
-      // Fetch all reports for this driver in the date range
-      const { data: reports, error: reportsError } = await supabase
-        .from("fleet_reports")
-        .select(
-          `
-          *,
-          users:user_id (
-            id,
-            name,
-            online,
-            joining_date,
-            offline_from_date,
-            online_from_date,
-            shift
-          )
-        `
-        )
-        .eq("user_id", driver.id)
-        .gte("rent_date", startDateStr)
-        .lte("rent_date", endDateStr)
-        .order("rent_date", { ascending: true });
-
-      if (reportsError) throw reportsError;
-
-      // Group reports by date
-      const reportsByDate: Record<string, any[]> = {};
-      reports?.forEach((report) => {
-        const dateStr = report.rent_date;
-        if (!reportsByDate[dateStr]) {
-          reportsByDate[dateStr] = [];
-        }
-        reportsByDate[dateStr].push(report);
-      });
-
-      let overdueCount = 0;
-      let rejectedCount = 0;
-      const cursor = new Date(startDate);
-
-      // Iterate each day in the range and apply same logic as calendar:
-      while (cursor <= today) {
-        const dateStr = cursor.toISOString().split("T")[0];
-        const dayReports = reportsByDate[dateStr];
-
-        if (dayReports && dayReports.length > 0) {
-          dayReports.forEach((report) => {
-            const processed = processReportData(report);
-            if (processed.status === "overdue") {
-              overdueCount += 1;
-            } else if (processed.status === "rejected") {
-              rejectedCount += 1;
-            }
-          });
-        } else {
-          // No report for this date – use calendar overdue rules for empty days
-          // For drivers with no shift, still check for overdue using default deadline
-          const driverShift = driver.shift || "none";
-          const status = determineOverdueStatus(
-            dateStr,
-            driverShift,
-            driver.joining_date || undefined,
-            driver.online,
-            driver.offline_from_date || undefined,
-            driver.online_from_date || undefined
-          );
-          if (status === "overdue") {
-            overdueCount += 1;
-          }
-        }
-
-        cursor.setDate(cursor.getDate() + 1);
-      }
-
-      return { overdueCount, rejectedCount };
-    } catch (error) {
-      console.error("Error checking blocking issues:", error);
-      return { overdueCount: 0, rejectedCount: 0 };
-    }
-  };
-
   const handleToggleOnline = async (
     driverId: string,
     currentStatus: boolean
@@ -727,14 +613,14 @@ const ShiftManagement = () => {
         if (driverError) throw driverError;
 
         const blockingIssues = await getDriverBlockingIssues(driverData);
-        if (blockingIssues.overdueCount > 0) {
+        if (blockingIssues.overdueCount > 0 || blockingIssues.rejectedCount > 0) {
           setOverdueCount(blockingIssues.overdueCount);
-          setRejectedCount(0);
+          setRejectedCount(blockingIssues.rejectedCount);
           setOverdueDriverName(
             driverData?.name || driverData?.driver_id || "Unknown Driver"
           );
           setShowOverdueWarning(true);
-          return; // Block shift change to "none" when overdue reports exist
+          return;
         }
       } catch (error) {
         console.error("Error checking for overdue reports:", error);
@@ -947,7 +833,7 @@ const ShiftManagement = () => {
       return;
     }
 
-    // Check for overdue reports if assigning "none" shift
+    // Check for overdue reports (report submission overdue) if assigning "none" shift
     if (selectedShiftType === "none") {
       try {
         const { data: driverData, error: driverError } = await supabase
@@ -959,14 +845,14 @@ const ShiftManagement = () => {
         if (driverError) throw driverError;
 
         const blockingIssues = await getDriverBlockingIssues(driverData);
-        if (blockingIssues.overdueCount > 0) {
+        if (blockingIssues.overdueCount > 0 || blockingIssues.rejectedCount > 0) {
           setOverdueCount(blockingIssues.overdueCount);
-          setRejectedCount(0);
+          setRejectedCount(blockingIssues.rejectedCount);
           setOverdueDriverName(
             driverData?.name || driverData?.driver_id || "Unknown Driver"
           );
           setShowOverdueWarning(true);
-          return; // Block shift assignment to "none" when overdue reports exist
+          return;
         }
       } catch (error) {
         console.error("Error checking for overdue reports:", error);
@@ -1341,13 +1227,7 @@ const ShiftManagement = () => {
       try {
         setIsUpdating(draggedDriver.id);
 
-        // Check for overdue or rejected reports before allowing shift removal
-        const { data: driverData } = await supabase
-          .from("users")
-          .select("name, driver_id")
-          .eq("id", draggedDriver.id)
-          .single();
-
+        // Check for overdue/rejected reports (report submission overdue) before allowing shift removal
         const { data: fullDriverData, error: driverError } = await supabase
           .from("users")
           .select("id, name, driver_id, shift, joining_date, online, offline_from_date, online_from_date")
@@ -1357,16 +1237,16 @@ const ShiftManagement = () => {
         if (driverError) throw driverError;
 
         const blockingIssues = await getDriverBlockingIssues(fullDriverData);
-        if (blockingIssues.overdueCount > 0) {
+        if (blockingIssues.overdueCount > 0 || blockingIssues.rejectedCount > 0) {
           setOverdueCount(blockingIssues.overdueCount);
-          setRejectedCount(0);
+          setRejectedCount(blockingIssues.rejectedCount);
           setOverdueDriverName(
             fullDriverData?.name || fullDriverData?.driver_id || "Unknown Driver"
           );
           setShowOverdueWarning(true);
           setIsUpdating(null);
           setDraggedDriver(null);
-          return; // Block shift removal when overdue reports exist
+          return;
         }
 
         // Update driver to remove shift and vehicle assignment
@@ -2722,17 +2602,17 @@ const ShiftManagement = () => {
         </DialogContent>
       </Dialog>
 
-      {/* Overdue/Rejected Warning Popup */}
+      {/* Overdue/Rejected Reports Warning Popup */}
       <Dialog open={showOverdueWarning} onOpenChange={setShowOverdueWarning}>
         <DialogContent className="sm:max-w-[425px]">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-red-600">
               <AlertTriangle className="h-5 w-5" />
-              Cannot Remove Driver from Shift/Vehicle
+              Cannot Assign No Shift
             </DialogTitle>
             <DialogDescription>
-              This driver has overdue or rejected reports and cannot be removed from
-              shift or vehicle assignments until all issues are resolved.
+              This driver has overdue or rejected reports (report submission) and cannot
+              be put on No Shift until all reports are submitted and resolved.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
@@ -2745,7 +2625,7 @@ const ShiftManagement = () => {
                 <div className="flex items-center gap-2 text-red-800 mb-2">
                   <AlertCircle className="h-4 w-4" />
                   <span className="font-medium">
-                    Overdue Count: {overdueCount}
+                    Overdue Reports: {overdueCount} (report not submitted past deadline)
                   </span>
                 </div>
               )}
@@ -2753,23 +2633,19 @@ const ShiftManagement = () => {
                 <div className="flex items-center gap-2 text-red-800 mb-2">
                   <AlertCircle className="h-4 w-4" />
                   <span className="font-medium">
-                    Rejected Count: {rejectedCount}
+                    Rejected Reports: {rejectedCount}
                   </span>
                 </div>
               )}
               <p className="text-sm text-red-600 mt-2">
-                Please ensure all overdue and rejected reports are resolved
-                before removing this driver from shift or vehicle assignments.
+                Please ensure all reports are submitted and approved before
+                assigning No Shift to this driver.
               </p>
             </div>
             <div className="text-sm text-gray-600">
-              <p>
-                • Driver must submit all pending reports before shift/vehicle removal
-              </p>
-              <p>
-                • You can review their reports in the calendar or reports section
-              </p>
-              <p>• Once all reports are submitted and approved, you can proceed</p>
+              <p>• Driver must submit all pending reports before No Shift can be assigned</p>
+              <p>• Review reports in the calendar or reports section</p>
+              <p>• Once all reports are submitted and approved, you can assign No Shift</p>
             </div>
           </div>
           <DialogFooter>

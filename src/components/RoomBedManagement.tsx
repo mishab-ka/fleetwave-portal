@@ -24,14 +24,11 @@ import {
   Bed,
   Users,
   Home,
-  Plus,
   UserPlus,
-  Calendar,
   DollarSign,
   TrendingUp,
   AlertCircle,
   CheckCircle,
-  Clock,
 } from "lucide-react";
 
 interface Room {
@@ -49,11 +46,7 @@ interface Bed {
   bed_name: string;
   status: string;
   daily_rent: number;
-  morning_driver?: {
-    id: string;
-    name: string;
-  };
-  night_driver?: {
+  assigned_driver?: {
     id: string;
     name: string;
   };
@@ -89,7 +82,6 @@ const RoomBedManagement: React.FC = () => {
   const [selectedRoom, setSelectedRoom] = useState<string>("");
   const [selectedBed, setSelectedBed] = useState<string>("");
   const [selectedDriver, setSelectedDriver] = useState<string>("");
-  const [selectedShift, setSelectedShift] = useState<string>("");
   const [showAssignDialog, setShowAssignDialog] = useState(false);
 
   // Fetch all data
@@ -148,46 +140,20 @@ const RoomBedManagement: React.FC = () => {
 
     if (assignmentsError) throw assignmentsError;
 
-    // Process the data to get current assignments
+    // Process: 1 person per bed - take first active assignment
     const processedBeds = (bedsData || []).map((bed) => {
-      // Find morning assignment for this bed
-      const morningAssignment = assignmentsData?.find(
+      const activeAssignment = assignmentsData?.find(
         (assignment: any) =>
           assignment.bed_id === bed.id &&
-          assignment.shift === "morning" &&
           assignment.status === "active" &&
           !assignment.end_date
       );
-
-      // Find night assignment for this bed
-      const nightAssignment = assignmentsData?.find(
-        (assignment: any) =>
-          assignment.bed_id === bed.id &&
-          assignment.shift === "night" &&
-          assignment.status === "active" &&
-          !assignment.end_date
-      );
-
-      const processedBed = {
+      return {
         ...bed,
-        morning_driver: morningAssignment?.user || null,
-        night_driver: nightAssignment?.user || null,
+        assigned_driver: activeAssignment?.user || null,
       };
-
-      // Debug logging for first few beds
-      if (bed.bed_number <= 2) {
-        console.log(`Bed ${bed.bed_name}:`, {
-          bedId: bed.id,
-          morningAssignment: morningAssignment?.user?.name || "None",
-          nightAssignment: nightAssignment?.user?.name || "None",
-          allAssignments: assignmentsData?.filter((a) => a.bed_id === bed.id),
-        });
-      }
-
-      return processedBed;
     });
 
-    console.log("All assignments data:", assignmentsData);
     setBeds(processedBeds);
   };
 
@@ -232,11 +198,10 @@ const RoomBedManagement: React.FC = () => {
       const totalReports = reports?.length || 0;
       const monthlyRent = totalReports * 100; // ₹100 per report
 
-      // Get bed occupancy
-      const occupiedBeds = beds.filter(
-        (bed) => bed.morning_driver || bed.night_driver
-      ).length;
-      const availableBeds = 30 - occupiedBeds;
+      // Get bed occupancy (1 person per bed)
+      const occupiedBeds = beds.filter((bed) => bed.assigned_driver).length;
+      const totalBeds = beds.length;
+      const availableBeds = totalBeds - occupiedBeds;
 
       setRentSummary({
         total_rent: monthlyRent,
@@ -250,104 +215,75 @@ const RoomBedManagement: React.FC = () => {
   };
 
   const handleAssignDriver = async () => {
-    if (!selectedBed || !selectedDriver || !selectedShift) {
-      toast.error("Please select bed, driver, and shift");
+    if (!selectedBed || !selectedDriver) {
+      toast.error("Please select bed and driver");
       return;
     }
 
     try {
       const today = new Date().toISOString().split("T")[0];
+      const shift = "morning"; // 1 person per bed - use single shift
 
-      // Check if bed is already occupied for this shift and date
-      const { data: existingAssignment, error: checkError } = await supabase
+      // Check if bed is already occupied (any active assignment)
+      const { data: existingAssignments } = await supabase
         .from("bed_assignments")
-        .select("id, user:users(name), status, end_date")
+        .select("id, user:users(name)")
         .eq("bed_id", selectedBed)
-        .eq("shift", selectedShift)
-        .eq("assigned_date", today)
         .eq("status", "active")
-        .is("end_date", null)
-        .single();
+        .is("end_date", null);
 
-      if (existingAssignment) {
+      if (existingAssignments && existingAssignments.length > 0) {
+        const occupant = (existingAssignments as any)[0]?.user?.name;
         toast.error(
-          `This bed is already occupied by ${
-            existingAssignment.user?.name || "another driver"
-          } for the selected shift today`
+          `This bed is already occupied by ${occupant || "another driver"}`
         );
         return;
       }
 
-      // Check if this driver is already assigned to another bed for this shift today
-      const { data: driverAssignment, error: driverCheckError } = await supabase
+      // Check if this driver is already assigned to another bed
+      const { data: driverAssignment } = await supabase
         .from("bed_assignments")
         .select("id, bed:beds(bed_name, room:rooms(room_name))")
         .eq("user_id", selectedDriver)
-        .eq("shift", selectedShift)
-        .eq("assigned_date", today)
         .eq("status", "active")
         .is("end_date", null)
         .single();
 
       if (driverAssignment) {
+        const bedInfo = (driverAssignment as any).bed;
         toast.error(
-          `This driver is already assigned to ${driverAssignment.bed?.bed_name} in ${driverAssignment.bed?.room?.room_name} for the selected shift today`
+          `This driver is already assigned to ${
+            bedInfo?.bed_name || "a bed"
+          } in ${bedInfo?.room?.room_name || "a room"}`
         );
         return;
       }
 
-      // Check if there's an existing assignment for this bed/shift/date (even if ended)
-      const { data: existingRecord, error: existingError } = await supabase
+      // Create new assignment (1 person per bed)
+      const { error: assignError } = await supabase
         .from("bed_assignments")
-        .select("id, status, end_date")
-        .eq("bed_id", selectedBed)
-        .eq("shift", selectedShift)
-        .eq("assigned_date", today)
-        .single();
+        .insert({
+          bed_id: selectedBed,
+          user_id: selectedDriver,
+          shift,
+          assigned_date: today,
+        });
 
-      if (existingRecord) {
-        // Update existing record to make it active again
-        const { error: updateError } = await supabase
-          .from("bed_assignments")
-          .update({
-            user_id: selectedDriver,
-            status: "active",
-            end_date: null,
-            updated_at: new Date().toISOString(),
-          })
-          .eq("id", existingRecord.id);
-
-        if (updateError) throw updateError;
-      } else {
-        // Create new assignment
-        const { error: assignError } = await supabase
-          .from("bed_assignments")
-          .insert({
-            bed_id: selectedBed,
-            user_id: selectedDriver,
-            shift: selectedShift,
-            assigned_date: today,
-          });
-
-        if (assignError) {
-          if (assignError.code === "23505") {
-            toast.error(
-              "This bed is already assigned for the selected shift today"
-            );
-            return;
-          }
-          throw assignError;
+      if (assignError) {
+        if (assignError.code === "23505") {
+          toast.error("This bed is already assigned");
+          return;
         }
+        throw assignError;
       }
 
-      // Update user's current room and bed
+      // Update user's current room and bed (no shift)
       const selectedBedData = beds.find((b) => b.id === selectedBed);
       const { error: updateError } = await supabase
         .from("users")
         .update({
           current_room_id: selectedBedData?.room_id,
           current_bed_id: selectedBed,
-          current_shift: selectedShift,
         })
         .eq("id", selectedDriver);
 
@@ -357,7 +293,6 @@ const RoomBedManagement: React.FC = () => {
       setShowAssignDialog(false);
       setSelectedBed("");
       setSelectedDriver("");
-      setSelectedShift("");
       fetchData();
     } catch (error) {
       console.error("Error assigning driver:", error);
@@ -365,9 +300,13 @@ const RoomBedManagement: React.FC = () => {
     }
   };
 
-  const handleUnassignDriver = async (bedId: string, shift: string) => {
+  const handleUnassignDriver = async (bedId: string) => {
     try {
-      // End the current assignment
+      const bed = beds.find((b) => b.id === bedId);
+      const driver = bed?.assigned_driver;
+      if (!driver) return;
+
+      // End the current assignment (1 person per bed - any shift)
       const { error: endError } = await supabase
         .from("bed_assignments")
         .update({
@@ -375,29 +314,22 @@ const RoomBedManagement: React.FC = () => {
           end_date: new Date().toISOString().split("T")[0],
         })
         .eq("bed_id", bedId)
-        .eq("shift", shift)
+        .eq("user_id", driver.id)
         .eq("status", "active")
         .is("end_date", null);
 
       if (endError) throw endError;
 
       // Clear user's current room and bed
-      const bed = beds.find((b) => b.id === bedId);
-      const driver =
-        shift === "morning" ? bed?.morning_driver : bed?.night_driver;
+      const { error: updateError } = await supabase
+        .from("users")
+        .update({
+          current_room_id: null,
+          current_bed_id: null,
+        })
+        .eq("id", driver.id);
 
-      if (driver) {
-        const { error: updateError } = await supabase
-          .from("users")
-          .update({
-            current_room_id: null,
-            current_bed_id: null,
-            current_shift: null,
-          })
-          .eq("id", driver.id);
-
-        if (updateError) throw updateError;
-      }
+      if (updateError) throw updateError;
 
       toast.success("Driver unassigned successfully!");
       fetchData();
@@ -434,33 +366,22 @@ const RoomBedManagement: React.FC = () => {
   };
 
   const getBedStatusColor = (bed: Bed) => {
-    if (bed.morning_driver && bed.night_driver) {
-      return "bg-red-100 border-red-300 text-red-800"; // Fully occupied
-    } else if (bed.morning_driver || bed.night_driver) {
-      return "bg-yellow-100 border-yellow-300 text-yellow-800"; // Partially occupied
-    } else {
-      return "bg-green-100 border-green-300 text-green-800"; // Available
+    if (bed.assigned_driver) {
+      return "bg-red-100 border-red-300 text-red-800"; // Occupied
     }
+    return "bg-green-100 border-green-300 text-green-800"; // Available
   };
 
   const getBedStatusText = (bed: Bed) => {
-    if (bed.morning_driver && bed.night_driver) {
-      return "Fully Occupied";
-    } else if (bed.morning_driver || bed.night_driver) {
-      return "Partially Occupied";
-    } else {
-      return "Available";
-    }
+    return bed.assigned_driver ? "Occupied" : "Available";
   };
 
   const getBedStatusIcon = (bed: Bed) => {
-    if (bed.morning_driver && bed.night_driver) {
-      return <CheckCircle className="w-4 h-4" />; // Fully occupied
-    } else if (bed.morning_driver || bed.night_driver) {
-      return <Clock className="w-4 h-4" />; // Partially occupied
-    } else {
-      return <AlertCircle className="w-4 h-4" />; // Available
-    }
+    return bed.assigned_driver ? (
+      <CheckCircle className="w-4 h-4" />
+    ) : (
+      <AlertCircle className="w-4 h-4" />
+    );
   };
 
   if (loading) {
@@ -478,7 +399,7 @@ const RoomBedManagement: React.FC = () => {
           Room & Bed Management
         </h1>
         <p className="text-gray-600">
-          Manage driver accommodation across 6 rooms and 30 beds
+          Manage driver accommodation - 1 person per bed
         </p>
       </div>
 
@@ -501,7 +422,9 @@ const RoomBedManagement: React.FC = () => {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-gray-600">Total Beds</p>
-                <p className="text-2xl font-bold text-fleet-purple">30</p>
+                <p className="text-2xl font-bold text-fleet-purple">
+                  {beds.length}
+                </p>
               </div>
               <Bed className="h-8 w-8 text-fleet-purple" />
             </div>
@@ -541,7 +464,7 @@ const RoomBedManagement: React.FC = () => {
         </Card>
       </div>
 
-      {/* Assigned Drivers Summary */}
+      {/* Assigned Drivers Summary - Bed number + Driver name only */}
       <Card className="mb-8">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
@@ -550,70 +473,28 @@ const RoomBedManagement: React.FC = () => {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <h4 className="font-medium text-yellow-700 mb-2 flex items-center gap-2">
-                <span className="w-2 h-2 bg-yellow-500 rounded-full"></span>
-                Morning Shift Drivers
-              </h4>
-              <div className="space-y-1">
-                {beds
-                  .filter((bed) => bed.morning_driver)
-                  .map((bed) => {
-                    const room = rooms.find((r) => r.id === bed.room_id);
-                    return (
-                      <div
-                        key={`morning-${bed.id}`}
-                        className="flex justify-between items-center text-sm bg-yellow-50 p-2 rounded"
-                      >
-                        <span className="font-medium">
-                          {bed.morning_driver?.name}
-                        </span>
-                        <span className="text-gray-600">
-                          {room?.room_name} - {bed.bed_name}
-                        </span>
-                      </div>
-                    );
-                  })}
-                {beds.filter((bed) => bed.morning_driver).length === 0 && (
-                  <p className="text-gray-500 italic text-sm">
-                    No morning shift drivers assigned
-                  </p>
-                )}
-              </div>
-            </div>
-
-            <div>
-              <h4 className="font-medium text-blue-700 mb-2 flex items-center gap-2">
-                <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
-                Night Shift Drivers
-              </h4>
-              <div className="space-y-1">
-                {beds
-                  .filter((bed) => bed.night_driver)
-                  .map((bed) => {
-                    const room = rooms.find((r) => r.id === bed.room_id);
-                    return (
-                      <div
-                        key={`night-${bed.id}`}
-                        className="flex justify-between items-center text-sm bg-blue-50 p-2 rounded"
-                      >
-                        <span className="font-medium">
-                          {bed.night_driver?.name}
-                        </span>
-                        <span className="text-gray-600">
-                          {room?.room_name} - {bed.bed_name}
-                        </span>
-                      </div>
-                    );
-                  })}
-                {beds.filter((bed) => bed.night_driver).length === 0 && (
-                  <p className="text-gray-500 italic text-sm">
-                    No night shift drivers assigned
-                  </p>
-                )}
-              </div>
-            </div>
+          <div className="space-y-1">
+            {beds
+              .filter((bed) => bed.assigned_driver)
+              .map((bed) => {
+                const room = rooms.find((r) => r.id === bed.room_id);
+                return (
+                  <div
+                    key={bed.id}
+                    className="flex justify-between items-center text-sm bg-gray-50 p-2 rounded"
+                  >
+                    <span className="font-medium">
+                      {bed.bed_name} - {bed.assigned_driver?.name}
+                    </span>
+                    <span className="text-gray-600">{room?.room_name}</span>
+                  </div>
+                );
+              })}
+            {beds.filter((bed) => bed.assigned_driver).length === 0 && (
+              <p className="text-gray-500 italic text-sm">
+                No drivers assigned
+              </p>
+            )}
           </div>
         </CardContent>
       </Card>
@@ -647,20 +528,15 @@ const RoomBedManagement: React.FC = () => {
                     {beds
                       .filter((bed) => {
                         const room = rooms.find((r) => r.id === bed.room_id);
-                        // Only show beds from online rooms and not fully occupied
                         return (
-                          room?.status === "online" &&
-                          !(bed.morning_driver && bed.night_driver)
+                          room?.status === "online" && !bed.assigned_driver
                         );
                       })
                       .map((bed) => {
                         const room = rooms.find((r) => r.id === bed.room_id);
                         return (
                           <SelectItem key={bed.id} value={bed.id}>
-                            {room?.room_name} - {bed.bed_name}
-                            {bed.morning_driver || bed.night_driver
-                              ? " (Partially Occupied)"
-                              : " (Available)"}
+                            {room?.room_name} - {bed.bed_name} (Available)
                           </SelectItem>
                         );
                       })}
@@ -683,21 +559,6 @@ const RoomBedManagement: React.FC = () => {
                         {driver.name} ({driver.phone_number})
                       </SelectItem>
                     ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div>
-                <Label htmlFor="shift-select">Select Shift</Label>
-                <Select value={selectedShift} onValueChange={setSelectedShift}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Choose a shift" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="morning">
-                      Morning Shift (12hr)
-                    </SelectItem>
-                    <SelectItem value="night">Night Shift (12hr)</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -785,91 +646,43 @@ const RoomBedManagement: React.FC = () => {
                         bed
                       )} ${room.status === "offline" ? "opacity-75" : ""}`}
                     >
-                      <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
                           {getBedStatusIcon(bed)}
                           <span className="font-medium">{bed.bed_name}</span>
+                          <span
+                            className={
+                              bed.assigned_driver
+                                ? "font-medium text-gray-900"
+                                : "text-green-600 font-medium"
+                            }
+                          >
+                            {bed.assigned_driver?.name || "Available"}
+                          </span>
                         </div>
                         <div className="flex gap-2">
                           <Badge
                             variant={
-                              bed.morning_driver && bed.night_driver
-                                ? "destructive"
-                                : bed.morning_driver || bed.night_driver
-                                ? "default"
-                                : "secondary"
+                              bed.assigned_driver ? "destructive" : "secondary"
                             }
                             className="text-xs"
                           >
                             {getBedStatusText(bed)}
                           </Badge>
+                          {bed.assigned_driver && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleUnassignDriver(bed.id)}
+                              disabled={room.status === "offline"}
+                              className="h-6 px-2 text-xs hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
+                            >
+                              Unassign
+                            </Button>
+                          )}
                           <Badge variant="outline" className="text-xs">
                             ₹{bed.daily_rent}/day
                           </Badge>
-                        </div>
-                      </div>
-
-                      <div className="space-y-2 text-sm">
-                        <div className="flex justify-between items-center">
-                          <span className="font-medium flex items-center gap-1">
-                            <span className="w-2 h-2 bg-yellow-500 rounded-full"></span>
-                            Morning Shift:
-                          </span>
-                          <span>
-                            {bed.morning_driver ? (
-                              <div className="flex items-center gap-2">
-                                <span className="font-medium text-gray-900">
-                                  {bed.morning_driver.name}
-                                </span>
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={() =>
-                                    handleUnassignDriver(bed.id, "morning")
-                                  }
-                                  disabled={room.status === "offline"}
-                                  className="h-6 px-2 text-xs hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
-                                >
-                                  Unassign
-                                </Button>
-                              </div>
-                            ) : (
-                              <span className="text-gray-500 italic">
-                                Available
-                              </span>
-                            )}
-                          </span>
-                        </div>
-
-                        <div className="flex justify-between items-center">
-                          <span className="font-medium flex items-center gap-1">
-                            <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
-                            Night Shift:
-                          </span>
-                          <span>
-                            {bed.night_driver ? (
-                              <div className="flex items-center gap-2">
-                                <span className="font-medium text-gray-900">
-                                  {bed.night_driver.name}
-                                </span>
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={() =>
-                                    handleUnassignDriver(bed.id, "night")
-                                  }
-                                  disabled={room.status === "offline"}
-                                  className="h-6 px-2 text-xs hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
-                                >
-                                  Unassign
-                                </Button>
-                              </div>
-                            ) : (
-                              <span className="text-gray-500 italic">
-                                Available
-                              </span>
-                            )}
-                          </span>
                         </div>
                       </div>
                     </div>
@@ -897,7 +710,7 @@ const RoomBedManagement: React.FC = () => {
                 Monthly Rent per Bed Space
               </p>
               <p className="text-2xl font-bold text-fleet-purple">₹6,000</p>
-              <p className="text-xs text-gray-500">(2 drivers × ₹3,000 each)</p>
+              <p className="text-xs text-gray-500">(1 person per bed)</p>
             </div>
             <div className="text-center">
               <p className="text-sm text-gray-600">Total Monthly Revenue</p>

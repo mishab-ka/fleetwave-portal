@@ -64,6 +64,7 @@ import {
 } from "@/components/ui/table";
 import { RentStatusBadge } from "@/components/RentStatusBadge";
 import { useAuth } from "@/context/AuthContext";
+import { getDriverBlockingIssues } from "@/utils/driverReportOverdueCheck";
 
 interface DriverDetailsModalProps {
   isOpen: boolean;
@@ -197,7 +198,7 @@ export const DriverDetailsModal = ({
               room:rooms(*)
             )
           )
-        `,
+        `
         )
         .eq("id", driverId)
         .eq("current_bed_assignment.status", "active")
@@ -238,7 +239,7 @@ export const DriverDetailsModal = ({
           `
           id,
           vehicle_number
-        `,
+        `
         )
         .eq("online", true);
 
@@ -266,7 +267,7 @@ export const DriverDetailsModal = ({
 
       setEnableDepositCollection(enabled);
       toast.success(
-        `Deposit collection ${enabled ? "enabled" : "disabled"} successfully`,
+        `Deposit collection ${enabled ? "enabled" : "disabled"} successfully`
       );
 
       if (onDriverUpdate) {
@@ -384,8 +385,8 @@ export const DriverDetailsModal = ({
         setShowDocumentWarning(true);
         toast.error(
           `Cannot put driver online. Missing documents: ${documentCheck.missing.join(
-            ", ",
-          )}`,
+            ", "
+          )}`
         );
         return;
       }
@@ -448,7 +449,7 @@ export const DriverDetailsModal = ({
       await fetchDriverDetails();
 
       toast.success(
-        `Driver status updated to ${!isOnline ? "Online" : "Offline"}`,
+        `Driver status updated to ${!isOnline ? "Online" : "Offline"}`
       );
 
       if (onDriverUpdate) onDriverUpdate();
@@ -463,7 +464,7 @@ export const DriverDetailsModal = ({
   // Validation function for vehicle/shift assignment
   const validateVehicleShiftAssignment = (
     vehicle: string | null,
-    shift: string | null,
+    shift: string | null
   ): { isValid: boolean; error?: string } => {
     const hasVehicle = vehicle && vehicle !== "No Vehicle";
     const hasShift = shift && shift !== "none";
@@ -532,7 +533,7 @@ export const DriverDetailsModal = ({
       toast.success(
         `Driver category updated to ${
           category === "salary_base" ? "Salary Base" : "Hub Base"
-        }`,
+        }`
       );
 
       if (onDriverUpdate) onDriverUpdate();
@@ -545,13 +546,13 @@ export const DriverDetailsModal = ({
   };
 
   const handleDepositChange = async (
-    e: React.ChangeEvent<HTMLInputElement>,
+    e: React.ChangeEvent<HTMLInputElement>
   ) => {
     setDeposit(e.target.value);
   };
 
   const handleTotalTripsChange = async (
-    e: React.ChangeEvent<HTMLInputElement>,
+    e: React.ChangeEvent<HTMLInputElement>
   ) => {
     setTotalTrips(e.target.value);
   };
@@ -575,6 +576,26 @@ export const DriverDetailsModal = ({
         toast.error(validation.error || "Invalid vehicle/shift combination");
         setIsProcessing(false);
         return;
+      }
+
+      // Block No Shift if driver has overdue or rejected reports (report submission overdue)
+      if (newShift === "none") {
+        const { data: driverData } = await supabase
+          .from("users")
+          .select(
+            "id, name, driver_id, shift, joining_date, online, offline_from_date, online_from_date"
+          )
+          .eq("id", driverId)
+          .single();
+
+        const blocking = await getDriverBlockingIssues(driverData);
+        if (blocking.overdueCount > 0 || blocking.rejectedCount > 0) {
+          toast.error(
+            `Driver has ${blocking.overdueCount} overdue and ${blocking.rejectedCount} rejected reports. Submit and approve all reports before assigning No Shift.`
+          );
+          setIsProcessing(false);
+          return;
+        }
       }
 
       const today = new Date().toISOString().split("T")[0];
@@ -621,12 +642,12 @@ export const DriverDetailsModal = ({
         changes.push(
           `vehicle: ${driver.vehicle_number || "none"} → ${
             newVehicle || "none"
-          }`,
+          }`
         );
       }
       if (driver.shift !== newShift) {
         changes.push(
-          `shift: ${driver.shift || "none"} → ${newShift || "none"}`,
+          `shift: ${driver.shift || "none"} → ${newShift || "none"}`
         );
       }
 
@@ -796,25 +817,6 @@ export const DriverDetailsModal = ({
                               "Not assigned"}
                           </span>
                         </div>
-
-                        <div className="flex items-center space-x-2">
-                          <div className="h-4 w-4 text-muted-foreground flex items-center justify-center">
-                            ⏰
-                          </div>
-                          <span className="text-sm font-medium">Shift:</span>
-                          <Badge
-                            variant={
-                              driver.current_bed_assignment[0]?.shift ===
-                              "morning"
-                                ? "default"
-                                : "secondary"
-                            }
-                            className="text-xs"
-                          >
-                            {driver.current_bed_assignment[0]?.shift ||
-                              "Not assigned"}
-                          </Badge>
-                        </div>
                       </>
                     ) : (
                       <div className="flex items-center space-x-2">
@@ -895,7 +897,7 @@ export const DriverDetailsModal = ({
                           {driver?.date_of_birth
                             ? format(
                                 new Date(driver.date_of_birth),
-                                "dd MMM yyyy",
+                                "dd MMM yyyy"
                               )
                             : "Not provided"}
                         </span>
@@ -959,7 +961,7 @@ export const DriverDetailsModal = ({
                           {driver?.resigning_date
                             ? format(
                                 new Date(driver.resigning_date),
-                                "dd MMM yyyy",
+                                "dd MMM yyyy"
                               )
                             : "Not set"}
                         </span>
@@ -1256,17 +1258,17 @@ export const DriverDetailsModal = ({
                                 toast.success(
                                   `Cash trip ${
                                     checked ? "blocked" : "unblocked"
-                                  } for ${driver?.name}`,
+                                  } for ${driver?.name}`
                                 );
                                 fetchDriverDetails(); // Refresh data
                                 if (onDriverUpdate) onDriverUpdate();
                               } catch (error) {
                                 console.error(
                                   "Error updating cash trip block:",
-                                  error,
+                                  error
                                 );
                                 toast.error(
-                                  "Failed to update cash trip block status",
+                                  "Failed to update cash trip block status"
                                 );
                               }
                             }}
@@ -1557,8 +1559,8 @@ export const DriverDetailsModal = ({
                             vehicle.vehicle_number
                               .slice(-4) // Extract last 4 digits
                               .toLowerCase()
-                              .includes(searchQuery),
-                          ),
+                              .includes(searchQuery)
+                          )
                         );
                       }}
                     />
@@ -1670,7 +1672,7 @@ export const DriverDetailsModal = ({
                                       <Calendar className="h-4 w-4 text-muted-foreground" />
                                       {format(
                                         new Date(record.rent_date),
-                                        "dd MMM yyyy",
+                                        "dd MMM yyyy"
                                       )}
                                     </div>
                                   </TableCell>
@@ -1683,11 +1685,11 @@ export const DriverDetailsModal = ({
                                         record.status === "approved"
                                           ? "success"
                                           : record.status === "leave"
-                                            ? "default"
-                                            : record.status ===
-                                                "pending_verification"
-                                              ? "pending"
-                                              : "destructive"
+                                          ? "default"
+                                          : record.status ===
+                                            "pending_verification"
+                                          ? "pending"
+                                          : "destructive"
                                       }
                                     >
                                       {record.status}
@@ -1731,7 +1733,8 @@ export const DriverDetailsModal = ({
                         Deposit Transaction History
                       </CardTitle>
                       <CardDescription>
-                        View all deposit, refund, due, penalty, and bonus transactions
+                        View all deposit, refund, due, penalty, and bonus
+                        transactions
                       </CardDescription>
                     </CardHeader>
                     <CardContent>

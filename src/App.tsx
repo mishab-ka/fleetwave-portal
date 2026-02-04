@@ -56,6 +56,7 @@ import AdminTaskManager from "./pages/admin/AdminTaskManager";
 import VehiclePerformanceOverview from "./pages/admin/VehiclePerformanceOverview";
 import StaffActivityMonitor from "./pages/admin/StaffActivityMonitor";
 import AdminHRReports from "./pages/admin/AdminHRReports";
+import AdminJoiningReports from "./pages/admin/AdminJoiningReports";
 import AdminAccountantReports from "./pages/admin/AdminAccountantReports";
 import SubmitAccidentReport from "./pages/admin/SubmitAccidentReport";
 import AdminAccidentReports from "./pages/admin/AdminAccidentReports";
@@ -212,6 +213,10 @@ const App = () => (
                   <Route
                     path="/admin/hr-reports"
                     element={<AdminHRReports />}
+                  />
+                  <Route
+                    path="/admin/joining-reports"
+                    element={<AdminJoiningReports />}
                   />
                   <Route
                     path="/admin/accountant-reports"

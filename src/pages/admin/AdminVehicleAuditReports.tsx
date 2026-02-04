@@ -46,6 +46,55 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { useAdmin } from "@/context/AdminContext";
 
+/** Normalize images from object { front, right, ... } or legacy array format to path array */
+function getImagePaths(images: unknown): string[] {
+  if (!images) return [];
+  if (Array.isArray(images)) return images.filter(Boolean);
+  if (typeof images === "object" && images !== null) {
+    return Object.values(images).filter(
+      (v): v is string => typeof v === "string"
+    );
+  }
+  return [];
+}
+
+const AUDIT_IMAGE_LABELS = [
+  "1. Front",
+  "2. Right Side",
+  "3. Left Side",
+  "4. Back Side",
+  "5. Bonnet",
+  "6. Music System",
+];
+
+/** Build labeled image list for viewer: [ { label, url } ] */
+function getLabeledImages(images: unknown): { label: string; url: string }[] {
+  const labels: Record<string, string> = {
+    front: "1. Front",
+    right: "2. Right Side",
+    left: "3. Left Side",
+    back: "4. Back Side",
+    bonnet: "5. Bonnet",
+    music_system: "6. Music System",
+  };
+  const paths = getImagePaths(images);
+  if (Array.isArray(images) || !images || typeof images !== "object") {
+    return paths.map((p, i) => ({
+      label:
+        paths.length === 6
+          ? AUDIT_IMAGE_LABELS[i] ?? `Image ${i + 1}`
+          : `Image ${i + 1}`,
+      url: supabase.storage.from("uploads").getPublicUrl(p).data.publicUrl,
+    }));
+  }
+  return Object.entries(images as Record<string, string>)
+    .filter(([, v]) => typeof v === "string")
+    .map(([k, v]) => ({
+      label: labels[k] || k,
+      url: supabase.storage.from("uploads").getPublicUrl(v).data.publicUrl,
+    }));
+}
+
 const AdminVehicleAuditReports = () => {
   const navigate = useNavigate();
   const { isAdmin } = useAdmin();
@@ -183,10 +232,11 @@ const AdminVehicleAuditReports = () => {
 
     try {
       // Delete associated images from storage
-      if (reportToDelete.images && reportToDelete.images.length > 0) {
+      const imagePaths = getImagePaths(reportToDelete.images);
+      if (imagePaths.length > 0) {
         const { error: storageError } = await supabase.storage
           .from("uploads")
-          .remove(reportToDelete.images);
+          .remove(imagePaths);
 
         if (storageError) {
           console.warn(
@@ -472,34 +522,40 @@ const AdminVehicleAuditReports = () => {
                         className="bg-purple-500 hover:bg-purple-600 text-white px-3 py-1 h-8 flex items-center"
                         size="sm"
                         onClick={() => {
-                          if (report.images && report.images.length > 0) {
-                            const imageUrls = report.images.map(
-                              (image) =>
-                                supabase.storage
-                                  .from("uploads")
-                                  .getPublicUrl(image).data.publicUrl
+                          const labeledImages = getLabeledImages(report.images);
+                          if (labeledImages.length > 0) {
+                            const imageUrls = labeledImages.map((i) => i.url);
+                            const imageLabels = labeledImages.map(
+                              (i) => i.label
                             );
                             const sliderWindow = window.open("", "_blank");
                             if (sliderWindow) {
                               sliderWindow.document.write(`
                                 <html>
                                   <head>
-                                    <title>Image Slider</title>
+                                    <title>Vehicle Audit Images</title>
                                     <style>
-                                      body { margin: 0; display: flex; justify-content: center; align-items: center; height: 100vh; background-color: #000; }
-                                      img { max-width: 90%; max-height: 90%; }
+                                      body { margin: 0; display: flex; justify-content: center; align-items: center; min-height: 100vh; background-color: #000; flex-direction: column; }
+                                      img { max-width: 90%; max-height: 80vh; object-fit: contain; }
                                       .slider { display: flex; flex-direction: column; align-items: center; }
-                                      .controls { margin-top: 10px; }
-                                      button { margin: 0 5px; padding: 10px; background-color: #fff; border: none; cursor: pointer; }
+                                      .controls { margin-top: 10px; display: flex; gap: 8px; align-items: center; }
+                                      button { padding: 10px 16px; background-color: #fff; border: none; cursor: pointer; border-radius: 4px; }
+                                      .label { color: #fff; margin-bottom: 8px; font-family: sans-serif; }
                                     </style>
                                   </head>
                                   <body>
                                     <div class="slider">
+                                      <div class="label" id="image-label">${
+                                        imageLabels[0]
+                                      }</div>
                                       <img id="slider-image" src="${
                                         imageUrls[0]
-                                      }" alt="Image" />
+                                      }" alt="Audit" />
                                       <div class="controls">
                                         <button onclick="prevImage()">Previous</button>
+                                        <span id="counter" style="color:#fff">1 / ${
+                                          imageUrls.length
+                                        }</span>
                                         <button onclick="nextImage()">Next</button>
                                       </div>
                                     </div>
@@ -507,10 +563,15 @@ const AdminVehicleAuditReports = () => {
                                       const images = ${JSON.stringify(
                                         imageUrls
                                       )};
+                                      const labels = ${JSON.stringify(
+                                        imageLabels
+                                      )};
                                       let currentIndex = 0;
 
                                       function updateImage() {
                                         document.getElementById('slider-image').src = images[currentIndex];
+                                        document.getElementById('image-label').textContent = labels[currentIndex];
+                                        document.getElementById('counter').textContent = (currentIndex + 1) + ' / ' + images.length;
                                       }
 
                                       function prevImage() {

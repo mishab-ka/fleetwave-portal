@@ -48,12 +48,14 @@ export const AdminProvider = ({ children }: { children: React.ReactNode }) => {
 
         if (error) throw error;
 
-        const role = data?.role as UserRole;
-        setUserRole(role);
+        const role = (data?.role ?? "").toString().toLowerCase();
+        setUserRole(role as UserRole);
 
-        // Check if user role is admin or the special email
+        // Check if user role is admin, super_admin, or the special email
         const isUserAdmin =
-          role === "admin" || user.email === "mishabrock8@gmail.com";
+          role === "admin" ||
+          role === "super_admin" ||
+          user.email === "mishabrock8@gmail.com";
         setIsAdmin(isUserAdmin);
         setIsManager(role === "manager" || isUserAdmin);
         setIsHR(
@@ -107,8 +109,25 @@ export const AdminProvider = ({ children }: { children: React.ReactNode }) => {
   }, [user, authLoading]);
 
   const hasAccess = (allowedRoles: UserRole[]): boolean => {
-    if (!userRole) return false;
-    return allowedRoles.includes(userRole) || isAdmin;
+    if (!isAdmin && !isManager && !isHR && !isAccountant && !userRole)
+      return false;
+
+    const roles = Array.isArray(allowedRoles)
+      ? allowedRoles.map((r) => String(r).toLowerCase())
+      : [];
+    const hasManager = roles.includes("manager");
+    const hasHr = roles.some((r) =>
+      ["hr", "hr_manager", "hr_staff"].includes(r)
+    );
+    const hasAccountant = roles.includes("accountant");
+
+    if (isAdmin) return true;
+    if (isManager && hasManager) return true;
+    if (isHR && hasHr) return true;
+    if (isAccountant && hasAccountant) return true;
+    if (userRole && roles.includes(String(userRole).toLowerCase())) return true;
+
+    return false;
   };
 
   const value = {
