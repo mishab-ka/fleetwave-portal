@@ -71,14 +71,15 @@ interface LeaveApplication {
   };
 }
 
-interface PartTimeBooking {
+interface ResigningDriver {
   id: string;
-  driver_id: string;
-  leave_application_id: string;
   name: string;
+  email_id: string;
   phone_number: string;
-  email: string;
-  status: "pending" | "approved" | "rejected";
+  vehicle_number: string | null;
+  resigning_date: string;
+  resignation_reason: string | null;
+  driver_status: string | null;
   created_at: string;
 }
 
@@ -86,7 +87,7 @@ export default function AdminLeaveManagement() {
   const [leaveApplications, setLeaveApplications] = useState<
     LeaveApplication[]
   >([]);
-  const [partTimeBookings, setPartTimeBookings] = useState<PartTimeBooking[]>(
+  const [resigningDrivers, setResigningDrivers] = useState<ResigningDriver[]>(
     []
   );
   const [loading, setLoading] = useState(true);
@@ -97,19 +98,13 @@ export default function AdminLeaveManagement() {
   const [isViewModalOpen, setIsViewModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
-  const [selectedBooking, setSelectedBooking] =
-    useState<PartTimeBooking | null>(null);
-  const [isViewBookingModalOpen, setIsViewBookingModalOpen] = useState(false);
-  const [isEditBookingModalOpen, setIsEditBookingModalOpen] = useState(false);
-  const [isDeleteBookingModalOpen, setIsDeleteBookingModalOpen] =
-    useState(false);
   const [calendarDate, setCalendarDate] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [dateLeaves, setDateLeaves] = useState<LeaveApplication[]>([]);
 
   useEffect(() => {
     fetchLeaveApplications();
-    fetchPartTimeBookings();
+    fetchResigningDrivers();
   }, []);
 
   const fetchLeaveApplications = async () => {
@@ -167,18 +162,90 @@ export default function AdminLeaveManagement() {
     }
   };
 
-  const fetchPartTimeBookings = async () => {
+  const fetchResigningDrivers = async () => {
     try {
       const { data, error } = await supabase
-        .from("part_time_bookings")
-        .select("*")
-        .order("created_at", { ascending: false });
+        .from("resigning_drivers")
+        .select(
+          `
+          *,
+          driver:driver_id (
+            id,
+            name,
+            email_id,
+            phone_number,
+            vehicle_number,
+            driver_status
+          )
+        `
+        )
+        .order("submission_date", { ascending: false });
 
       if (error) throw error;
-      setPartTimeBookings(data || []);
+
+      // Transform the data to match the ResigningDriver interface
+      const transformedData =
+        data?.map((resignation: any) => ({
+          id: resignation.id,
+          driver_id: resignation.driver_id,
+          name: resignation.driver?.name || "",
+          email_id: resignation.driver?.email_id || "",
+          phone_number: resignation.driver?.phone_number || "",
+          vehicle_number: resignation.driver?.vehicle_number || null,
+          resigning_date: resignation.resignation_date,
+          resignation_reason: resignation.resignation_reason,
+          driver_status: resignation.driver?.driver_status || null,
+          created_at: resignation.created_at,
+          status: resignation.status || "pending",
+          submission_date: resignation.submission_date,
+          reviewed_by: resignation.reviewed_by,
+          reviewed_at: resignation.reviewed_at,
+          admin_remarks: resignation.admin_remarks,
+        })) || [];
+
+      setResigningDrivers(transformedData as ResigningDriver[]);
     } catch (error) {
-      console.error("Error fetching part-time bookings:", error);
-      toast.error("Failed to load part-time bookings");
+      console.error("Error fetching resigning drivers:", error);
+      toast.error("Failed to load resigning drivers");
+    }
+  };
+
+  const handleResignationStatusChange = async (
+    id: string,
+    status: "approved" | "rejected" | "processed"
+  ) => {
+    try {
+      const { error } = await supabase
+        .from("resigning_drivers")
+        .update({
+          status,
+          reviewed_by: (await supabase.auth.getUser()).data.user?.id,
+          reviewed_at: new Date().toISOString(),
+        })
+        .eq("id", id);
+
+      if (error) throw error;
+
+      // If approved, update user's driver_status
+      if (status === "approved") {
+        const resignation = resigningDrivers.find((r) => r.id === id);
+        if (resignation && resignation.driver_id) {
+          const { error: userError } = await supabase
+            .from("users")
+            .update({ driver_status: "resigning" })
+            .eq("id", resignation.driver_id);
+
+          if (userError) {
+            console.error("Error updating user status:", userError);
+          }
+        }
+      }
+
+      toast.success(`Resignation ${status} successfully`);
+      fetchResigningDrivers();
+    } catch (error) {
+      console.error("Error updating resignation status:", error);
+      toast.error("Failed to update resignation status");
     }
   };
 
@@ -199,26 +266,6 @@ export default function AdminLeaveManagement() {
     } catch (error) {
       console.error("Error updating leave application:", error);
       toast.error("Failed to update leave application");
-    }
-  };
-
-  const handleBookingStatusChange = async (
-    id: string,
-    status: "approved" | "rejected" | "pending"
-  ) => {
-    try {
-      const { error } = await supabase
-        .from("part_time_bookings")
-        .update({ status })
-        .eq("id", id);
-
-      if (error) throw error;
-
-      toast.success(`Booking ${status}`);
-      fetchPartTimeBookings();
-    } catch (error) {
-      console.error("Error updating booking:", error);
-      toast.error("Failed to update booking");
     }
   };
 
@@ -258,42 +305,6 @@ export default function AdminLeaveManagement() {
     }
   };
 
-  const handleViewBooking = (booking: PartTimeBooking) => {
-    setSelectedBooking(booking);
-    setIsViewBookingModalOpen(true);
-  };
-
-  const handleEditBooking = (booking: PartTimeBooking) => {
-    setSelectedBooking(booking);
-    setIsEditBookingModalOpen(true);
-  };
-
-  const handleDeleteBooking = (booking: PartTimeBooking) => {
-    setSelectedBooking(booking);
-    setIsDeleteBookingModalOpen(true);
-  };
-
-  const confirmDeleteBooking = async () => {
-    if (!selectedBooking) return;
-
-    try {
-      const { error } = await supabase
-        .from("part_time_bookings")
-        .delete()
-        .eq("id", selectedBooking.id);
-
-      if (error) throw error;
-
-      toast.success("Part-time booking deleted successfully");
-      setIsDeleteBookingModalOpen(false);
-      setSelectedBooking(null);
-      fetchPartTimeBookings();
-    } catch (error) {
-      console.error("Error deleting part-time booking:", error);
-      toast.error("Failed to delete part-time booking");
-    }
-  };
-
   const filteredLeaveApplications = leaveApplications.filter(
     (app) =>
       app.driver.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -301,11 +312,13 @@ export default function AdminLeaveManagement() {
       app.driver.phone_number.includes(searchTerm)
   );
 
-  const filteredPartTimeBookings = partTimeBookings.filter(
-    (booking) =>
-      booking.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      booking.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      booking.phone_number.includes(searchTerm)
+  const filteredResigningDrivers = resigningDrivers.filter(
+    (driver) =>
+      driver.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      driver.email_id.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      driver.phone_number.includes(searchTerm) ||
+      (driver.vehicle_number &&
+        driver.vehicle_number.toLowerCase().includes(searchTerm.toLowerCase()))
   );
 
   // Calendar functions
@@ -551,7 +564,7 @@ export default function AdminLeaveManagement() {
         <Tabs defaultValue="leave" className="w-full">
           <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="leave">Leave Applications</TabsTrigger>
-            <TabsTrigger value="parttime">Part-time Bookings</TabsTrigger>
+            <TabsTrigger value="resigning">Resigning</TabsTrigger>
             <TabsTrigger value="calendar">Calendar</TabsTrigger>
           </TabsList>
 
@@ -768,15 +781,15 @@ export default function AdminLeaveManagement() {
             </Card>
           </TabsContent>
 
-          <TabsContent value="parttime">
+          <TabsContent value="resigning">
             <Card>
               <CardHeader>
                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                  <CardTitle className="text-xl">Part-time Bookings</CardTitle>
+                  <CardTitle className="text-xl">Resigning Drivers</CardTitle>
                   <div className="relative w-full sm:w-64">
                     <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                     <Input
-                      placeholder="Search by name, email, or phone..."
+                      placeholder="Search by name, email, phone, or vehicle..."
                       value={searchTerm}
                       onChange={(e) => setSearchTerm(e.target.value)}
                       className="pl-9"
@@ -785,13 +798,13 @@ export default function AdminLeaveManagement() {
                 </div>
               </CardHeader>
               <CardContent>
-                {filteredPartTimeBookings.length === 0 ? (
+                {filteredResigningDrivers.length === 0 ? (
                   <div className="text-center py-12">
                     <Users className="h-12 w-12 text-gray-300 mx-auto mb-4" />
                     <p className="text-gray-500">
                       {searchTerm
-                        ? "No bookings found matching your search"
-                        : "No part-time bookings found"}
+                        ? "No resigning drivers found matching your search"
+                        : "No resigning drivers found"}
                     </p>
                   </div>
                 ) : (
@@ -799,12 +812,20 @@ export default function AdminLeaveManagement() {
                     <Table>
                       <TableHeader>
                         <TableRow>
-                          <TableHead className="min-w-[150px]">Name</TableHead>
+                          <TableHead className="min-w-[150px]">
+                            Driver Name
+                          </TableHead>
                           <TableHead className="min-w-[200px]">
                             Contact
                           </TableHead>
-                          <TableHead className="min-w-[100px]">
-                            Status
+                          <TableHead className="min-w-[150px]">
+                            Vehicle
+                          </TableHead>
+                          <TableHead className="min-w-[150px]">
+                            Resignation Date
+                          </TableHead>
+                          <TableHead className="min-w-[200px]">
+                            Resignation Reason
                           </TableHead>
                           <TableHead className="min-w-[200px]">
                             Actions
@@ -812,86 +833,74 @@ export default function AdminLeaveManagement() {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {filteredPartTimeBookings.map((booking) => (
-                          <TableRow key={booking.id}>
+                        {filteredResigningDrivers.map((driver) => (
+                          <TableRow key={driver.id}>
                             <TableCell>
-                              <div className="font-medium">{booking.name}</div>
+                              <div className="font-medium">{driver.name}</div>
                             </TableCell>
                             <TableCell>
                               <div className="text-sm space-y-1">
                                 <div className="flex items-center gap-1">
                                   <Mail className="h-3 w-3 text-gray-400" />
-                                  <span>{booking.email}</span>
+                                  <span>{driver.email_id}</span>
                                 </div>
                                 <div className="flex items-center gap-1">
                                   <Phone className="h-3 w-3 text-gray-400" />
-                                  <span>{booking.phone_number}</span>
+                                  <span>{driver.phone_number}</span>
                                 </div>
                               </div>
                             </TableCell>
                             <TableCell>
-                              <Badge
-                                variant={
-                                  booking.status === "approved"
-                                    ? "success"
-                                    : booking.status === "rejected"
-                                    ? "destructive"
-                                    : "secondary"
-                                }
-                                className="capitalize"
-                              >
-                                {booking.status}
-                              </Badge>
+                              <div className="text-sm">
+                                {driver.vehicle_number || (
+                                  <span className="text-gray-400">
+                                    Not assigned
+                                  </span>
+                                )}
+                              </div>
                             </TableCell>
                             <TableCell>
-                              <div className="flex flex-wrap gap-2">
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={() => handleViewBooking(booking)}
-                                  className="h-8 w-8 p-0"
-                                  title="View details"
-                                >
-                                  <Eye className="h-4 w-4" />
-                                </Button>
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={() => handleEditBooking(booking)}
-                                  className="h-8 w-8 p-0"
-                                  title="Edit"
-                                >
-                                  <Edit className="h-4 w-4" />
-                                </Button>
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={() => handleDeleteBooking(booking)}
-                                  className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
-                                  title="Delete"
-                                >
-                                  <Trash2 className="h-4 w-4" />
-                                </Button>
-                                {booking.status === "pending" && (
+                              <div className="text-sm font-medium">
+                                {format(
+                                  new Date(driver.resigning_date),
+                                  "PPP"
+                                )}
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <div
+                                className="text-sm max-w-[200px] truncate"
+                                title={driver.resignation_reason || ""}
+                              >
+                                {driver.resignation_reason || (
+                                  <span className="text-gray-400">
+                                    No reason provided
+                                  </span>
+                                )}
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex gap-2">
+                                {(!driver.status || driver.status === "pending") ? (
                                   <>
                                     <Button
                                       size="sm"
                                       onClick={() =>
-                                        handleBookingStatusChange(
-                                          booking.id,
+                                        handleResignationStatusChange(
+                                          driver.id,
                                           "approved"
                                         )
                                       }
                                       variant="outline"
                                       className="bg-green-50 text-green-700 hover:bg-green-100 border-green-200"
                                     >
-                                      Approve
+                                      Accept
                                     </Button>
                                     <Button
                                       size="sm"
                                       onClick={() =>
-                                        handleBookingStatusChange(
-                                          booking.id,
+                                        handleResignationStatusChange(
+                                          driver.id,
                                           "rejected"
                                         )
                                       }
@@ -901,6 +910,21 @@ export default function AdminLeaveManagement() {
                                       Reject
                                     </Button>
                                   </>
+                                ) : (
+                                  <Badge
+                                    variant={
+                                      driver.status === "approved"
+                                        ? "success"
+                                        : driver.status === "rejected"
+                                        ? "destructive"
+                                        : driver.status === "processed"
+                                        ? "secondary"
+                                        : "secondary"
+                                    }
+                                    className="capitalize"
+                                  >
+                                    {driver.status || "pending"}
+                                  </Badge>
                                 )}
                               </div>
                             </TableCell>
@@ -1148,223 +1172,6 @@ export default function AdminLeaveManagement() {
         </DialogContent>
       </Dialog>
 
-      {/* View Part-time Booking Modal */}
-      <Dialog
-        open={isViewBookingModalOpen}
-        onOpenChange={setIsViewBookingModalOpen}
-      >
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Part-time Booking Details</DialogTitle>
-            <DialogDescription>
-              View details of the part-time booking
-            </DialogDescription>
-          </DialogHeader>
-          {selectedBooking && (
-            <div className="space-y-4">
-              <div>
-                <Label className="text-sm font-medium">Name</Label>
-                <p className="text-sm text-muted-foreground">
-                  {selectedBooking.name}
-                </p>
-              </div>
-              <div>
-                <Label className="text-sm font-medium">Contact</Label>
-                <p className="text-sm text-muted-foreground">
-                  {selectedBooking.email}
-                </p>
-                <p className="text-sm text-muted-foreground">
-                  {selectedBooking.phone_number}
-                </p>
-              </div>
-              <div>
-                <Label className="text-sm font-medium">Status</Label>
-                <Badge
-                  variant={
-                    selectedBooking.status === "approved"
-                      ? "success"
-                      : selectedBooking.status === "rejected"
-                      ? "destructive"
-                      : "secondary"
-                  }
-                >
-                  {selectedBooking.status}
-                </Badge>
-              </div>
-              <div>
-                <Label className="text-sm font-medium">Created At</Label>
-                <p className="text-sm text-muted-foreground">
-                  {format(new Date(selectedBooking.created_at), "PPP")}
-                </p>
-              </div>
-            </div>
-          )}
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setIsViewBookingModalOpen(false)}
-            >
-              Close
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Edit Part-time Booking Modal */}
-      <Dialog
-        open={isEditBookingModalOpen}
-        onOpenChange={setIsEditBookingModalOpen}
-      >
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Edit Part-time Booking</DialogTitle>
-            <DialogDescription>
-              Update the part-time booking details
-            </DialogDescription>
-          </DialogHeader>
-          {selectedBooking && (
-            <div className="space-y-4">
-              <div>
-                <Label className="text-sm font-medium">Name</Label>
-                <Input
-                  defaultValue={selectedBooking.name}
-                  placeholder="Enter name"
-                />
-              </div>
-              <div>
-                <Label className="text-sm font-medium">Email</Label>
-                <Input
-                  type="email"
-                  defaultValue={selectedBooking.email}
-                  placeholder="Enter email"
-                />
-              </div>
-              <div>
-                <Label className="text-sm font-medium">Phone Number</Label>
-                <Input
-                  defaultValue={selectedBooking.phone_number}
-                  placeholder="Enter phone number"
-                />
-              </div>
-              <div>
-                <Label className="text-sm font-medium">Status</Label>
-                <div className="flex gap-2">
-                  <Button
-                    size="sm"
-                    variant={
-                      selectedBooking.status === "approved"
-                        ? "default"
-                        : "outline"
-                    }
-                    onClick={() =>
-                      handleBookingStatusChange(selectedBooking.id, "approved")
-                    }
-                  >
-                    Approve
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant={
-                      selectedBooking.status === "rejected"
-                        ? "default"
-                        : "outline"
-                    }
-                    onClick={() =>
-                      handleBookingStatusChange(selectedBooking.id, "rejected")
-                    }
-                  >
-                    Reject
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant={
-                      selectedBooking.status === "pending"
-                        ? "default"
-                        : "outline"
-                    }
-                    onClick={() =>
-                      handleBookingStatusChange(selectedBooking.id, "pending")
-                    }
-                  >
-                    Pending
-                  </Button>
-                </div>
-              </div>
-            </div>
-          )}
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setIsEditBookingModalOpen(false)}
-            >
-              Cancel
-            </Button>
-            <Button onClick={() => setIsEditBookingModalOpen(false)}>
-              Save Changes
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Delete Part-time Booking Confirmation Modal */}
-      <Dialog
-        open={isDeleteBookingModalOpen}
-        onOpenChange={setIsDeleteBookingModalOpen}
-      >
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Delete Part-time Booking</DialogTitle>
-            <DialogDescription>
-              Are you sure you want to delete this part-time booking? This
-              action cannot be undone.
-            </DialogDescription>
-          </DialogHeader>
-          {selectedBooking && (
-            <div className="space-y-4">
-              <div>
-                <Label className="text-sm font-medium">Name</Label>
-                <p className="text-sm text-muted-foreground">
-                  {selectedBooking.name}
-                </p>
-              </div>
-              <div>
-                <Label className="text-sm font-medium">Contact</Label>
-                <p className="text-sm text-muted-foreground">
-                  {selectedBooking.email}
-                </p>
-                <p className="text-sm text-muted-foreground">
-                  {selectedBooking.phone_number}
-                </p>
-              </div>
-              <div>
-                <Label className="text-sm font-medium">Status</Label>
-                <Badge
-                  variant={
-                    selectedBooking.status === "approved"
-                      ? "success"
-                      : selectedBooking.status === "rejected"
-                      ? "destructive"
-                      : "secondary"
-                  }
-                >
-                  {selectedBooking.status}
-                </Badge>
-              </div>
-            </div>
-          )}
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setIsDeleteBookingModalOpen(false)}
-            >
-              Cancel
-            </Button>
-            <Button variant="destructive" onClick={confirmDeleteBooking}>
-              Delete
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </AdminLayout>
   );
 }
