@@ -38,6 +38,8 @@ interface AccidentReport {
   verification_status: string;
   submission_date: string;
   submitted_by_name: string;
+  accident_date: string | null;
+  accident_time: string | null;
 }
 
 const AdminAccidentReports = () => {
@@ -280,6 +282,7 @@ const AdminAccidentReports = () => {
                     <TableHead>Status</TableHead>
                     <TableHead>Penalty Amount</TableHead>
                     <TableHead>Verification</TableHead>
+                    <TableHead>Accident Date & Time</TableHead>
                     <TableHead>Submitted Date</TableHead>
                     <TableHead>Submitted By</TableHead>
                     {isAdmin && <TableHead>Actions</TableHead>}
@@ -289,7 +292,7 @@ const AdminAccidentReports = () => {
                   {filteredReports.length === 0 ? (
                     <TableRow>
                       <TableCell
-                        colSpan={isAdmin ? 11 : 10}
+                        colSpan={isAdmin ? 12 : 11}
                         className="text-center py-8"
                       >
                         {accidentReports.length === 0
@@ -332,6 +335,25 @@ const AdminAccidentReports = () => {
                               : report.verification_status?.charAt(0).toUpperCase() +
                                 report.verification_status?.slice(1)}
                           </Badge>
+                        </TableCell>
+                        <TableCell>
+                          {report.accident_date && report.accident_time ? (
+                            <div>
+                              <div>{format(new Date(report.accident_date), "d MMM yyyy")}</div>
+                              <div className="text-xs text-gray-500">
+                                {(() => {
+                                  // Convert 24-hour time (HH:mm) to 12-hour format (hh:mm AM/PM)
+                                  const [hours, minutes] = report.accident_time.split(':');
+                                  const hour = parseInt(hours, 10);
+                                  const ampm = hour >= 12 ? 'PM' : 'AM';
+                                  const hour12 = hour % 12 || 12;
+                                  return `${hour12.toString().padStart(2, '0')}:${minutes} ${ampm}`;
+                                })()}
+                              </div>
+                            </div>
+                          ) : (
+                            <span className="text-gray-400">—</span>
+                          )}
                         </TableCell>
                         <TableCell>
                           {format(

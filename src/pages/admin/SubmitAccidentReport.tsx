@@ -52,7 +52,12 @@ const SubmitAccidentReport = () => {
     place: "",
     status: "",
     penalty_amount: "",
+    accident_date: "",
+    accident_time: "",
   });
+  const [timeHour, setTimeHour] = useState<string>("");
+  const [timeMinute, setTimeMinute] = useState<string>("");
+  const [timeAmPm, setTimeAmPm] = useState<string>("AM");
 
   // Redirect if not authenticated
   useEffect(() => {
@@ -124,6 +129,34 @@ const SubmitAccidentReport = () => {
     });
   };
 
+  // Convert 12-hour time to 24-hour format for database storage
+  const convertTo24Hour = (hour: string, minute: string, ampm: string): string => {
+    if (!hour || !minute) return "";
+    let hour24 = parseInt(hour, 10);
+    if (ampm === "PM" && hour24 !== 12) {
+      hour24 += 12;
+    } else if (ampm === "AM" && hour24 === 12) {
+      hour24 = 0;
+    }
+    return `${hour24.toString().padStart(2, "0")}:${minute.padStart(2, "0")}`;
+  };
+
+  // Update formData.accident_time when time components change
+  useEffect(() => {
+    if (timeHour && timeMinute) {
+      const time24 = convertTo24Hour(timeHour, timeMinute, timeAmPm);
+      setFormData((prev) => ({
+        ...prev,
+        accident_time: time24,
+      }));
+    } else {
+      setFormData((prev) => ({
+        ...prev,
+        accident_time: "",
+      }));
+    }
+  }, [timeHour, timeMinute, timeAmPm]);
+
   const handleVehicleSelect = (vehicleNumber: string) => {
     const vehicle = vehicles.find((v) => v.vehicle_number === vehicleNumber);
     setSelectedVehicle(vehicle || null);
@@ -172,6 +205,16 @@ const SubmitAccidentReport = () => {
       return;
     }
 
+    if (!formData.accident_date) {
+      toast.error("Please select the accident date");
+      return;
+    }
+
+    if (!timeHour || !timeMinute) {
+      toast.error("Please select the accident time");
+      return;
+    }
+
     // Validate penalty amount if provided
     const penaltyAmount = formData.penalty_amount
       ? parseFloat(formData.penalty_amount)
@@ -201,6 +244,8 @@ const SubmitAccidentReport = () => {
         penalty_amount: penaltyAmount,
         verification_status: "pending_verification",
         submission_date: submissionDate,
+        accident_date: formData.accident_date,
+        accident_time: formData.accident_time,
       };
 
       const { error: reportError } = await supabase
@@ -220,7 +265,12 @@ const SubmitAccidentReport = () => {
         place: "",
         status: "",
         penalty_amount: "",
+        accident_date: "",
+        accident_time: "",
       });
+      setTimeHour("");
+      setTimeMinute("");
+      setTimeAmPm("AM");
 
       // Navigate to accident reports page
       navigate("/admin/accident-reports");
@@ -379,6 +429,72 @@ const SubmitAccidentReport = () => {
                 onChange={handleInputChange}
                 required
               />
+            </div>
+
+            {/* Accident Date and Time */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="accident_date">
+                  Accident Date <span className="text-red-500">*</span>
+                </Label>
+                <Input
+                  id="accident_date"
+                  name="accident_date"
+                  type="date"
+                  value={formData.accident_date}
+                  onChange={handleInputChange}
+                  required
+                />
+              </div>
+              <div>
+                <Label>
+                  Accident Time <span className="text-red-500">*</span>
+                </Label>
+                <div className="flex gap-2">
+                  <Select
+                    value={timeHour}
+                    onValueChange={setTimeHour}
+                  >
+                    <SelectTrigger className="flex-1">
+                      <SelectValue placeholder="Hour" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {Array.from({ length: 12 }, (_, i) => i + 1).map((hour) => (
+                        <SelectItem key={hour} value={hour.toString()}>
+                          {hour.toString().padStart(2, "0")}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Select
+                    value={timeMinute}
+                    onValueChange={setTimeMinute}
+                  >
+                    <SelectTrigger className="flex-1">
+                      <SelectValue placeholder="Min" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {Array.from({ length: 60 }, (_, i) => i).map((minute) => (
+                        <SelectItem key={minute} value={minute.toString().padStart(2, "0")}>
+                          {minute.toString().padStart(2, "0")}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Select
+                    value={timeAmPm}
+                    onValueChange={setTimeAmPm}
+                  >
+                    <SelectTrigger className="w-20">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="AM">AM</SelectItem>
+                      <SelectItem value="PM">PM</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
             </div>
 
             {/* Status */}
