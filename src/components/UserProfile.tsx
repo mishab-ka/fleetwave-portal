@@ -78,7 +78,6 @@ const UserProfile = () => {
   // Refund request (R&F balance payout request) - driver side
   const [refundRequestOpen, setRefundRequestOpen] = useState(false);
   const [refundRequestAmount, setRefundRequestAmount] = useState<string>("");
-  const [refundRequestNotes, setRefundRequestNotes] = useState<string>("");
   const [refundRequestSubmitting, setRefundRequestSubmitting] = useState(false);
   const [pendingRefundRequest, setPendingRefundRequest] = useState<{
     id: string;
@@ -501,7 +500,6 @@ const UserProfile = () => {
   const openRefundRequest = () => {
     if (penaltySummary.netPenalties <= 0) return;
     setRefundRequestAmount(String(Math.floor(penaltySummary.netPenalties)));
-    setRefundRequestNotes("");
     setRefundRequestOpen(true);
   };
 
@@ -531,7 +529,6 @@ const UserProfile = () => {
         amount: amountNum,
         status: "pending",
         requested_by: user.id,
-        notes: refundRequestNotes.trim() || null,
       });
 
       if (error) throw error;
@@ -1241,17 +1238,6 @@ const UserProfile = () => {
               <p className="text-xs text-gray-500">
                 Amount must be ≤ your current refund balance.
               </p>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="refund-request-notes">Notes (optional)</Label>
-              <Textarea
-                id="refund-request-notes"
-                value={refundRequestNotes}
-                onChange={(e) => setRefundRequestNotes(e.target.value)}
-                rows={3}
-                placeholder="Any details for the team..."
-              />
             </div>
 
             <div className="flex justify-end gap-2 pt-2">
