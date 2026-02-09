@@ -181,6 +181,12 @@ const AdminDrivers = () => {
   const [showOfflineReasonModal, setShowOfflineReasonModal] = useState(false);
   const [offlineReason, setOfflineReason] = useState("");
 
+  // Joining type modal state
+  const [showJoiningTypeModal, setShowJoiningTypeModal] = useState(false);
+  const [selectedDriverForJoining, setSelectedDriverForJoining] =
+    useState<any>(null);
+  const [joiningType, setJoiningType] = useState<"new_joining" | "rejoining" | null>(null);
+
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize] = useState(20);
@@ -1386,6 +1392,16 @@ const AdminDrivers = () => {
         );
         return;
       }
+
+      // Show joining type selection modal before putting driver online
+      setSelectedDriverForJoining({ id, driver, currentStatus });
+      setShowJoiningTypeModal(true);
+      return; // Don't proceed until user selects joining type
+    }
+
+    // If going offline, proceed with existing logic
+    if (currentStatus) {
+      // This will be handled by the existing offline logic below
     }
 
     // If trying to take driver offline, first check for overdue count
@@ -1421,22 +1437,27 @@ const AdminDrivers = () => {
       return; // Don't proceed with offline action yet
     }
 
+    // This code should not be reached - online toggle shows modal, offline shows leave/resigning modal
+  };
+
+  const handleJoiningTypeConfirm = async () => {
+    if (!selectedDriverForJoining || !joiningType) {
+      toast.error("Please select a joining type");
+      return;
+    }
+
+    const { id, driver } = selectedDriverForJoining;
+
     try {
       setIsUpdating(id);
 
       const updateData: any = {
-        online: !currentStatus,
+        online: true,
         driver_status: null, // Clear status when going online
+        joining_type: joiningType,
+        online_from_date: new Date().toISOString().split("T")[0],
+        offline_from_date: null,
       };
-
-      if (currentStatus) {
-        // Going offline
-        updateData.offline_from_date = new Date().toISOString().split("T")[0];
-      } else {
-        // Going online
-        updateData.online_from_date = new Date().toISOString().split("T")[0];
-        updateData.offline_from_date = null;
-      }
 
       const { error } = await supabase
         .from("users")
@@ -1446,29 +1467,29 @@ const AdminDrivers = () => {
       if (error) throw error;
 
       setDrivers(
-        drivers.map((driver) =>
-          driver.id === id
+        drivers.map((d) =>
+          d.id === id
             ? {
-                ...driver,
-                online: !currentStatus,
-                offline_from_date: updateData.offline_from_date,
+                ...d,
+                online: true,
+                offline_from_date: null,
                 online_from_date: updateData.online_from_date,
-                driver_status: updateData.driver_status,
+                driver_status: null,
+                joining_type: updateData.joining_type,
               }
-            : driver
+            : d
         )
       );
 
-      toast.success(`Driver is now ${!currentStatus ? "online" : "offline"}`);
+      toast.success(
+        `Driver is now online (${joiningType === "new_joining" ? "New Joining" : "Rejoining"})`
+      );
 
       // Log activity
-      const driver = drivers.find((d) => d.id === id);
       await logActivity({
-        actionType: !currentStatus ? "driver_online" : "driver_offline",
+        actionType: "driver_online",
         actionCategory: "drivers",
-        description: `Brought driver ${driver?.name} ${
-          !currentStatus ? "online" : "offline"
-        }${
+        description: `Brought driver ${driver?.name} online - ${joiningType === "new_joining" ? "New Joining" : "Rejoining"}${
           driver?.vehicle_number ? ` - Vehicle: ${driver.vehicle_number}` : ""
         }${driver?.shift ? ` - Shift: ${driver.shift}` : ""}`,
         metadata: {
@@ -1476,16 +1497,21 @@ const AdminDrivers = () => {
           driver_name: driver?.name,
           vehicle_number: driver?.vehicle_number,
           shift: driver?.shift,
-          status: !currentStatus ? "online" : "offline",
+          joining_type: joiningType,
         },
         pageName: "Admin Drivers",
       });
 
       // Refresh statistics
       fetchStatistics();
+
+      // Reset state
+      setJoiningType(null);
+      setShowJoiningTypeModal(false);
+      setSelectedDriverForJoining(null);
     } catch (error) {
       console.error("Error updating driver status:", error);
-      toast.error("Failed to update driver online status");
+      toast.error("Failed to update driver status");
     } finally {
       setIsUpdating(null);
     }
@@ -3151,6 +3177,93 @@ const AdminDrivers = () => {
               }}
             >
               Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Joining Type Selection Modal */}
+      <Dialog
+        open={showJoiningTypeModal}
+        onOpenChange={(open) => {
+          if (!open) {
+            setShowJoiningTypeModal(false);
+            setJoiningType(null);
+            setSelectedDriverForJoining(null);
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Users className="h-5 w-5" />
+              Select Joining Type
+            </DialogTitle>
+            <DialogDescription>
+              Please select whether{" "}
+              <strong>{selectedDriverForJoining?.driver?.name}</strong> is a new
+              joining or rejoining.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label className="text-base font-medium">
+                Joining Type <span className="text-red-500">*</span>
+              </Label>
+              <div className="grid grid-cols-2 gap-3">
+                <Button
+                  type="button"
+                  variant={joiningType === "new_joining" ? "default" : "outline"}
+                  className={`h-20 flex flex-col items-center justify-center gap-2 ${
+                    joiningType === "new_joining"
+                      ? "bg-blue-600 text-white hover:bg-blue-700"
+                      : ""
+                  }`}
+                  onClick={() => setJoiningType("new_joining")}
+                >
+                  <Users className="h-6 w-6" />
+                  <span className="font-semibold">New Joining</span>
+                </Button>
+                <Button
+                  type="button"
+                  variant={joiningType === "rejoining" ? "default" : "outline"}
+                  className={`h-20 flex flex-col items-center justify-center gap-2 ${
+                    joiningType === "rejoining"
+                      ? "bg-green-600 text-white hover:bg-green-700"
+                      : ""
+                  }`}
+                  onClick={() => setJoiningType("rejoining")}
+                >
+                  <CheckCircle className="h-6 w-6" />
+                  <span className="font-semibold">Rejoining</span>
+                </Button>
+              </div>
+            </div>
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+              <p className="text-sm text-blue-800">
+                <strong>Note:</strong> This selection will be saved and used to
+                track the driver's joining status. The driver will only become
+                active after you confirm this selection.
+              </p>
+            </div>
+          </div>
+          <DialogFooter className="flex gap-2">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowJoiningTypeModal(false);
+                setJoiningType(null);
+                setSelectedDriverForJoining(null);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleJoiningTypeConfirm}
+              disabled={!joiningType}
+              className="bg-blue-600 hover:bg-blue-700"
+            >
+              Confirm & Activate
             </Button>
           </DialogFooter>
         </DialogContent>
