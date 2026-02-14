@@ -60,6 +60,7 @@ const SubmitReport = () => {
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [countdown, setCountdown] = useState(5);
   const [existingReportForDate, setExistingReportForDate] = useState<any>(null);
+<<<<<<< Updated upstream
   const [serviceDayAdjustmentDiscount, setServiceDayAdjustmentDiscount] = useState(0);
   const [paymentBreakdown, setPaymentBreakdown] = useState({
     totalEarnings: 0,
@@ -74,12 +75,18 @@ const SubmitReport = () => {
     totalDeductions: 0,
     finalAmount: 0,
   });
+=======
+  const [serviceDayAdjustmentDiscount, setServiceDayAdjustmentDiscount] =
+    useState(0);
+>>>>>>> Stashed changes
 
   // Paying cash option: checkbox + amount + manager
   const [payingCash, setPayingCash] = useState(false);
   const [cashAmount, setCashAmount] = useState("");
   const [cashManagerId, setCashManagerId] = useState<string>("");
-  const [managers, setManagers] = useState<{ id: string; name: string | null }[]>([]);
+  const [managers, setManagers] = useState<
+    { id: string; name: string | null }[]
+  >([]);
 
   // Get admin settings for company earnings calculation
   const {
@@ -122,11 +129,12 @@ const SubmitReport = () => {
 
             // Count reports that count toward the 12 deposit slots: rejected, pending_verification, approved only.
             // Leave and offline reports do NOT count.
-            const { count: depositSlotCount, error: countError } = await supabase
-              .from("fleet_reports")
-              .select("*", { count: "exact", head: true })
-              .eq("user_id", user.id)
-              .in("status", ["rejected", "pending_verification", "approved"]);
+            const { count: depositSlotCount, error: countError } =
+              await supabase
+                .from("fleet_reports")
+                .select("*", { count: "exact", head: true })
+                .eq("user_id", user.id)
+                .in("status", ["rejected", "pending_verification", "approved"]);
 
             if (!countError) {
               setApprovedReportsCount(depositSlotCount || 0);
@@ -175,7 +183,7 @@ const SubmitReport = () => {
         const { data, error } = await supabase
           .from("users")
           .select("id, name")
-          .in("role", ["manager", "admin", "super_admin"])
+          .in("role", ["manager"])
           .order("name");
 
         if (error) throw error;
@@ -227,7 +235,7 @@ const SubmitReport = () => {
   };
 
   const handleInputChange = (
-    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
+    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
   ) => {
     const { name, value } = e.target;
 
@@ -255,7 +263,7 @@ const SubmitReport = () => {
 
   const handleFileChange = (
     e: React.ChangeEvent<HTMLInputElement>,
-    type: "uber" | "rent"
+    type: "uber" | "rent",
   ) => {
     if (e.target.files && e.target.files[0]) {
       if (type === "uber") {
@@ -269,7 +277,7 @@ const SubmitReport = () => {
   // Calculate company earnings using admin settings
   const calculateCompanyEarningsForShift = (
     trips: number,
-    shift: string = "morning"
+    shift: string = "morning",
   ) => {
     // Use admin settings if available, otherwise fallback to hardcoded values
     if (!settingsLoading) {
@@ -371,7 +379,11 @@ const SubmitReport = () => {
 
     // Calculate total amount including penalty, other fee (expenses), deposit cutting, and service day adjustment discount
     const totalRentWithExtras =
-      rent + dailyPenaltyAmount + otherFee + depositCutting - serviceDayAdjustmentDiscount;
+      rent +
+      dailyPenaltyAmount +
+      otherFee +
+      depositCutting -
+      serviceDayAdjustmentDiscount;
     const amount = tollandEarnings - cashcollect - totalRentWithExtras;
 
     let message = "No payment required";
@@ -533,7 +545,7 @@ const SubmitReport = () => {
     const vehicleNumber = userData.vehicle_number?.trim().toUpperCase();
     if (!vehicleNumber) {
       toast.error(
-        "No vehicle assigned to this user. Please contact admin to assign a vehicle."
+        "No vehicle assigned to this user. Please contact admin to assign a vehicle.",
       );
       return;
     }
@@ -574,7 +586,7 @@ const SubmitReport = () => {
         existingReport.status?.toLowerCase() !== "offline"
       ) {
         toast.error(
-          `A report for ${selectedDate} has already been submitted. You cannot submit multiple reports for the same date.`
+          `A report for ${selectedDate} has already been submitted. You cannot submit multiple reports for the same date.`,
         );
         setSubmitting(false);
         return;
@@ -678,8 +690,8 @@ const SubmitReport = () => {
 
       const { error: reportError } = hasOfflineReport
         ? await supabase.from("fleet_reports").upsert(reportData, {
-              onConflict: "user_id,rent_date",
-            })
+            onConflict: "user_id,rent_date",
+          })
         : await supabase.from("fleet_reports").insert(reportData);
 
       if (reportError) throw reportError;
@@ -948,7 +960,7 @@ const SubmitReport = () => {
                   <p>
                     <strong>Submitted:</strong>{" "}
                     {new Date(
-                      existingReportForDate.submission_date
+                      existingReportForDate.submission_date,
                     ).toLocaleString()}
                   </p>
                 </div>
@@ -1056,14 +1068,16 @@ const SubmitReport = () => {
                     />
                   </svg>
                   <span className="font-semibold text-purple-800">
-                    Adjustment Discount: ₹{serviceDayAdjustmentDiscount.toFixed(2)}
+                    Adjustment Discount: ₹
+                    {serviceDayAdjustmentDiscount.toFixed(2)}
                   </span>
-              </div>
-                <p className="text-xs text-purple-600 mt-1">
-                  One or more adjustments have been applied to your report for this date.
-                </p>
                 </div>
-              )}
+                <p className="text-xs text-purple-600 mt-1">
+                  One or more adjustments have been applied to your report for
+                  this date.
+                </p>
+              </div>
+            )}
 
             {/* Penalty Information */}
             {userData?.daily_penalty_amount > 0 && (
@@ -1465,8 +1479,8 @@ const SubmitReport = () => {
                 {submitting
                   ? "Submitting..."
                   : existingReportForDate
-                  ? "Report Already Submitted"
-                  : "Submit Report"}
+                    ? "Report Already Submitted"
+                    : "Submit Report"}
               </Button>
             </div>
           </form>

@@ -206,7 +206,11 @@ const MonthlyRentDashboard: React.FC = () => {
           driver_name,
           rent_date,
           status,
+<<<<<<< Updated upstream
           users!fleet_reports_user_id_fkey!inner(
+=======
+          users!user_id!inner(
+>>>>>>> Stashed changes
             id,
             name,
             phone_number,
