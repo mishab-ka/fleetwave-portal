@@ -60,8 +60,8 @@ const SubmitReport = () => {
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [countdown, setCountdown] = useState(5);
   const [existingReportForDate, setExistingReportForDate] = useState<any>(null);
-<<<<<<< Updated upstream
-  const [serviceDayAdjustmentDiscount, setServiceDayAdjustmentDiscount] = useState(0);
+  const [serviceDayAdjustmentDiscount, setServiceDayAdjustmentDiscount] =
+    useState(0);
   const [paymentBreakdown, setPaymentBreakdown] = useState({
     totalEarnings: 0,
     toll: 0,
@@ -75,10 +75,6 @@ const SubmitReport = () => {
     totalDeductions: 0,
     finalAmount: 0,
   });
-=======
-  const [serviceDayAdjustmentDiscount, setServiceDayAdjustmentDiscount] =
-    useState(0);
->>>>>>> Stashed changes
 
   // Paying cash option: checkbox + amount + manager
   const [payingCash, setPayingCash] = useState(false);
@@ -1148,12 +1144,14 @@ const SubmitReport = () => {
             )} */}
 
             {/* Payment Breakdown */}
-            {(formData.total_earnings || formData.toll || formData.total_cashcollect) && (
+            {(formData.total_earnings ||
+              formData.toll ||
+              formData.total_cashcollect) && (
               <div className="mb-4 p-4 bg-white border border-gray-300 rounded-md shadow-sm">
                 <h3 className="text-lg font-semibold text-gray-800 mb-4">
                   Payment Breakdown
                 </h3>
-                
+
                 {/* Income Section */}
                 <div className="mb-4">
                   <h4 className="text-sm font-medium text-gray-700 mb-2">
@@ -1207,7 +1205,9 @@ const SubmitReport = () => {
                     )}
                     {paymentBreakdown.otherFees > 0 && (
                       <div className="flex justify-between text-sm">
-                        <span className="text-gray-600">Other Fees/Expenses:</span>
+                        <span className="text-gray-600">
+                          Other Fees/Expenses:
+                        </span>
                         <span className="font-medium text-gray-800">
                           ₹{paymentBreakdown.otherFees.toFixed(2)}
                         </span>
@@ -1259,23 +1259,23 @@ const SubmitReport = () => {
                       {paymentBreakdown.finalAmount > 0
                         ? "Refund Amount:"
                         : paymentBreakdown.finalAmount < 0
-                        ? "Pay Amount:"
-                        : "Balance:"}
+                          ? "Pay Amount:"
+                          : "Balance:"}
                     </span>
                     <span
                       className={`text-lg font-bold ${
                         paymentBreakdown.finalAmount > 0
                           ? "text-green-600"
                           : paymentBreakdown.finalAmount < 0
-                          ? "text-red-600"
-                          : "text-gray-600"
+                            ? "text-red-600"
+                            : "text-gray-600"
                       }`}
                     >
                       {paymentBreakdown.finalAmount > 0
                         ? `₹${Math.abs(paymentBreakdown.finalAmount).toFixed(2)}`
                         : paymentBreakdown.finalAmount < 0
-                        ? `₹${Math.abs(paymentBreakdown.finalAmount).toFixed(2)}`
-                        : "₹0.00"}
+                          ? `₹${Math.abs(paymentBreakdown.finalAmount).toFixed(2)}`
+                          : "₹0.00"}
                     </span>
                   </div>
                 </div>
