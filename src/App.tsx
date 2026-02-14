@@ -60,6 +60,7 @@ import AdminJoiningReports from "./pages/admin/AdminJoiningReports";
 import AdminAccountantReports from "./pages/admin/AdminAccountantReports";
 import SubmitAccidentReport from "./pages/admin/SubmitAccidentReport";
 import AdminAccidentReports from "./pages/admin/AdminAccidentReports";
+import AdminResignedReports from "./pages/admin/AdminResignedReports";
 
 // Create a new query client instance
 const queryClient = new QueryClient({
@@ -229,6 +230,10 @@ const App = () => (
                   <Route
                     path="/admin/accident-reports"
                     element={<AdminAccidentReports />}
+                  />
+                  <Route
+                    path="/admin/resigned-reports"
+                    element={<AdminResignedReports />}
                   />
                   <Route
                     path="/admin/common-adjustments"

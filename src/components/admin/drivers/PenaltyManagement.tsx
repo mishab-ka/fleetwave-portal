@@ -121,7 +121,6 @@ export const PenaltyManagement = ({
   // Refund request (R&F balance payout request)
   const [refundRequestOpen, setRefundRequestOpen] = useState(false);
   const [refundRequestAmount, setRefundRequestAmount] = useState<string>("");
-  const [refundRequestNotes, setRefundRequestNotes] = useState<string>("");
   const [refundRequestSubmitting, setRefundRequestSubmitting] = useState(false);
   const [pendingRefundRequest, setPendingRefundRequest] = useState<{
     id: string;
@@ -1027,7 +1026,6 @@ Your refund has been processed and credited to your account. Thank you for your 
   const openRefundRequest = () => {
     if (penaltySummary.netPenalties <= 0) return;
     setRefundRequestAmount(String(Math.floor(penaltySummary.netPenalties)));
-    setRefundRequestNotes("");
     setRefundRequestOpen(true);
   };
 
@@ -1057,7 +1055,6 @@ Your refund has been processed and credited to your account. Thank you for your 
         amount: amountNum,
         status: "pending",
         requested_by: user.id,
-        notes: refundRequestNotes.trim() || null,
       });
 
       if (error) throw error;
@@ -1692,17 +1689,6 @@ Your refund has been processed and credited to your account. Thank you for your 
               <p className="text-xs text-muted-foreground">
                 Amount must be ≤ current refund balance.
               </p>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="refund-request-notes">Notes (optional)</Label>
-              <Textarea
-                id="refund-request-notes"
-                value={refundRequestNotes}
-                onChange={(e) => setRefundRequestNotes(e.target.value)}
-                rows={3}
-                placeholder="Any details for the finance/admin team..."
-              />
             </div>
 
             <div className="flex justify-end gap-2">

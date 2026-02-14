@@ -1039,6 +1039,13 @@ const ManagerPortal = () => {
                         Resigning
                       </Badge>
                     );
+                  } else if (driver.driver_status === "going_to_24hr") {
+                    return (
+                      <Badge className="bg-cyan-100 text-cyan-700 text-xs">
+                        <Calendar className="h-3 w-3 mr-1" />
+                        Going to 24hr
+                      </Badge>
+                    );
                   } else if (!driver.online) {
                     return (
                       <Badge variant="secondary" className="text-xs">

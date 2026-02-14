@@ -121,13 +121,36 @@ export const RentCalendarGrid = ({
     return driver.shift !== "none" && driver.shift !== null && driver.shift !== "";
   });
 
-  // Sort drivers by shift type - morning first, then night, then none shift
+  // Sort drivers by shift type and verified status
+  // Priority: 1. Morning (highest), 2. Night, 3. None (lowest)
+  // Within each shift group: Verified = true first, Verified = false after
   const sortedDrivers = [...onlineDrivers].sort((a, b) => {
-    if (a.shift === "morning" && b.shift !== "morning") return -1;
-    if (a.shift !== "morning" && b.shift === "morning") return 1;
-    if (a.shift === "night" && b.shift === "none") return -1;
-    if (a.shift === "none" && b.shift === "night") return 1;
-    return 0;
+    // Helper function to get shift priority
+    const getShiftPriority = (shift: string | null | undefined): number => {
+      if (shift === "morning") return 1; // Highest priority
+      if (shift === "night") return 2;
+      return 3; // none, null, or undefined - lowest priority
+    };
+
+    // First, sort by shift priority: Morning > Night > None
+    const shiftPriorityA = getShiftPriority(a.shift);
+    const shiftPriorityB = getShiftPriority(b.shift);
+
+    if (shiftPriorityA !== shiftPriorityB) {
+      return shiftPriorityA - shiftPriorityB;
+    }
+
+    // If same shift, sort by verified status
+    // Drivers with Verified = true come first, Verified = false come after
+    const isVerifiedA = a.is_verified === true;
+    const isVerifiedB = b.is_verified === true;
+
+    // Verified drivers come first within their shift group
+    if (isVerifiedA && !isVerifiedB) return -1;
+    if (!isVerifiedA && isVerifiedB) return 1;
+
+    // If both have same verified status, sort by name for consistent ordering
+    return (a.name || "").localeCompare(b.name || "");
   });
 
   // Calculate statistics from calendarData for the visible week

@@ -47,7 +47,6 @@ type RefundRequestRow = {
   status: RefundRequestStatus;
   requested_by: string | null;
   requested_at: string;
-  notes: string | null;
   reviewed_by: string | null;
   reviewed_at: string | null;
   review_notes: string | null;
@@ -105,7 +104,6 @@ export default function RefundRequestsList() {
           status,
           requested_by,
           requested_at,
-          notes,
           reviewed_by,
           reviewed_at,
           review_notes,
@@ -332,20 +330,19 @@ export default function RefundRequestsList() {
                   <TableHead>Amount</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Requested</TableHead>
-                  <TableHead>Notes</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {loading ? (
                   <TableRow>
-                    <TableCell colSpan={6} className="py-10 text-center text-muted-foreground">
+                    <TableCell colSpan={5} className="py-10 text-center text-muted-foreground">
                       Loading...
                     </TableCell>
                   </TableRow>
                 ) : filtered.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={6} className="py-10 text-center text-muted-foreground">
+                    <TableCell colSpan={5} className="py-10 text-center text-muted-foreground">
                       No requests found
                     </TableCell>
                   </TableRow>
@@ -366,7 +363,6 @@ export default function RefundRequestsList() {
                           by {r.requester?.name || "—"}
                         </div>
                       </TableCell>
-                      <TableCell className="text-sm">{r.notes || "—"}</TableCell>
                       <TableCell className="text-right">
                         {r.status === "pending" ? (
                           <div className="flex justify-end gap-2">
@@ -483,7 +479,6 @@ export default function RefundRequestsList() {
               <div className="text-muted-foreground">
                 Amount: <span className="font-semibold text-green-700">{formatMoney(selected?.amount || 0)}</span>
               </div>
-              {selected?.notes && <div className="text-muted-foreground mt-1">Request notes: {selected.notes}</div>}
             </div>
             {reviewAction === "approve" && (
               <div className="rounded-md bg-yellow-50 border border-yellow-200 p-3 text-sm text-yellow-800">
