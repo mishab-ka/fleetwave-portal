@@ -16,6 +16,7 @@ import {
   Gauge,
   CalendarCheck,
   UserCheck,
+  ClipboardList,
   Calendar1,
   CalendarClock,
   Home,
