@@ -38,11 +38,8 @@ import {
   Activity,
   Calculator,
   AlertTriangle,
-<<<<<<< HEAD
   ClipboardList,
-=======
   MessageSquare,
->>>>>>> dev-saniya
 } from "lucide-react";
 import { Button } from "./ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "./ui/sheet";
@@ -101,7 +98,7 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children, title }) => {
     // Save state to localStorage
     localStorage.setItem(
       "admin-sidebar-state",
-      newState ? "collapsed" : "expanded"
+      newState ? "collapsed" : "expanded",
     );
   };
 
@@ -109,7 +106,7 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children, title }) => {
     setExpandedItems((prev) =>
       prev.includes(label)
         ? prev.filter((item) => item !== label)
-        : [...prev, label]
+        : [...prev, label],
     );
   };
 
@@ -472,8 +469,8 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children, title }) => {
               isCollapsed && !isHovered
                 ? "hidden group-hover:block absolute left-full top-0 bg-white shadow-lg rounded-r-md min-w-[200px] z-50"
                 : isExpanded
-                ? "block"
-                : "hidden"
+                  ? "block"
+                  : "hidden"
             }`}
           >
             <ul className={`${isCollapsed ? "py-2" : "mt-1"}`}>
@@ -516,12 +513,12 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children, title }) => {
             {userRole === "admin"
               ? "Admin Portal"
               : userRole === "manager"
-              ? "Manager Portal"
-              : userRole === "hr"
-              ? "HR Portal"
-              : userRole === "accountant"
-              ? "Accountant Portal"
-              : "Portal"}
+                ? "Manager Portal"
+                : userRole === "hr"
+                  ? "HR Portal"
+                  : userRole === "accountant"
+                    ? "Accountant Portal"
+                    : "Portal"}
           </h2>
           {userRole && (
             <p className="text-xs text-gray-500 capitalize">{userRole}</p>
