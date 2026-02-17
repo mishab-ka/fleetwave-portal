@@ -218,11 +218,7 @@ export function UberAuditManager() {
           `
           user_id,
           rent_date,
-<<<<<<< HEAD
           users!fleet_reports_user_id_fkey!inner(
-=======
-          users!user_id(
->>>>>>> dev-saniya
             id,
             name,
             email_id,

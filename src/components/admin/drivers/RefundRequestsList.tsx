@@ -132,6 +132,8 @@ export default function RefundRequestsList() {
     try {
       setSaving(true);
       const nextStatus: RefundRequestStatus = reviewAction === "approve" ? "approved" : "rejected";
+      
+      // Update the refund request status
       const { error } = await supabase
         .from("driver_refund_requests")
         .update({
@@ -144,7 +146,31 @@ export default function RefundRequestsList() {
         .eq("status", "pending");
 
       if (error) throw error;
-      toast.success(`Request ${nextStatus}`);
+
+      // If approved, deduct the amount from driver's refund balance by adding a transaction
+      if (reviewAction === "approve" && selected.amount > 0) {
+        const { error: txError } = await supabase
+          .from("driver_penalty_transactions")
+          .insert({
+            user_id: selected.driver_id,
+            amount: selected.amount,
+            type: "due",
+            description: `Refund payout - Request #${selected.id.substring(0, 8)}${reviewNotes.trim() ? ` - ${reviewNotes.trim()}` : ""}`,
+            created_by: user.id,
+          });
+
+        if (txError) {
+          console.error("Error adding penalty transaction:", txError);
+          // Rollback the refund request status update
+          await supabase
+            .from("driver_refund_requests")
+            .update({ status: "pending", reviewed_by: null, reviewed_at: null, review_notes: null })
+            .eq("id", selected.id);
+          throw new Error("Failed to update driver refund balance");
+        }
+      }
+
+      toast.success(`Request ${nextStatus}${reviewAction === "approve" ? ` - Refund balance updated` : ""}`);
       setReviewModalOpen(false);
       setSelected(null);
       await fetchRequests();

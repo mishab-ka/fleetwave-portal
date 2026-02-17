@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import AdminLayout from "@/components/AdminLayout";
 import { supabase } from "@/integrations/supabase/client";
 import { BadgeCheck } from "lucide-react";
@@ -92,6 +92,7 @@ type DriverPenaltySummary = {
 const AdminDrivers = () => {
   const { logActivity } = useActivityLogger();
   const [drivers, setDrivers] = useState([]);
+  const [allFilteredDrivers, setAllFilteredDrivers] = useState([]); // Store all filtered drivers (before pagination)
   const [loading, setLoading] = useState(true);
   const [selectedDriver, setSelectedDriver] = useState<any>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -206,6 +207,7 @@ const AdminDrivers = () => {
     totalLeave: 0,
     totalResigning: 0,
   });
+
 
   const isMobile = useIsMobile();
   const { user } = useAuth();
@@ -389,6 +391,20 @@ const AdminDrivers = () => {
     }
   };
 
+  // Fetch all filtered drivers (for statistics) only when filters change, not when page changes
+  useEffect(() => {
+    fetchAllFilteredDrivers();
+  }, [
+    showOnlineOnly,
+    searchQuery,
+    shiftFilter,
+    verificationFilter,
+    showLowDeposit,
+    showNegativeBalance,
+    advancedFilters,
+  ]);
+
+  // Fetch paginated drivers when page or filters change
   useEffect(() => {
     fetchDrivers();
     fetchStatistics();
@@ -409,6 +425,7 @@ const AdminDrivers = () => {
       if (currentPage !== 1) {
         setCurrentPage(1);
       } else {
+        fetchAllFilteredDrivers(); // Update all filtered drivers for statistics
         fetchDrivers();
         fetchStatistics();
       }
@@ -416,6 +433,229 @@ const AdminDrivers = () => {
 
     return () => clearTimeout(timer);
   }, [searchQuery]);
+
+  // Fetch all filtered drivers (without pagination) for statistics calculation
+  const fetchAllFilteredDrivers = async () => {
+    try {
+      let query = supabase
+        .from("users")
+        .select("*", { count: "exact" })
+        .order("name");
+
+      // Apply server-side filters (same as fetchDrivers)
+      if (showOnlineOnly && advancedFilters.driverStatus === "all") {
+        query = query.eq("online", true);
+      }
+
+      if (searchQuery.trim() !== "") {
+        const searchTerm = searchQuery.toLowerCase().trim();
+        query = query.or(
+          `name.ilike.%${searchTerm}%,email_id.ilike.%${searchTerm}%,vehicle_number.ilike.%${searchTerm}%,driver_id.ilike.%${searchTerm}%`
+        );
+      }
+
+      if (shiftFilter !== "all") {
+        query = query.eq("shift", shiftFilter);
+      }
+
+      if (verificationFilter !== "all") {
+        const isVerified = verificationFilter === "verified";
+        query = query.eq("is_verified", isVerified);
+      }
+
+      // Apply advanced server-side filters
+      if (advancedFilters.joiningDateFrom) {
+        query = query.gte(
+          "joining_date",
+          format(advancedFilters.joiningDateFrom, "yyyy-MM-dd")
+        );
+      }
+      if (advancedFilters.joiningDateTo) {
+        query = query.lte(
+          "joining_date",
+          format(advancedFilters.joiningDateTo, "yyyy-MM-dd")
+        );
+      }
+
+      if (
+        showLowDeposit &&
+        !advancedFilters.depositMin &&
+        !advancedFilters.depositMax
+      ) {
+        query = query.lt("pending_balance", 2500);
+      } else {
+        if (
+          advancedFilters.depositMin &&
+          advancedFilters.depositMin.trim() !== ""
+        ) {
+          const minDeposit = parseFloat(advancedFilters.depositMin);
+          if (!isNaN(minDeposit)) {
+            query = query.gte("pending_balance", minDeposit);
+          }
+        }
+        if (
+          advancedFilters.depositMax &&
+          advancedFilters.depositMax.trim() !== ""
+        ) {
+          const maxDeposit = parseFloat(advancedFilters.depositMax);
+          if (!isNaN(maxDeposit)) {
+            query = query.lte("pending_balance", maxDeposit);
+          }
+        }
+      }
+
+      if (advancedFilters.driverCategory !== "all") {
+        query = query.eq("driver_category", advancedFilters.driverCategory);
+      }
+
+      if (advancedFilters.driverStatus !== "all") {
+        if (advancedFilters.driverStatus === "online") {
+          query = query.eq("online", true);
+        } else if (advancedFilters.driverStatus === "offline") {
+          query = query.eq("online", false);
+        } else if (advancedFilters.driverStatus === "leave") {
+          query = query.eq("driver_status", "leave");
+        } else if (advancedFilters.driverStatus === "resigning") {
+          query = query.or(
+            "driver_status.eq.resigning,resigning_date.not.is.null"
+          );
+        } else if (advancedFilters.driverStatus === "going_to_24hr") {
+          query = query.eq("driver_status", "going_to_24hr");
+        }
+      }
+
+      if (advancedFilters.vehicleAssignment !== "all") {
+        if (advancedFilters.vehicleAssignment === "assigned") {
+          query = query.not("vehicle_number", "is", null);
+        } else if (advancedFilters.vehicleAssignment === "unassigned") {
+          query = query.is("vehicle_number", null);
+        }
+      }
+
+      if (advancedFilters.resigningDateFrom) {
+        query = query.gte(
+          "resigning_date",
+          format(advancedFilters.resigningDateFrom, "yyyy-MM-dd")
+        );
+      }
+      if (advancedFilters.resigningDateTo) {
+        query = query.lte(
+          "resigning_date",
+          format(advancedFilters.resigningDateTo, "yyyy-MM-dd")
+        );
+      }
+
+      if (
+        advancedFilters.totalTripsMin &&
+        advancedFilters.totalTripsMin.trim() !== ""
+      ) {
+        const minTrips = parseInt(advancedFilters.totalTripsMin);
+        if (!isNaN(minTrips)) {
+          query = query.gte("total_trip", minTrips);
+        }
+      }
+      if (
+        advancedFilters.totalTripsMax &&
+        advancedFilters.totalTripsMax.trim() !== ""
+      ) {
+        const maxTrips = parseInt(advancedFilters.totalTripsMax);
+        if (!isNaN(maxTrips)) {
+          query = query.lte("total_trip", maxTrips);
+        }
+      }
+
+      // Check if we need client-side filtering
+      const needsClientSideFiltering =
+        showNegativeBalance ||
+        advancedFilters.rAndFBalanceMin ||
+        advancedFilters.rAndFBalanceMax ||
+        advancedFilters.documentStatus !== "all";
+
+      if (needsClientSideFiltering) {
+        // Fetch all matching drivers first
+        const { data: allDriversData } = await query.limit(10000);
+
+        if (!allDriversData || allDriversData.length === 0) {
+          setAllFilteredDrivers([]);
+          return;
+        }
+
+        // Fetch penalty summaries for all drivers
+        const summaries = await fetchPenaltySummaries(allDriversData);
+
+        // Apply client-side filters
+        let filteredDrivers = allDriversData;
+
+        if (showNegativeBalance) {
+          filteredDrivers = filteredDrivers.filter((driver) => {
+            const summary = summaries[driver.id];
+            const fallbackValue = Number(driver?.total_penalties ?? 0);
+            const rAndFValue =
+              summary && typeof summary.netPenalties === "number"
+                ? summary.netPenalties
+                : fallbackValue;
+            return Number.isFinite(rAndFValue) && rAndFValue < 0;
+          });
+        }
+
+        if (
+          advancedFilters.rAndFBalanceMin ||
+          advancedFilters.rAndFBalanceMax
+        ) {
+          filteredDrivers = filteredDrivers.filter((driver) => {
+            const summary = summaries[driver.id];
+            const fallbackValue = Number(driver?.total_penalties ?? 0);
+            const rAndFValue =
+              summary && typeof summary.netPenalties === "number"
+                ? summary.netPenalties
+                : fallbackValue;
+
+            if (
+              advancedFilters.rAndFBalanceMin &&
+              rAndFValue < parseFloat(advancedFilters.rAndFBalanceMin)
+            ) {
+              return false;
+            }
+            if (
+              advancedFilters.rAndFBalanceMax &&
+              rAndFValue > parseFloat(advancedFilters.rAndFBalanceMax)
+            ) {
+              return false;
+            }
+            return true;
+          });
+        }
+
+        if (advancedFilters.documentStatus !== "all") {
+          filteredDrivers = filteredDrivers.filter((driver) => {
+            const docCheck = checkAllDocumentsUploaded(driver);
+            if (advancedFilters.documentStatus === "complete") {
+              return docCheck.allUploaded;
+            } else if (advancedFilters.documentStatus === "incomplete") {
+              return !docCheck.allUploaded;
+            }
+            return true;
+          });
+        }
+
+        setAllFilteredDrivers(filteredDrivers);
+        // Ensure penalty summaries are available for calculations
+        await fetchPenaltySummaries(filteredDrivers);
+      } else {
+        // All filters are server-side, fetch all matching drivers
+        const { data: allFilteredData } = await query.limit(10000);
+        setAllFilteredDrivers(allFilteredData || []);
+        
+        // Fetch penalty summaries for all filtered drivers
+        if (allFilteredData && allFilteredData.length > 0) {
+          await fetchPenaltySummaries(allFilteredData);
+        }
+      }
+    } catch (error) {
+      console.error("Error fetching all filtered drivers:", error);
+      setAllFilteredDrivers([]);
+    }
+  };
 
   const fetchPenaltySummaries = async (
     driverList: any[]
@@ -727,6 +967,8 @@ const AdminDrivers = () => {
         setTotalPages(Math.ceil(filteredDrivers.length / pageSize));
       } else {
         // Normal flow: all filters are server-side, apply pagination server-side
+        // Note: allFilteredDrivers is fetched separately in fetchAllFilteredDrivers
+        // Now apply pagination for display
         const from = (currentPage - 1) * pageSize;
         const to = from + pageSize - 1;
         query = query.range(from, to);
@@ -739,7 +981,6 @@ const AdminDrivers = () => {
         totalCountValue = count || 0;
 
         setDrivers(allDrivers);
-        await fetchPenaltySummaries(allDrivers);
 
         setTotalCount(totalCountValue);
         setTotalPages(Math.ceil(totalCountValue / pageSize));
@@ -1801,6 +2042,31 @@ const AdminDrivers = () => {
     };
   };
 
+  // Calculate Total Refunds and Total Penalties from filtered drivers' R & P values
+  const filteredTotals = useMemo(() => {
+    let totalRefunds = 0;
+    let totalPenalties = 0;
+
+    allFilteredDrivers.forEach((driver) => {
+      const penaltyInfo = getDriverPenaltyDisplay(driver);
+      const rAndPValue = penaltyInfo.value;
+
+      // Positive values → add to Total Refunds
+      if (rAndPValue > 0) {
+        totalRefunds += rAndPValue;
+      }
+      // Negative values → add absolute value to Total Penalties
+      else if (rAndPValue < 0) {
+        totalPenalties += Math.abs(rAndPValue);
+      }
+    });
+
+    return {
+      totalRefunds,
+      totalPenalties,
+    };
+  }, [allFilteredDrivers, penaltySummaries]);
+
   const handleCopyDriverId = async (driverId: string) => {
     try {
       await navigator.clipboard.writeText(driverId);
@@ -2096,7 +2362,7 @@ const AdminDrivers = () => {
               </span>
               <span className="text-2xl font-bold text-green-500">
                 ₹
-                {statistics.totalRefunds.toLocaleString("en-IN", {
+                {filteredTotals.totalRefunds.toLocaleString("en-IN", {
                   minimumFractionDigits: 0,
                   maximumFractionDigits: 0,
                 })}
@@ -2108,7 +2374,7 @@ const AdminDrivers = () => {
               </span>
               <span className="text-2xl font-bold text-red-500">
                 ₹
-                {statistics.totalPenalties.toLocaleString("en-IN", {
+                {filteredTotals.totalPenalties.toLocaleString("en-IN", {
                   minimumFractionDigits: 0,
                   maximumFractionDigits: 0,
                 })}
