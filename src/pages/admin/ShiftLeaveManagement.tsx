@@ -52,6 +52,15 @@ import {
   CommandList,
 } from "@/components/ui/command";
 import { cn } from "@/lib/utils";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 
 interface Vehicle {
   vehicle_number: string;
@@ -98,6 +107,11 @@ const ShiftLeaveManagement = () => {
   const [searchReportShift, setSearchReportShift] = useState<
     "morning" | "night" | "all"
   >("all");
+  const [activeMainTab, setActiveMainTab] = useState<"byDate" | "reasons">("byDate");
+  const [leaveReasonsList, setLeaveReasonsList] = useState<
+    { id: string; report_date: string; shift: string; driver_name: string | null; vehicle_number: string; leave_type: string; reason: string | null }[]
+  >([]);
+  const [leaveReasonsLoading, setLeaveReasonsLoading] = useState(false);
 
   useEffect(() => {
     fetchActiveVehicles();
@@ -116,6 +130,54 @@ const ShiftLeaveManagement = () => {
       setExistingReports(data || []);
     } catch (error) {
       console.error("Error fetching existing reports:", error);
+    }
+  };
+
+  const fetchLeaveReasons = async () => {
+    setLeaveReasonsLoading(true);
+    try {
+      const { data: details, error: detailsError } = await supabase
+        .from("shift_leave_details")
+        .select("id, driver_name, vehicle_number, leave_type, reason, shift_leave_reports(report_date, shift)")
+        .order("created_at", { ascending: false });
+
+      if (detailsError) throw detailsError;
+
+      const reportMap = new Map<string, { report_date: string; shift: string }>();
+      const rows: { id: string; report_date: string; shift: string; driver_name: string | null; vehicle_number: string; leave_type: string; reason: string | null }[] = [];
+
+      for (const d of details || []) {
+        const report = (d as any).shift_leave_reports;
+        let report_date = "";
+        let shift = "";
+        if (report) {
+          if (Array.isArray(report)) {
+            const r = report[0];
+            report_date = r?.report_date ?? "";
+            shift = r?.shift ?? "";
+          } else {
+            report_date = report.report_date ?? "";
+            shift = report.shift ?? "";
+          }
+        }
+        rows.push({
+          id: d.id,
+          report_date,
+          shift,
+          driver_name: d.driver_name ?? null,
+          vehicle_number: d.vehicle_number ?? "",
+          leave_type: d.leave_type ?? "",
+          reason: d.reason ?? null,
+        });
+      }
+
+      setLeaveReasonsList(rows);
+    } catch (error) {
+      console.error("Error fetching leave reasons:", error);
+      toast.error("Failed to load leave reasons");
+      setLeaveReasonsList([]);
+    } finally {
+      setLeaveReasonsLoading(false);
     }
   };
 
@@ -365,6 +427,17 @@ const ShiftLeaveManagement = () => {
           } or change leave type to "Missed"`
         );
         return false;
+      }
+
+      // When total shifts < 12, require Leave Shift Details (reason) for each leave
+      if (totalAvailableShifts < 12) {
+        const trimmedReason = (detail.reason || "").trim();
+        if (!trimmedReason) {
+          toast.error(
+            `When total shifts is less than 12, a reason is required for each leave shift. Please enter a reason for Leave Shift #${i + 1}.`
+          );
+          return false;
+        }
       }
     }
 
@@ -690,126 +763,174 @@ const ShiftLeaveManagement = () => {
           </Card>
         )}
 
-        {/* Load Existing Report Section */}
+        {/* Load Existing Report / Reasons Section */}
         {!isEditMode && (
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <FileText className="h-5 w-5" />
-                Load Existing Report
+                Reports &amp; Leave Reasons
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div className="space-y-2">
-                    <Label>Search by Date</Label>
-                    <Popover>
-                      <PopoverTrigger asChild>
-                        <Button
-                          variant="outline"
-                          className={cn(
-                            "w-full justify-start text-left font-normal",
-                            !searchReportDate && "text-muted-foreground"
-                          )}
-                        >
-                          <Calendar className="mr-2 h-4 w-4" />
-                          {searchReportDate ? (
-                            format(searchReportDate, "dd MMM yyyy")
-                          ) : (
-                            <span>Select date</span>
-                          )}
-                        </Button>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-auto p-0" align="start">
-                        <CalendarComponent
-                          mode="single"
-                          selected={searchReportDate || undefined}
-                          onSelect={(date) => setSearchReportDate(date || null)}
-                          initialFocus
-                        />
-                      </PopoverContent>
-                    </Popover>
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Filter by Shift</Label>
-                    <Select
-                      value={searchReportShift}
-                      onValueChange={(value: "morning" | "night" | "all") =>
-                        setSearchReportShift(value)
-                      }
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">All Shifts</SelectItem>
-                        <SelectItem value="morning">Morning</SelectItem>
-                        <SelectItem value="night">Night</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="flex items-end">
-                    <Button
-                      variant="outline"
-                      onClick={() => {
-                        setSearchReportDate(null);
-                        setSearchReportShift("all");
-                      }}
-                    >
-                      Clear Filters
-                    </Button>
-                  </div>
-                </div>
-
-                {filteredExistingReports.length > 0 && (
-                  <div className="space-y-2">
-                    <Label>Select Report to Edit</Label>
-                    <ScrollArea className="h-48 border rounded-lg p-2">
-                      <div className="space-y-2">
-                        {filteredExistingReports.map((report) => (
-                          <div
-                            key={report.id}
-                            className="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 cursor-pointer"
-                            onClick={() => loadReportForEdit(report.id)}
+              <Tabs value={activeMainTab} onValueChange={(v) => { setActiveMainTab(v as "byDate" | "reasons"); if (v === "reasons") fetchLeaveReasons(); }}>
+                <TabsList className="grid w-full max-w-md grid-cols-2">
+                  <TabsTrigger value="byDate">By Date</TabsTrigger>
+                  <TabsTrigger value="reasons">Reasons</TabsTrigger>
+                </TabsList>
+                <TabsContent value="byDate" className="space-y-4 mt-4">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="space-y-2">
+                      <Label>Search by Date</Label>
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <Button
+                            variant="outline"
+                            className={cn(
+                              "w-full justify-start text-left font-normal",
+                              !searchReportDate && "text-muted-foreground"
+                            )}
                           >
-                            <div>
-                              <p className="font-medium">
-                                {format(
-                                  new Date(report.report_date),
-                                  "dd MMM yyyy"
-                                )}{" "}
-                                - {report.shift || "N/A"}
-                              </p>
-                              <p className="text-sm text-gray-500">
-                                Runned: {report.shifts_runned} | Leave:{" "}
-                                {report.shifts_leave}
-                              </p>
-                            </div>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                loadReportForEdit(report.id);
-                              }}
-                            >
-                              <Edit className="h-4 w-4 mr-1" />
-                              Edit
-                            </Button>
-                          </div>
-                        ))}
-                      </div>
-                    </ScrollArea>
+                            <Calendar className="mr-2 h-4 w-4" />
+                            {searchReportDate ? (
+                              format(searchReportDate, "dd MMM yyyy")
+                            ) : (
+                              <span>Select date</span>
+                            )}
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto p-0" align="start">
+                          <CalendarComponent
+                            mode="single"
+                            selected={searchReportDate || undefined}
+                            onSelect={(date) => setSearchReportDate(date || null)}
+                            initialFocus
+                          />
+                        </PopoverContent>
+                      </Popover>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Filter by Shift</Label>
+                      <Select
+                        value={searchReportShift}
+                        onValueChange={(value: "morning" | "night" | "all") =>
+                          setSearchReportShift(value)
+                        }
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All Shifts</SelectItem>
+                          <SelectItem value="morning">Morning</SelectItem>
+                          <SelectItem value="night">Night</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="flex items-end">
+                      <Button
+                        variant="outline"
+                        onClick={() => {
+                          setSearchReportDate(null);
+                          setSearchReportShift("all");
+                        }}
+                      >
+                        Clear Filters
+                      </Button>
+                    </div>
                   </div>
-                )}
 
-                {filteredExistingReports.length === 0 && (
-                  <p className="text-sm text-gray-500 text-center py-4">
-                    No reports found. Create a new report below.
-                  </p>
-                )}
-              </div>
+                  {filteredExistingReports.length > 0 && (
+                    <div className="space-y-2">
+                      <Label>Select Report to Edit</Label>
+                      <ScrollArea className="h-48 border rounded-lg p-2">
+                        <div className="space-y-2">
+                          {filteredExistingReports.map((report) => (
+                            <div
+                              key={report.id}
+                              className="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 cursor-pointer"
+                              onClick={() => loadReportForEdit(report.id)}
+                            >
+                              <div>
+                                <p className="font-medium">
+                                  {format(
+                                    new Date(report.report_date),
+                                    "dd MMM yyyy"
+                                  )}{" "}
+                                  - {report.shift || "N/A"}
+                                </p>
+                                <p className="text-sm text-gray-500">
+                                  Runned: {report.shifts_runned} | Leave:{" "}
+                                  {report.shifts_leave}
+                                </p>
+                              </div>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  loadReportForEdit(report.id);
+                                }}
+                              >
+                                <Edit className="h-4 w-4 mr-1" />
+                                Edit
+                              </Button>
+                            </div>
+                          ))}
+                        </div>
+                      </ScrollArea>
+                    </div>
+                  )}
+
+                  {filteredExistingReports.length === 0 && (
+                    <p className="text-sm text-gray-500 text-center py-4">
+                      No reports found. Create a new report below.
+                    </p>
+                  )}
+                </TabsContent>
+                <TabsContent value="reasons" className="mt-4">
+                  {leaveReasonsLoading ? (
+                    <div className="flex items-center justify-center py-12">
+                      <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-b-2 border-fleet-purple" />
+                    </div>
+                  ) : leaveReasonsList.length === 0 ? (
+                    <p className="text-sm text-gray-500 text-center py-8">
+                      No leave shift details found. Reasons are stored when you submit reports with Leave Shift Details.
+                    </p>
+                  ) : (
+                    <ScrollArea className="border rounded-lg">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Report Date</TableHead>
+                            <TableHead>Shift</TableHead>
+                            <TableHead>Driver Name</TableHead>
+                            <TableHead>Vehicle</TableHead>
+                            <TableHead>Leave Type</TableHead>
+                            <TableHead>Reason</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {leaveReasonsList.map((row) => (
+                            <TableRow key={row.id}>
+                              <TableCell className="whitespace-nowrap">
+                                {row.report_date ? format(new Date(row.report_date), "dd MMM yyyy") : "—"}
+                              </TableCell>
+                              <TableCell className="capitalize">{row.shift || "—"}</TableCell>
+                              <TableCell>{row.driver_name || "N/A"}</TableCell>
+                              <TableCell>{row.vehicle_number || "—"}</TableCell>
+                              <TableCell className="capitalize">{row.leave_type || "—"}</TableCell>
+                              <TableCell className="max-w-xs truncate" title={row.reason ?? ""}>
+                                {row.reason && row.reason.trim() ? row.reason : "—"}
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </ScrollArea>
+                  )}
+                </TabsContent>
+              </Tabs>
             </CardContent>
           </Card>
         )}
@@ -986,7 +1107,14 @@ const ShiftLeaveManagement = () => {
             {/* Leave Details Section */}
             {leaveDetails.length > 0 && (
               <div className="space-y-4">
-                <Label>Leave Shift Details</Label>
+                <div className="flex items-center gap-2">
+                  <Label>Leave Shift Details</Label>
+                  {totalAvailableShifts < 12 && (
+                    <span className="text-amber-600 text-sm font-medium">
+                      (Reason required for each leave when total shifts &lt; 12)
+                    </span>
+                  )}
+                </div>
                 {leaveDetails.map((detail, index) => (
                   <Card key={detail.id} className="p-4">
                     <div className="flex items-start justify-between mb-4">

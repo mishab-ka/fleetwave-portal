@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import AdminLayout from "@/components/AdminLayout";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -65,6 +65,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Edit, Save, X } from "lucide-react";
 
 interface ShiftLeaveReport {
@@ -136,6 +137,15 @@ const ManagerReports = () => {
     null
   );
   const [isDeleting, setIsDeleting] = useState(false);
+  const [activeShiftLeaveTab, setActiveShiftLeaveTab] = useState<"reports" | "reasons">("reports");
+  const [leaveReasonsList, setLeaveReasonsList] = useState<
+    { id: string; report_date: string; shift: string; driver_name: string | null; vehicle_number: string; leave_type: string; reason: string | null }[]
+  >([]);
+  const [leaveReasonsLoading, setLeaveReasonsLoading] = useState(false);
+  const [reasonsDateFilter, setReasonsDateFilter] = useState<string>("all");
+  const [reasonsShiftFilter, setReasonsShiftFilter] = useState<string>("all");
+  const [reasonsLeaveTypeFilter, setReasonsLeaveTypeFilter] = useState<string>("all");
+  const [reasonsSearchQuery, setReasonsSearchQuery] = useState("");
 
   useEffect(() => {
     fetchReports();
@@ -165,6 +175,42 @@ const ManagerReports = () => {
   useEffect(() => {
     filterReports();
   }, [reports, searchQuery, dateFilter]);
+
+  // Filtered leave reasons (Reasons tab): by date, shift, leave type, and search (reason / driver name / vehicle)
+  const filteredLeaveReasons = useMemo(() => {
+    let list = leaveReasonsList;
+    const today = format(new Date(), "yyyy-MM-dd");
+    const yesterday = format(new Date(Date.now() - 864e5), "yyyy-MM-dd");
+    const weekAgo = format(new Date(Date.now() - 7 * 864e5), "yyyy-MM-dd");
+    const monthAgo = format(new Date(Date.now() - 30 * 864e5), "yyyy-MM-dd");
+
+    if (reasonsDateFilter !== "all") {
+      list = list.filter((row) => {
+        const d = row.report_date || "";
+        if (reasonsDateFilter === "today") return d === today;
+        if (reasonsDateFilter === "yesterday") return d === yesterday;
+        if (reasonsDateFilter === "week") return d >= weekAgo && d <= today;
+        if (reasonsDateFilter === "month") return d >= monthAgo && d <= today;
+        return true;
+      });
+    }
+    if (reasonsShiftFilter !== "all") {
+      list = list.filter((row) => (row.shift || "").toLowerCase() === reasonsShiftFilter.toLowerCase());
+    }
+    if (reasonsLeaveTypeFilter !== "all") {
+      list = list.filter((row) => (row.leave_type || "").toLowerCase() === reasonsLeaveTypeFilter.toLowerCase());
+    }
+    const q = reasonsSearchQuery.trim().toLowerCase();
+    if (q) {
+      list = list.filter(
+        (row) =>
+          (row.reason || "").toLowerCase().includes(q) ||
+          (row.driver_name || "").toLowerCase().includes(q) ||
+          (row.vehicle_number || "").toLowerCase().includes(q)
+      );
+    }
+    return list;
+  }, [leaveReasonsList, reasonsDateFilter, reasonsShiftFilter, reasonsLeaveTypeFilter, reasonsSearchQuery]);
 
   // Group reports by date
   const groupReportsByDate = (reportsList: ShiftLeaveReport[]) => {
@@ -240,6 +286,53 @@ const ManagerReports = () => {
       toast.error("Failed to load manager reports");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchLeaveReasons = async () => {
+    setLeaveReasonsLoading(true);
+    try {
+      const { data: details, error: detailsError } = await supabase
+        .from("shift_leave_details")
+        .select("id, driver_name, vehicle_number, leave_type, reason, shift_leave_reports(report_date, shift)")
+        .order("created_at", { ascending: false });
+
+      if (detailsError) throw detailsError;
+
+      const rows: { id: string; report_date: string; shift: string; driver_name: string | null; vehicle_number: string; leave_type: string; reason: string | null }[] = [];
+
+      for (const d of details || []) {
+        const report = (d as any).shift_leave_reports;
+        let report_date = "";
+        let shift = "";
+        if (report) {
+          if (Array.isArray(report)) {
+            const r = report[0];
+            report_date = r?.report_date ?? "";
+            shift = r?.shift ?? "";
+          } else {
+            report_date = report.report_date ?? "";
+            shift = report.shift ?? "";
+          }
+        }
+        rows.push({
+          id: d.id,
+          report_date,
+          shift,
+          driver_name: d.driver_name ?? null,
+          vehicle_number: d.vehicle_number ?? "",
+          leave_type: d.leave_type ?? "",
+          reason: d.reason ?? null,
+        });
+      }
+
+      setLeaveReasonsList(rows);
+    } catch (error) {
+      console.error("Error fetching leave reasons:", error);
+      toast.error("Failed to load leave reasons");
+      setLeaveReasonsList([]);
+    } finally {
+      setLeaveReasonsLoading(false);
     }
   };
 
@@ -501,7 +594,7 @@ const ManagerReports = () => {
   return (
     <AdminLayout title="Manager Reports">
       <div className="space-y-6">
-        {/* Filters */}
+        {/* Shift Leave Reports: Reports tab + Reasons tab */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -510,47 +603,169 @@ const ManagerReports = () => {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="search">Search</Label>
-                <div className="relative">
-                  <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    id="search"
-                    placeholder="Search by creator or date..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="pl-8"
-                  />
-                </div>
-              </div>
+            <Tabs
+              value={activeShiftLeaveTab}
+              onValueChange={(v) => {
+                setActiveShiftLeaveTab(v as "reports" | "reasons");
+                if (v === "reasons") fetchLeaveReasons();
+              }}
+            >
+              <TabsList className="grid w-full max-w-sm grid-cols-2">
+                <TabsTrigger value="reports">Reports</TabsTrigger>
+                <TabsTrigger value="reasons">Reasons</TabsTrigger>
+              </TabsList>
+              <TabsContent value="reports" className="mt-4 space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="search">Search</Label>
+                    <div className="relative">
+                      <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+                      <Input
+                        id="search"
+                        placeholder="Search by creator or date..."
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        className="pl-8"
+                      />
+                    </div>
+                  </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="date-filter">Filter by Date</Label>
-                <Select value={dateFilter} onValueChange={setDateFilter}>
-                  <SelectTrigger id="date-filter">
-                    <SelectValue placeholder="All dates" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Dates</SelectItem>
-                    <SelectItem value="today">Today</SelectItem>
-                    <SelectItem value="yesterday">Yesterday</SelectItem>
-                    <SelectItem value="week">Last 7 Days</SelectItem>
-                    <SelectItem value="month">Last 30 Days</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="date-filter">Filter by Date</Label>
+                    <Select value={dateFilter} onValueChange={setDateFilter}>
+                      <SelectTrigger id="date-filter">
+                        <SelectValue placeholder="All dates" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All Dates</SelectItem>
+                        <SelectItem value="today">Today</SelectItem>
+                        <SelectItem value="yesterday">Yesterday</SelectItem>
+                        <SelectItem value="week">Last 7 Days</SelectItem>
+                        <SelectItem value="month">Last 30 Days</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
 
-              <div className="flex items-end">
-                <div className="text-sm text-gray-600">
-                  Showing {filteredReports.length} of {reports.length} reports
+                  <div className="flex items-end">
+                    <div className="text-sm text-gray-600">
+                      Showing {filteredReports.length} of {reports.length} reports
+                    </div>
+                  </div>
                 </div>
-              </div>
-            </div>
+              </TabsContent>
+              <TabsContent value="reasons" className="mt-4 space-y-4">
+                {leaveReasonsLoading ? (
+                  <div className="flex items-center justify-center py-12">
+                    <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-b-2 border-primary" />
+                  </div>
+                ) : leaveReasonsList.length === 0 ? (
+                  <p className="text-sm text-gray-500 text-center py-8">
+                    No leave shift details found. Reasons are stored when reports are submitted with Leave Shift Details.
+                  </p>
+                ) : (
+                  <>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="reasons-date">Filter by Date</Label>
+                        <Select value={reasonsDateFilter} onValueChange={setReasonsDateFilter}>
+                          <SelectTrigger id="reasons-date">
+                            <SelectValue placeholder="All dates" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">All Dates</SelectItem>
+                            <SelectItem value="today">Today</SelectItem>
+                            <SelectItem value="yesterday">Yesterday</SelectItem>
+                            <SelectItem value="week">Last 7 Days</SelectItem>
+                            <SelectItem value="month">Last 30 Days</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="reasons-shift">Filter by Shift</Label>
+                        <Select value={reasonsShiftFilter} onValueChange={setReasonsShiftFilter}>
+                          <SelectTrigger id="reasons-shift">
+                            <SelectValue placeholder="All shifts" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">All Shifts</SelectItem>
+                            <SelectItem value="morning">Morning</SelectItem>
+                            <SelectItem value="night">Night</SelectItem>
+                            <SelectItem value="24hr">24hr</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="reasons-leave-type">Filter by Leave Type</Label>
+                        <Select value={reasonsLeaveTypeFilter} onValueChange={setReasonsLeaveTypeFilter}>
+                          <SelectTrigger id="reasons-leave-type">
+                            <SelectValue placeholder="All types" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">All Types</SelectItem>
+                            <SelectItem value="leave">Leave</SelectItem>
+                            <SelectItem value="missed">Missed</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="reasons-search">Search</Label>
+                        <div className="relative">
+                          <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+                          <Input
+                            id="reasons-search"
+                            placeholder="Reason, driver name, or vehicle..."
+                            value={reasonsSearchQuery}
+                            onChange={(e) => setReasonsSearchQuery(e.target.value)}
+                            className="pl-8"
+                          />
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          Searches reason, driver name, and vehicle number
+                        </p>
+                      </div>
+                    </div>
+                    <div className="text-sm text-gray-600">
+                      Showing {filteredLeaveReasons.length} of {leaveReasonsList.length} reasons
+                    </div>
+                    <ScrollArea className="border rounded-lg">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Report Date</TableHead>
+                            <TableHead>Shift</TableHead>
+                            <TableHead>Driver Name</TableHead>
+                            <TableHead>Vehicle</TableHead>
+                            <TableHead>Leave Type</TableHead>
+                            <TableHead>Reason</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {filteredLeaveReasons.map((row) => (
+                            <TableRow key={row.id}>
+                              <TableCell className="whitespace-nowrap">
+                                {row.report_date ? format(new Date(row.report_date), "dd MMM yyyy") : "—"}
+                              </TableCell>
+                              <TableCell className="capitalize">{row.shift || "—"}</TableCell>
+                              <TableCell>{row.driver_name || "N/A"}</TableCell>
+                              <TableCell>{row.vehicle_number || "—"}</TableCell>
+                              <TableCell className="capitalize">{row.leave_type || "—"}</TableCell>
+                              <TableCell className="max-w-xs truncate" title={row.reason ?? ""}>
+                                {row.reason && row.reason.trim() ? row.reason : "—"}
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </ScrollArea>
+                  </>
+                )}
+              </TabsContent>
+            </Tabs>
           </CardContent>
         </Card>
 
-        {/* Reports Grouped by Date */}
+        {/* Reports Grouped by Date - only when on Reports tab */}
+        {activeShiftLeaveTab === "reports" && (
         <Card>
           <CardContent className="p-0">
             {filteredReports.length === 0 ? (
@@ -818,6 +1033,7 @@ const ManagerReports = () => {
             )}
           </CardContent>
         </Card>
+        )}
 
         {/* Report Details Modal */}
         <Dialog
