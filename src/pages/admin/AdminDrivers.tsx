@@ -206,6 +206,9 @@ const AdminDrivers = () => {
     totalNetBalance: 0,
     totalLeave: 0,
     totalResigning: 0,
+    newJoiningCount: 0,
+    rejoiningCount: 0,
+    goingTo24hrCount: 0,
   });
 
 
@@ -1194,6 +1197,38 @@ const AdminDrivers = () => {
         }
       }
 
+      // Total New Joining, Rejoining, Going to 24hr from public.users (each driver counted once by unique id; all existing saved records)
+      let newJoiningCount = 0;
+      let rejoiningCount = 0;
+      let goingTo24hrCount = 0;
+      try {
+        const { count: newJoin } = await supabase
+          .from("users")
+          .select("id", { count: "exact", head: true })
+          .eq("joining_type", "new_joining");
+        newJoiningCount = newJoin ?? 0;
+      } catch (e) {
+        console.warn("Error counting new_joining:", e);
+      }
+      try {
+        const { count: rejoin } = await supabase
+          .from("users")
+          .select("id", { count: "exact", head: true })
+          .eq("joining_type", "rejoining");
+        rejoiningCount = rejoin ?? 0;
+      } catch (e) {
+        console.warn("Error counting rejoining:", e);
+      }
+      try {
+        const { count: going24 } = await supabase
+          .from("users")
+          .select("id", { count: "exact", head: true })
+          .eq("driver_status", "going_to_24hr");
+        goingTo24hrCount = going24 ?? 0;
+      } catch (e) {
+        console.warn("Error counting going_to_24hr:", e);
+      }
+
       setStatistics({
         total: totalCount || 0,
         online: onlineCount || 0,
@@ -1205,6 +1240,9 @@ const AdminDrivers = () => {
         totalNetBalance,
         totalLeave: leaveCount || 0,
         totalResigning: resigningCount || 0,
+        newJoiningCount,
+        rejoiningCount,
+        goingTo24hrCount,
       });
     } catch (error) {
       console.error("Error fetching statistics:", error);
@@ -2380,6 +2418,36 @@ const AdminDrivers = () => {
                 })}
               </span>
             </div>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-4 pt-4 border-t">
+            <div className="flex flex-col items-center">
+              <span className="text-sm font-medium text-gray-500">
+                New Joining
+              </span>
+              <span className="text-2xl font-bold text-teal-600">
+                {statistics.newJoiningCount}
+              </span>
+              <span className="text-xs text-gray-400">unique drivers</span>
+            </div>
+            <div className="flex flex-col items-center">
+              <span className="text-sm font-medium text-gray-500">
+                Rejoining
+              </span>
+              <span className="text-2xl font-bold text-cyan-600">
+                {statistics.rejoiningCount}
+              </span>
+              <span className="text-xs text-gray-400">unique drivers</span>
+            </div>
+            <div className="flex flex-col items-center">
+              <span className="text-sm font-medium text-gray-500">
+                Going to 24hr
+              </span>
+              <span className="text-2xl font-bold text-indigo-600">
+                {statistics.goingTo24hrCount}
+              </span>
+              <span className="text-xs text-gray-400">unique drivers</span>
+            </div>
+          </div>
 
             {/* <div className="flex flex-col items-center">
               <span className="text-sm font-medium text-gray-500">
@@ -2416,7 +2484,6 @@ const AdminDrivers = () => {
                 ₹{statistics.totalNetBalance.toLocaleString()}
               </span>
             </div> */}
-          </div>
         </CardContent>
       </Card>
 
