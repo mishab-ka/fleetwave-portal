@@ -429,15 +429,13 @@ const ShiftLeaveManagement = () => {
         return false;
       }
 
-      // When total shifts < 12, require Leave Shift Details (reason) for each leave
-      if (totalAvailableShifts < 12) {
-        const trimmedReason = (detail.reason || "").trim();
-        if (!trimmedReason) {
-          toast.error(
-            `When total shifts is less than 12, a reason is required for each leave shift. Please enter a reason for Leave Shift #${i + 1}.`
-          );
-          return false;
-        }
+      // Reason / Notes is required for each leave shift detail
+      const trimmedReason = (detail.reason || "").trim();
+      if (!trimmedReason) {
+        toast.error(
+          `Please enter a reason/notes for Leave Shift #${i + 1}.`
+        );
+        return false;
       }
     }
 
@@ -1109,11 +1107,9 @@ const ShiftLeaveManagement = () => {
               <div className="space-y-4">
                 <div className="flex items-center gap-2">
                   <Label>Leave Shift Details</Label>
-                  {totalAvailableShifts < 12 && (
-                    <span className="text-amber-600 text-sm font-medium">
-                      (Reason required for each leave when total shifts &lt; 12)
-                    </span>
-                  )}
+                  <span className="text-amber-600 text-sm font-medium">
+                    (Reason / Notes required for each leave)
+                  </span>
                 </div>
                 {leaveDetails.map((detail, index) => (
                   <Card key={detail.id} className="p-4">
@@ -1343,7 +1339,7 @@ const ShiftLeaveManagement = () => {
 
                       {/* Reason */}
                       <div className="space-y-2 md:col-span-2">
-                        <Label>Reason / Notes</Label>
+                        <Label>Reason / Notes *</Label>
                         <Textarea
                           value={detail.reason}
                           onChange={(e) =>

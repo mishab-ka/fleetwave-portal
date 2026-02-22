@@ -468,6 +468,17 @@ const ManagerReports = () => {
   const handleSaveEdit = async () => {
     if (!editingReport) return;
 
+    // Require Reason / Notes for each leave detail
+    for (let i = 0; i < editingDetails.length; i++) {
+      const trimmedReason = (editingDetails[i].reason || "").trim();
+      if (!trimmedReason) {
+        toast.error(
+          `Please enter a reason/notes for Leave Shift #${i + 1}.`
+        );
+        return;
+      }
+    }
+
     setIsSaving(true);
     try {
       // Update the main report
@@ -1374,7 +1385,7 @@ const ManagerReports = () => {
                                           </Select>
                                         </div>
                                         <div className="space-y-2 md:col-span-2">
-                                          <Label>Reason / Notes</Label>
+                                          <Label>Reason / Notes *</Label>
                                           <Textarea
                                             value={detail.reason || ""}
                                             onChange={(e) =>
