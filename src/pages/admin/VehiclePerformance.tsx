@@ -548,11 +548,11 @@ const VehiclePerformance = () => {
         );
       };
 
-      // Fetch fleet reports for the date range
+      // Fetch fleet reports for the date range (approved, leave, offline — all count toward working days)
       let query = supabase
         .from("fleet_reports")
         .select("*")
-        .eq("status", "approved")
+        .in("status", ["approved", "leave", "offline"])
         .gte("rent_date", weekDates.startStr)
         .lte("rent_date", weekDates.endStr);
 
@@ -563,110 +563,54 @@ const VehiclePerformance = () => {
         throw reportsError;
       }
 
+      // Fetch shift leave details for the week (manager-reported leave/missed — count toward working days)
+      const { data: shiftLeaveReports } = await supabase
+        .from("shift_leave_reports")
+        .select("id, report_date")
+        .gte("report_date", weekDates.startStr)
+        .lte("report_date", weekDates.endStr);
+
+      const shiftLeaveReportIds = shiftLeaveReports?.map((r) => r.id) ?? [];
+      const shiftLeaveDateByReportId = new Map(
+        shiftLeaveReports?.map((r) => [r.id, r.report_date]) ?? []
+      );
+
+      let shiftLeaveDetails: { vehicle_number: string; report_date: string }[] = [];
+      if (shiftLeaveReportIds.length > 0) {
+        const { data: details } = await supabase
+          .from("shift_leave_details")
+          .select("shift_leave_report_id, vehicle_number")
+          .in("shift_leave_report_id", shiftLeaveReportIds);
+        shiftLeaveDetails =
+          details?.map((d) => ({
+            vehicle_number: d.vehicle_number,
+            report_date: shiftLeaveDateByReportId.get(d.shift_leave_report_id) ?? "",
+          })).filter((d) => d.report_date) ?? [];
+      }
+
+      // Fetch driver offline records for the week (offline dates per vehicle)
+      const { data: offlineRecords } = await supabase
+        .from("driver_offline_records")
+        .select("vehicle_number, offline_date")
+        .gte("offline_date", weekDates.startStr)
+        .lte("offline_date", weekDates.endStr)
+        .not("vehicle_number", "is", null);
+
       // Group by vehicle number and aggregate data
       const vehicleStats = new Map<string, VehiclePerformance>();
-      const vehicleWorkingDates = new Map<string, Set<string>>(); // Track unique dates per vehicle
-      const vehicleApprovedReportCount = new Map<string, number>(); // Track approved report count per vehicle
+      const vehicleWorkingDates = new Map<string, Set<string>>(); // Unique dates per vehicle (approved + leave + offline)
+      const vehicleApprovedReportCount = new Map<string, number>(); // Approved report count only (for trips/earnings)
 
-      reports?.forEach((report) => {
-        // Only process approved reports for rental income calculation
-        if (report.status !== "approved") {
-          return;
-        }
-
-        const vehicleNumber = report.vehicle_number;
-        if (!vehicleNumber) return;
-
-        // Initialize vehicle stats if not exists
-        if (!vehicleStats.has(vehicleNumber)) {
-          // Rent slab = days from rent_start_from in this week, capped at offline_from_date if inactive
-          const rentSlabDays =
-            getRentSlabForVehicle(vehicleNumber) ||
-            (savedExactWorkingDaysMap.get(vehicleNumber) ?? 0);
-
-          const workingDaysMultiplier =
-            rentSlabDays > 0
-              ? rentSlabDays
-              : savedWorkingDaysMap.get(vehicleNumber) || getDefaultWorkingDays();
-
-          // exact_working_days = rent slab days (Fleet Rent = dailyRent × rent slab days)
-          const exactWorkingDays = rentSlabDays;
-
-          vehicleStats.set(vehicleNumber, {
-            vehicle_number: vehicleNumber,
-            total_trips: 0,
-            total_earnings: 0,
-            total_rent: 0,
-            additional_income: 0,
-            expenses: 0,
-            profit_loss: 0,
-            worked_days: 0,
-            avg_trips_per_day: 0,
-            avg_earnings_per_day: 0,
-            rent_slab: `${rentSlabDays} days`,
-            performance_status: "break_even",
-            working_days_multiplier: workingDaysMultiplier,
-            exact_working_days: exactWorkingDays,
-            // Detailed adjustments
-            other_income: 0,
-            bonus_income: 0,
-            fuel_expense: 0,
-            maintenance_expense: 0,
-            room_rent: 0,
-            other_expenses: 0,
-          });
-
-          // Initialize working dates tracker
-          vehicleWorkingDates.set(vehicleNumber, new Set<string>());
-          // Initialize approved report count
-          vehicleApprovedReportCount.set(vehicleNumber, 0);
-        }
-
-        const stats = vehicleStats.get(vehicleNumber)!;
-        const workingDates = vehicleWorkingDates.get(vehicleNumber)!;
-
-        stats.total_trips += report.total_trips || 0;
-
-        // Count approved reports for this vehicle
-        const currentCount = vehicleApprovedReportCount.get(vehicleNumber) || 0;
-        vehicleApprovedReportCount.set(vehicleNumber, currentCount + 1);
-
-        // Calculate earnings for this specific report/day based on its trip count
-        // Only calculate rental income from approved reports
-        // If vehiclePerformanceRentalIncome is set, count reports but don't accumulate yet (will be calculated per vehicle later)
-        if (vehiclePerformanceRentalIncome > 0) {
-          // Don't accumulate - total_earnings will be calculated as vehiclePerformanceRentalIncome * approved_report_count
-        } else {
-          const dailyEarnings = getCompanyEarnings(report.total_trips || 0);
-          stats.total_earnings += dailyEarnings;
-        }
-
-        // // Debug log for daily calculations
-        // console.log(
-        //   `${vehicleNumber} - Date: ${report.rent_date}, Trips: ${report.total_trips}, Daily Earnings: ${dailyEarnings}`
-        // );
-
-        // Track unique working dates (each date counts as 1 working day regardless of number of reports)
-        if (report.status === "approved" && report.rent_date) {
-          workingDates.add(report.rent_date);
-        }
-      });
-
-      // Add all active vehicles (online) that have no reports in this week
-      rentSlabDataMap.forEach((data, vehicleNumber) => {
-        if (!data.online || vehicleStats.has(vehicleNumber)) return;
-
+      const ensureVehicleInStats = (vehicleNumber: string) => {
+        if (vehicleStats.has(vehicleNumber)) return;
         const rentSlabDays =
           getRentSlabForVehicle(vehicleNumber) ||
           (savedExactWorkingDaysMap.get(vehicleNumber) ?? 0);
-
         const workingDaysMultiplier =
           rentSlabDays > 0
             ? rentSlabDays
             : savedWorkingDaysMap.get(vehicleNumber) || getDefaultWorkingDays();
-
         const exactWorkingDays = rentSlabDays;
-
         vehicleStats.set(vehicleNumber, {
           vehicle_number: vehicleNumber,
           total_trips: 0,
@@ -689,26 +633,65 @@ const VehiclePerformance = () => {
           room_rent: 0,
           other_expenses: 0,
         });
-
         vehicleWorkingDates.set(vehicleNumber, new Set<string>());
         vehicleApprovedReportCount.set(vehicleNumber, 0);
+      };
+
+      reports?.forEach((report) => {
+        const vehicleNumber = report.vehicle_number;
+        if (!vehicleNumber) return;
+
+        ensureVehicleInStats(vehicleNumber);
+        const stats = vehicleStats.get(vehicleNumber)!;
+        const workingDates = vehicleWorkingDates.get(vehicleNumber)!;
+
+        // Working days: count unique dates with any report (approved, leave, or offline)
+        if (report.rent_date) {
+          workingDates.add(report.rent_date);
+        }
+
+        // Trips, earnings, approved count: only from approved reports
+        if (report.status !== "approved") return;
+
+        stats.total_trips += report.total_trips || 0;
+
+        const currentCount = vehicleApprovedReportCount.get(vehicleNumber) || 0;
+        vehicleApprovedReportCount.set(vehicleNumber, currentCount + 1);
+
+        if (vehiclePerformanceRentalIncome > 0) {
+          // total_earnings set later from approved_report_count
+        } else {
+          const dailyEarnings = getCompanyEarnings(report.total_trips || 0);
+          stats.total_earnings += dailyEarnings;
+        }
       });
 
-      // Update worked_days based on approved report count (1 report = 0.5 days)
-      vehicleApprovedReportCount.forEach((reportCount, vehicleNumber) => {
-        const stats = vehicleStats.get(vehicleNumber);
-        if (stats) {
-          const calculatedWorkingDays = reportCount / 2;
-          stats.worked_days = calculatedWorkingDays;
-          const savedWorkingDays = savedWorkingDaysMap.get(vehicleNumber);
-          // For vehicles with reports: use saved or calculated. For 0 reports: keep rent slab value
-          stats.working_days_multiplier =
-            savedWorkingDays !== undefined && savedWorkingDays !== null
-              ? savedWorkingDays
-              : reportCount > 0
-                ? calculatedWorkingDays
-                : stats.working_days_multiplier;
-        }
+      // Add working dates from shift leave (manager-reported leave/missed)
+      shiftLeaveDetails.forEach(({ vehicle_number, report_date }) => {
+        if (!vehicle_number || !report_date) return;
+        ensureVehicleInStats(vehicle_number);
+        vehicleWorkingDates.get(vehicle_number)!.add(report_date);
+      });
+
+      // Add working dates from driver offline records
+      offlineRecords?.forEach((rec: { vehicle_number: string; offline_date: string }) => {
+        if (!rec.vehicle_number || !rec.offline_date) return;
+        ensureVehicleInStats(rec.vehicle_number);
+        vehicleWorkingDates.get(rec.vehicle_number)!.add(rec.offline_date);
+      });
+
+      // Update worked_days and working_days_multiplier for all vehicles
+      vehicleStats.forEach((stats, vehicleNumber) => {
+        const reportCount = vehicleApprovedReportCount.get(vehicleNumber) ?? 0;
+        const calculatedWorkedDays = reportCount / 2; // for avg trips per day etc.
+        stats.worked_days = calculatedWorkedDays;
+        // Working Days: 2 approved reports = 1 day (e.g. morning + night), 1 report = 1 day, max 7 days per week
+        const workingDaysFromReports = Math.min(Math.ceil(reportCount / 2), 7);
+        const savedWorkingDays = savedWorkingDaysMap.get(vehicleNumber);
+        stats.working_days_multiplier =
+          savedWorkingDays !== undefined && savedWorkingDays !== null
+            ? savedWorkingDays
+            : workingDaysFromReports;
       });
 
       // Calculate earnings, rent, profit/loss, and averages
@@ -757,11 +740,10 @@ const VehiclePerformance = () => {
               `${vehicle.vehicle_number} - Using actual rent: ₹${actualRent}`
             );
           } else {
-            // Calculate based on trips * exact_working_days
-            // Fleet Rent = daily rent (from trips) × rent slab days
+            // Fleet Rent = daily rent (from trips) × Working Days (unique report dates)
             const dailyRent = getFleetRent(vehicle.total_trips);
-            const rentSlabDays = vehicle.exact_working_days ?? 0;
-            totalRent = dailyRent * rentSlabDays;
+            const workingDays = vehicle.working_days_multiplier ?? 0;
+            totalRent = dailyRent * workingDays;
           }
 
           vehicle.total_rent = totalRent;
@@ -2804,8 +2786,7 @@ const VehiclePerformance = () => {
                 Adjust working days multiplier for vehicle: {editingVehicle}
                 <br />
                 <span className="text-xs text-muted-foreground">
-                  Note: Each unique date with reports = 1 working day
-                  (regardless of number of reports per day)
+                  Default: 2 approved reports = 1 day, 1 report = 1 day. Max 7 days per week.
                 </span>
               </DialogDescription>
             </DialogHeader>
@@ -2830,10 +2811,7 @@ const VehiclePerformance = () => {
                   days = Total Rent
                 </div>
                 <div className="text-xs">
-                  Working Days Calculation: Unique Working Dates ={" "}
-                  {tempWorkingDays} days
-                  <br />
-                  (Each date with at least 1 report counts as 1 working day)
+                  Working Days = approved reports ÷ 2 (rounded up), max 7. E.g. 1 report = 1 day, 12 reports = 6 days.
                 </div>
               </div>
             </div>
