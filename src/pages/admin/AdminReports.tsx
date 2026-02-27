@@ -219,6 +219,7 @@ const AdminReports = () => {
     totalRentPaid: 0,
     tollAmount: 0,
     totalTrips: 0,
+    totalCashInHand: 0,
     totalReports: 0,
     pendingCount: 0,
     approvedCount: 0,
@@ -455,7 +456,7 @@ const AdminReports = () => {
       let query = supabase
         .from("fleet_reports")
         .select(
-          "user_id,total_trips, total_earnings, total_cashcollect, rent_paid_amount, toll, status"
+          "user_id,total_trips, total_earnings, total_cashcollect, rent_paid_amount, toll, status, paying_cash, cash_amount"
         );
 
       // Apply the same filters as reports for statistics
@@ -514,7 +515,7 @@ const AdminReports = () => {
         query = query.eq("is_service_day", false);
       }
 
-      const { data, error } = await query;
+      const { data, error } = await query.limit(10000);
 
       if (error) throw error;
 
@@ -558,12 +559,22 @@ const AdminReports = () => {
           0
         );
 
+        // Cash in Hand: sum of cash_amount for the same filtered reports (today / week / custom / status / search)
+        const totalCashInHand = data.reduce((sum, report) => {
+          const r = report as Record<string, unknown>;
+          const v = r.cash_amount;
+          if (v === null || v === undefined) return sum;
+          const n = Number(v);
+          return sum + (Number.isFinite(n) ? n : 0);
+        }, 0);
+
         setStatistics({
           totalEarnings,
           totalCashCollect,
           totalRentPaid,
           tollAmount,
           totalTrips,
+          totalCashInHand,
           totalReports: data.length,
           pendingCount,
           approvedCount,
@@ -1869,21 +1880,18 @@ const AdminReports = () => {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
         <Card className="bg-gradient-to-br from-purple-50 to-white">
           <CardContent className="p-4">
             <div className="text-sm font-medium text-gray-500">
               Rental Income
             </div>
             <div className="text-2xl font-bold text-green-500">
-              ₹
-              {(
-                (statistics.approvedCount +
-                  statistics.rejectedCount +
-                  statistics.pendingCount) *
-                600
-              ).toLocaleString()}
+              ₹{statistics.totalCashCollect.toLocaleString()}
             </div>
+            <p className="text-xs text-muted-foreground mt-1">
+              Total cash from reports (cash table)
+            </p>
           </CardContent>
         </Card>
 
@@ -1942,6 +1950,20 @@ const AdminReports = () => {
             <div className="text-2xl font-bold">
               ₹{cashInHand.toLocaleString()}
             </div>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-gradient-to-br from-amber-50 to-white">
+          <CardContent className="p-4">
+            <div className="text-sm font-medium text-gray-500">
+              Cash in Hand
+            </div>
+            <div className="text-2xl font-bold">
+              ₹{statistics.totalCashInHand.toLocaleString()}
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">
+              Sum of cash_amount for selected period (today / week / custom)
+            </p>
           </CardContent>
         </Card>
 

@@ -218,11 +218,15 @@ export function UberAuditManager() {
           `
           user_id,
           rent_date,
+<<<<<<< HEAD
 <<<<<<< Updated upstream
           users!fleet_reports_user_id_fkey!inner(
 =======
           users!user_id!inner(
 >>>>>>> Stashed changes
+=======
+          users!fleet_reports_user_id_fkey!inner(
+>>>>>>> dev-saniya
             id,
             name,
             email_id,

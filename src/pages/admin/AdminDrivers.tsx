@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import AdminLayout from "@/components/AdminLayout";
 import { supabase } from "@/integrations/supabase/client";
 import { BadgeCheck } from "lucide-react";
@@ -92,6 +92,7 @@ type DriverPenaltySummary = {
 const AdminDrivers = () => {
   const { logActivity } = useActivityLogger();
   const [drivers, setDrivers] = useState([]);
+  const [allFilteredDrivers, setAllFilteredDrivers] = useState([]); // Store all filtered drivers (before pagination)
   const [loading, setLoading] = useState(true);
   const [selectedDriver, setSelectedDriver] = useState<any>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -105,7 +106,8 @@ const AdminDrivers = () => {
   const [showLowDeposit, setShowLowDeposit] = useState(false);
   const [showNegativeBalance, setShowNegativeBalance] = useState(false);
   const [showBelow7RentalDays, setShowBelow7RentalDays] = useState(false);
-  const [show14AndAboveRentalDays, setShow14AndAboveRentalDays] = useState(false);
+  const [show14AndAboveRentalDays, setShow14AndAboveRentalDays] =
+    useState(false);
 
   // Advanced filter states
   const [advancedFilters, setAdvancedFilters] = useState({
@@ -187,7 +189,9 @@ const AdminDrivers = () => {
   const [showJoiningTypeModal, setShowJoiningTypeModal] = useState(false);
   const [selectedDriverForJoining, setSelectedDriverForJoining] =
     useState<any>(null);
-  const [joiningType, setJoiningType] = useState<"new_joining" | "rejoining" | null>(null);
+  const [joiningType, setJoiningType] = useState<
+    "new_joining" | "rejoining" | null
+  >(null);
 
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
@@ -207,6 +211,9 @@ const AdminDrivers = () => {
     totalNetBalance: 0,
     totalLeave: 0,
     totalResigning: 0,
+    newJoiningCount: 0,
+    rejoiningCount: 0,
+    goingTo24hrCount: 0,
   });
 
   const isMobile = useIsMobile();
@@ -235,7 +242,7 @@ const AdminDrivers = () => {
       setCanPutDriverOnline(
         data?.role === "admin" ||
           data?.role === "super_admin" ||
-          data?.role === "manager"
+          data?.role === "manager",
       );
     } catch (error) {
       console.error("Error checking admin status:", error);
@@ -245,7 +252,7 @@ const AdminDrivers = () => {
   };
 
   const checkAllDocumentsUploaded = (
-    driver: any
+    driver: any,
   ): { allUploaded: boolean; missing: string[] } => {
     const requiredDocuments = [
       { key: "license_front", name: "License Front" },
@@ -313,7 +320,7 @@ const AdminDrivers = () => {
         startDate = new Date(
           joiningDate.getFullYear(),
           joiningDate.getMonth(),
-          joiningDate.getDate()
+          joiningDate.getDate(),
         );
       }
 
@@ -323,7 +330,7 @@ const AdminDrivers = () => {
       const { data: reports, error } = await supabase
         .from("fleet_reports")
         .select(
-          "id, user_id, driver_name, vehicle_number, submission_date, rent_date, shift, rent_paid_status, rent_paid_amount, status, remarks, created_at"
+          "id, user_id, driver_name, vehicle_number, submission_date, rent_date, shift, rent_paid_status, rent_paid_amount, status, remarks, created_at",
         )
         .eq("user_id", driver.id)
         .gte("rent_date", startDateStr)
@@ -374,7 +381,7 @@ const AdminDrivers = () => {
             driver.joining_date || undefined,
             driver.online,
             driver.offline_from_date || undefined,
-            driver.online_from_date || undefined
+            driver.online_from_date || undefined,
           );
           if (status === "overdue") {
             overdueCount += 1;
@@ -391,6 +398,20 @@ const AdminDrivers = () => {
     }
   };
 
+  // Fetch all filtered drivers (for statistics) only when filters change, not when page changes
+  useEffect(() => {
+    fetchAllFilteredDrivers();
+  }, [
+    showOnlineOnly,
+    searchQuery,
+    shiftFilter,
+    verificationFilter,
+    showLowDeposit,
+    showNegativeBalance,
+    advancedFilters,
+  ]);
+
+  // Fetch paginated drivers when page or filters change
   useEffect(() => {
     fetchDrivers();
     fetchStatistics();
@@ -413,6 +434,7 @@ const AdminDrivers = () => {
       if (currentPage !== 1) {
         setCurrentPage(1);
       } else {
+        fetchAllFilteredDrivers(); // Update all filtered drivers for statistics
         fetchDrivers();
         fetchStatistics();
       }
@@ -421,35 +443,231 @@ const AdminDrivers = () => {
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
-  const fetchRentalDaysByDriver = async (
-    driverIds: string[]
-  ): Promise<Record<string, number>> => {
-    if (!driverIds.length) return {};
+  // Fetch all filtered drivers (without pagination) for statistics calculation
+  const fetchAllFilteredDrivers = async () => {
     try {
-      const { data, error } = await supabase
-        .from("fleet_reports")
-        .select("user_id")
-        .in("user_id", driverIds)
-        .eq("status", "approved");
+      let query = supabase
+        .from("users")
+        .select("*", { count: "exact" })
+        .order("name");
 
-      if (error) throw error;
+      // Apply server-side filters (same as fetchDrivers)
+      if (showOnlineOnly && advancedFilters.driverStatus === "all") {
+        query = query.eq("online", true);
+      }
 
-      const countByDriver: Record<string, number> = {};
-      driverIds.forEach((id) => (countByDriver[id] = 0));
-      (data || []).forEach((row: { user_id: string }) => {
-        if (row.user_id && countByDriver[row.user_id] !== undefined) {
-          countByDriver[row.user_id] += 1;
+      if (searchQuery.trim() !== "") {
+        const searchTerm = searchQuery.toLowerCase().trim();
+        query = query.or(
+          `name.ilike.%${searchTerm}%,email_id.ilike.%${searchTerm}%,vehicle_number.ilike.%${searchTerm}%,driver_id.ilike.%${searchTerm}%`,
+        );
+      }
+
+      if (shiftFilter !== "all") {
+        query = query.eq("shift", shiftFilter);
+      }
+
+      if (verificationFilter !== "all") {
+        const isVerified = verificationFilter === "verified";
+        query = query.eq("is_verified", isVerified);
+      }
+
+      // Apply advanced server-side filters
+      if (advancedFilters.joiningDateFrom) {
+        query = query.gte(
+          "joining_date",
+          format(advancedFilters.joiningDateFrom, "yyyy-MM-dd"),
+        );
+      }
+      if (advancedFilters.joiningDateTo) {
+        query = query.lte(
+          "joining_date",
+          format(advancedFilters.joiningDateTo, "yyyy-MM-dd"),
+        );
+      }
+
+      if (
+        showLowDeposit &&
+        !advancedFilters.depositMin &&
+        !advancedFilters.depositMax
+      ) {
+        query = query.lt("pending_balance", 2500);
+      } else {
+        if (
+          advancedFilters.depositMin &&
+          advancedFilters.depositMin.trim() !== ""
+        ) {
+          const minDeposit = parseFloat(advancedFilters.depositMin);
+          if (!isNaN(minDeposit)) {
+            query = query.gte("pending_balance", minDeposit);
+          }
         }
-      });
-      return countByDriver;
-    } catch (e) {
-      console.error("Error fetching rental days:", e);
-      return {};
+        if (
+          advancedFilters.depositMax &&
+          advancedFilters.depositMax.trim() !== ""
+        ) {
+          const maxDeposit = parseFloat(advancedFilters.depositMax);
+          if (!isNaN(maxDeposit)) {
+            query = query.lte("pending_balance", maxDeposit);
+          }
+        }
+      }
+
+      if (advancedFilters.driverCategory !== "all") {
+        query = query.eq("driver_category", advancedFilters.driverCategory);
+      }
+
+      if (advancedFilters.driverStatus !== "all") {
+        if (advancedFilters.driverStatus === "online") {
+          query = query.eq("online", true);
+        } else if (advancedFilters.driverStatus === "offline") {
+          query = query.eq("online", false);
+        } else if (advancedFilters.driverStatus === "leave") {
+          query = query.eq("driver_status", "leave");
+        } else if (advancedFilters.driverStatus === "resigning") {
+          query = query.or(
+            "driver_status.eq.resigning,resigning_date.not.is.null",
+          );
+        } else if (advancedFilters.driverStatus === "going_to_24hr") {
+          query = query.eq("driver_status", "going_to_24hr");
+        }
+      }
+
+      if (advancedFilters.vehicleAssignment !== "all") {
+        if (advancedFilters.vehicleAssignment === "assigned") {
+          query = query.not("vehicle_number", "is", null);
+        } else if (advancedFilters.vehicleAssignment === "unassigned") {
+          query = query.is("vehicle_number", null);
+        }
+      }
+
+      if (advancedFilters.resigningDateFrom) {
+        query = query.gte(
+          "resigning_date",
+          format(advancedFilters.resigningDateFrom, "yyyy-MM-dd"),
+        );
+      }
+      if (advancedFilters.resigningDateTo) {
+        query = query.lte(
+          "resigning_date",
+          format(advancedFilters.resigningDateTo, "yyyy-MM-dd"),
+        );
+      }
+
+      if (
+        advancedFilters.totalTripsMin &&
+        advancedFilters.totalTripsMin.trim() !== ""
+      ) {
+        const minTrips = parseInt(advancedFilters.totalTripsMin);
+        if (!isNaN(minTrips)) {
+          query = query.gte("total_trip", minTrips);
+        }
+      }
+      if (
+        advancedFilters.totalTripsMax &&
+        advancedFilters.totalTripsMax.trim() !== ""
+      ) {
+        const maxTrips = parseInt(advancedFilters.totalTripsMax);
+        if (!isNaN(maxTrips)) {
+          query = query.lte("total_trip", maxTrips);
+        }
+      }
+
+      // Check if we need client-side filtering
+      const needsClientSideFiltering =
+        showNegativeBalance ||
+        advancedFilters.rAndFBalanceMin ||
+        advancedFilters.rAndFBalanceMax ||
+        advancedFilters.documentStatus !== "all";
+
+      if (needsClientSideFiltering) {
+        // Fetch all matching drivers first
+        const { data: allDriversData } = await query.limit(10000);
+
+        if (!allDriversData || allDriversData.length === 0) {
+          setAllFilteredDrivers([]);
+          return;
+        }
+
+        // Fetch penalty summaries for all drivers
+        const summaries = await fetchPenaltySummaries(allDriversData);
+
+        // Apply client-side filters
+        let filteredDrivers = allDriversData;
+
+        if (showNegativeBalance) {
+          filteredDrivers = filteredDrivers.filter((driver) => {
+            const summary = summaries[driver.id];
+            const fallbackValue = Number(driver?.total_penalties ?? 0);
+            const rAndFValue =
+              summary && typeof summary.netPenalties === "number"
+                ? summary.netPenalties
+                : fallbackValue;
+            return Number.isFinite(rAndFValue) && rAndFValue < 0;
+          });
+        }
+
+        if (
+          advancedFilters.rAndFBalanceMin ||
+          advancedFilters.rAndFBalanceMax
+        ) {
+          filteredDrivers = filteredDrivers.filter((driver) => {
+            const summary = summaries[driver.id];
+            const fallbackValue = Number(driver?.total_penalties ?? 0);
+            const rAndFValue =
+              summary && typeof summary.netPenalties === "number"
+                ? summary.netPenalties
+                : fallbackValue;
+
+            if (
+              advancedFilters.rAndFBalanceMin &&
+              rAndFValue < parseFloat(advancedFilters.rAndFBalanceMin)
+            ) {
+              return false;
+            }
+            if (
+              advancedFilters.rAndFBalanceMax &&
+              rAndFValue > parseFloat(advancedFilters.rAndFBalanceMax)
+            ) {
+              return false;
+            }
+            return true;
+          });
+        }
+
+        if (advancedFilters.documentStatus !== "all") {
+          filteredDrivers = filteredDrivers.filter((driver) => {
+            const docCheck = checkAllDocumentsUploaded(driver);
+            if (advancedFilters.documentStatus === "complete") {
+              return docCheck.allUploaded;
+            } else if (advancedFilters.documentStatus === "incomplete") {
+              return !docCheck.allUploaded;
+            }
+            return true;
+          });
+        }
+
+        setAllFilteredDrivers(filteredDrivers);
+        // Ensure penalty summaries are available for calculations
+        await fetchPenaltySummaries(filteredDrivers);
+      } else {
+        // All filters are server-side, fetch all matching drivers
+        const { data: allFilteredData } = await query.limit(10000);
+        setAllFilteredDrivers(allFilteredData || []);
+
+        // Fetch penalty summaries for all filtered drivers
+        if (allFilteredData && allFilteredData.length > 0) {
+          await fetchPenaltySummaries(allFilteredData);
+        }
+      }
+    } catch (error) {
+      console.error("Error fetching all filtered drivers:", error);
+      setAllFilteredDrivers([]);
     }
   };
 
   const fetchPenaltySummaries = async (
-    driverList: any[]
+    driverList: any[],
   ): Promise<Record<string, DriverPenaltySummary>> => {
     if (!driverList || driverList.length === 0) {
       setPenaltySummaries({});
@@ -552,7 +770,7 @@ const AdminDrivers = () => {
       if (searchQuery.trim() !== "") {
         const searchTerm = searchQuery.toLowerCase().trim();
         query = query.or(
-          `name.ilike.%${searchTerm}%,email_id.ilike.%${searchTerm}%,vehicle_number.ilike.%${searchTerm}%,driver_id.ilike.%${searchTerm}%`
+          `name.ilike.%${searchTerm}%,email_id.ilike.%${searchTerm}%,vehicle_number.ilike.%${searchTerm}%,driver_id.ilike.%${searchTerm}%`,
         );
       }
 
@@ -569,13 +787,13 @@ const AdminDrivers = () => {
       if (advancedFilters.joiningDateFrom) {
         query = query.gte(
           "joining_date",
-          format(advancedFilters.joiningDateFrom, "yyyy-MM-dd")
+          format(advancedFilters.joiningDateFrom, "yyyy-MM-dd"),
         );
       }
       if (advancedFilters.joiningDateTo) {
         query = query.lte(
           "joining_date",
-          format(advancedFilters.joiningDateTo, "yyyy-MM-dd")
+          format(advancedFilters.joiningDateTo, "yyyy-MM-dd"),
         );
       }
 
@@ -620,7 +838,7 @@ const AdminDrivers = () => {
           query = query.eq("driver_status", "leave");
         } else if (advancedFilters.driverStatus === "resigning") {
           query = query.or(
-            "driver_status.eq.resigning,resigning_date.not.is.null"
+            "driver_status.eq.resigning,resigning_date.not.is.null",
           );
         } else if (advancedFilters.driverStatus === "going_to_24hr") {
           query = query.eq("driver_status", "going_to_24hr");
@@ -638,13 +856,13 @@ const AdminDrivers = () => {
       if (advancedFilters.resigningDateFrom) {
         query = query.gte(
           "resigning_date",
-          format(advancedFilters.resigningDateFrom, "yyyy-MM-dd")
+          format(advancedFilters.resigningDateFrom, "yyyy-MM-dd"),
         );
       }
       if (advancedFilters.resigningDateTo) {
         query = query.lte(
           "resigning_date",
-          format(advancedFilters.resigningDateTo, "yyyy-MM-dd")
+          format(advancedFilters.resigningDateTo, "yyyy-MM-dd"),
         );
       }
 
@@ -752,7 +970,9 @@ const AdminDrivers = () => {
 
         // Apply rental days filter (quick switches)
         if (showBelow7RentalDays || show14AndAboveRentalDays) {
-          const driverIds = filteredDrivers.map((d: any) => d.id).filter(Boolean);
+          const driverIds = filteredDrivers
+            .map((d: any) => d.id)
+            .filter(Boolean);
           const rentalDaysMap = await fetchRentalDaysByDriver(driverIds);
           filteredDrivers = filteredDrivers.filter((driver) => {
             const days = rentalDaysMap[driver.id] ?? 0;
@@ -775,6 +995,8 @@ const AdminDrivers = () => {
         setTotalPages(Math.ceil(filteredDrivers.length / pageSize));
       } else {
         // Normal flow: all filters are server-side, apply pagination server-side
+        // Note: allFilteredDrivers is fetched separately in fetchAllFilteredDrivers
+        // Now apply pagination for display
         const from = (currentPage - 1) * pageSize;
         const to = from + pageSize - 1;
         query = query.range(from, to);
@@ -787,7 +1009,6 @@ const AdminDrivers = () => {
         totalCountValue = count || 0;
 
         setDrivers(allDrivers);
-        await fetchPenaltySummaries(allDrivers);
 
         setTotalCount(totalCountValue);
         setTotalPages(Math.ceil(totalCountValue / pageSize));
@@ -817,7 +1038,7 @@ const AdminDrivers = () => {
       const { data: depositData } = await supabase
         .from("users")
         .select(
-          "id, pending_balance, net_balance, total_penalties, driver_status, resigning_date"
+          "id, pending_balance, net_balance, total_penalties, driver_status, resigning_date",
         );
 
       // Calculate total deposit - ONLY sum positive pending_balance amounts
@@ -902,7 +1123,7 @@ const AdminDrivers = () => {
                   summary.totalRefunds +
                   summary.totalBonuses;
                 return totalCredits - summary.totalPenalties;
-              }
+              },
             );
 
             // Sum only negative R&P balances (Total Penalties)
@@ -923,7 +1144,7 @@ const AdminDrivers = () => {
             // If there's an error, log it and use fallback
             console.error(
               "Error fetching penalty data for statistics:",
-              penaltyError
+              penaltyError,
             );
             // Fallback to using total_penalties if penalty transactions not available
             totalNegRAndFBalance =
@@ -1001,6 +1222,38 @@ const AdminDrivers = () => {
         }
       }
 
+      // Total New Joining, Rejoining, Going to 24hr from public.users (each driver counted once by unique id; all existing saved records)
+      let newJoiningCount = 0;
+      let rejoiningCount = 0;
+      let goingTo24hrCount = 0;
+      try {
+        const { count: newJoin } = await supabase
+          .from("users")
+          .select("id", { count: "exact", head: true })
+          .eq("joining_type", "new_joining");
+        newJoiningCount = newJoin ?? 0;
+      } catch (e) {
+        console.warn("Error counting new_joining:", e);
+      }
+      try {
+        const { count: rejoin } = await supabase
+          .from("users")
+          .select("id", { count: "exact", head: true })
+          .eq("joining_type", "rejoining");
+        rejoiningCount = rejoin ?? 0;
+      } catch (e) {
+        console.warn("Error counting rejoining:", e);
+      }
+      try {
+        const { count: going24 } = await supabase
+          .from("users")
+          .select("id", { count: "exact", head: true })
+          .eq("driver_status", "going_to_24hr");
+        goingTo24hrCount = going24 ?? 0;
+      } catch (e) {
+        console.warn("Error counting going_to_24hr:", e);
+      }
+
       setStatistics({
         total: totalCount || 0,
         online: onlineCount || 0,
@@ -1012,6 +1265,9 @@ const AdminDrivers = () => {
         totalNetBalance,
         totalLeave: leaveCount || 0,
         totalResigning: resigningCount || 0,
+        newJoiningCount,
+        rejoiningCount,
+        goingTo24hrCount,
       });
     } catch (error) {
       console.error("Error fetching statistics:", error);
@@ -1075,7 +1331,7 @@ const AdminDrivers = () => {
             userId: selectedDriverForReset.id,
             newPassword: newPassword,
           }),
-        }
+        },
       );
 
       const data = await response.json();
@@ -1085,7 +1341,7 @@ const AdminDrivers = () => {
       }
 
       toast.success(
-        `Password reset successfully for ${selectedDriverForReset.name}`
+        `Password reset successfully for ${selectedDriverForReset.name}`,
       );
       setShowPasswordReset(false);
       setNewPassword("");
@@ -1101,7 +1357,7 @@ const AdminDrivers = () => {
 
   const toggleVerification = async (
     id: string,
-    currentStatus: boolean | null
+    currentStatus: boolean | null,
   ) => {
     try {
       const { error } = await supabase
@@ -1113,12 +1369,14 @@ const AdminDrivers = () => {
 
       setDrivers(
         drivers.map((driver) =>
-          driver.id === id ? { ...driver, is_verified: !currentStatus } : driver
-        )
+          driver.id === id
+            ? { ...driver, is_verified: !currentStatus }
+            : driver,
+        ),
       );
 
       toast.success(
-        `Driver ${!currentStatus ? "verified" : "unverified"} successfully`
+        `Driver ${!currentStatus ? "verified" : "unverified"} successfully`,
       );
     } catch (error) {
       console.error("Error updating driver:", error);
@@ -1127,7 +1385,7 @@ const AdminDrivers = () => {
   };
 
   const handleLeaveResigningSelection = async (
-    status: "leave" | "resigning" | "offline" | "going_to_24hr"
+    status: "leave" | "resigning" | "offline" | "going_to_24hr",
   ) => {
     if (!selectedDriverForStatus) return;
 
@@ -1176,8 +1434,8 @@ const AdminDrivers = () => {
                   offline_from_date: updateData.offline_from_date,
                   driver_status: updateData.driver_status,
                 }
-              : driver
-          )
+              : driver,
+          ),
         );
 
         toast.success(`Driver is now marked as Going to 24hr`);
@@ -1249,15 +1507,15 @@ const AdminDrivers = () => {
                 driver_status: updateData.driver_status,
                 leave_return_date: updateData.leave_return_date,
               }
-            : driver
-        )
+            : driver,
+        ),
       );
 
       toast.success(
         `Driver is now on leave. Return date: ${format(
           leaveReturnDate,
-          "dd MMM yyyy"
-        )}`
+          "dd MMM yyyy",
+        )}`,
       );
 
       // Refresh statistics
@@ -1323,8 +1581,8 @@ const AdminDrivers = () => {
                 vehicle_number: null,
                 shift: "none", // Use "none" string, not null
               }
-            : driver
-        )
+            : driver,
+        ),
       );
 
       toast.success(`Driver is now offline. Vehicle and shift cleared.`);
@@ -1396,8 +1654,8 @@ const AdminDrivers = () => {
                 resigning_date: updateData.resigning_date,
                 resignation_reason: updateData.resignation_reason,
               }
-            : driver
-        )
+            : driver,
+        ),
       );
 
       toast.success("Driver status updated to resigning");
@@ -1416,7 +1674,7 @@ const AdminDrivers = () => {
 
   const toggleOnlineStatus = async (
     id: string,
-    currentStatus: boolean | null
+    currentStatus: boolean | null,
   ) => {
     // Check if user is admin or manager
     if (!canPutDriverOnline) {
@@ -1435,8 +1693,8 @@ const AdminDrivers = () => {
         setShowDocumentWarning(true);
         toast.error(
           `Cannot put driver online. Missing documents: ${documentCheck.missing.join(
-            ", "
-          )}`
+            ", ",
+          )}`,
         );
         return;
       }
@@ -1458,7 +1716,7 @@ const AdminDrivers = () => {
       if (overdue > 0) {
         setOverdueCount(overdue);
         setOverdueDriverName(
-          driver?.name || driver?.driver_id || "Unknown Driver"
+          driver?.name || driver?.driver_id || "Unknown Driver",
         );
         setShowOverdueWarning(true);
         return; // Block offline action when overdue exists
@@ -1474,7 +1732,7 @@ const AdminDrivers = () => {
         toast.error(
           `Cannot take driver offline. Please first set:\n- Vehicle to "N/A"\n- Shift to "None"\n\nCurrent: Vehicle = ${
             driver?.vehicle_number || "N/A"
-          }, Shift = ${driver?.shift || "None"}`
+          }, Shift = ${driver?.shift || "None"}`,
         );
         return;
       }
@@ -1525,12 +1783,12 @@ const AdminDrivers = () => {
                 driver_status: null,
                 joining_type: updateData.joining_type,
               }
-            : d
-        )
+            : d,
+        ),
       );
 
       toast.success(
-        `Driver is now online (${joiningType === "new_joining" ? "New Joining" : "Rejoining"})`
+        `Driver is now online (${joiningType === "new_joining" ? "New Joining" : "Rejoining"})`,
       );
 
       // Log activity
@@ -1678,7 +1936,7 @@ const AdminDrivers = () => {
       if (searchQuery.trim() !== "") {
         const searchTerm = searchQuery.toLowerCase().trim();
         query = query.or(
-          `name.ilike.%${searchTerm}%,email_id.ilike.%${searchTerm}%,vehicle_number.ilike.%${searchTerm}%,driver_id.ilike.%${searchTerm}%`
+          `name.ilike.%${searchTerm}%,email_id.ilike.%${searchTerm}%,vehicle_number.ilike.%${searchTerm}%,driver_id.ilike.%${searchTerm}%`,
         );
       }
 
@@ -1826,7 +2084,7 @@ const AdminDrivers = () => {
       link.setAttribute("href", url);
       link.setAttribute(
         "download",
-        `driver_report_${format(new Date(), "yyyy-MM-dd")}.csv`
+        `driver_report_${format(new Date(), "yyyy-MM-dd")}.csv`,
       );
       document.body.appendChild(link);
       link.click();
@@ -1859,8 +2117,8 @@ const AdminDrivers = () => {
         value > 0
           ? "text-green-500"
           : value < 0
-          ? "text-red-500"
-          : "text-gray-500",
+            ? "text-red-500"
+            : "text-gray-500",
       hasSummary: Boolean(summary),
     };
   };
@@ -1879,6 +2137,31 @@ const AdminDrivers = () => {
       className: netValue >= 0 ? "text-green-500" : "text-red-500",
     };
   };
+
+  // Calculate Total Refunds and Total Penalties from filtered drivers' R & P values
+  const filteredTotals = useMemo(() => {
+    let totalRefunds = 0;
+    let totalPenalties = 0;
+
+    allFilteredDrivers.forEach((driver) => {
+      const penaltyInfo = getDriverPenaltyDisplay(driver);
+      const rAndPValue = penaltyInfo.value;
+
+      // Positive values → add to Total Refunds
+      if (rAndPValue > 0) {
+        totalRefunds += rAndPValue;
+      }
+      // Negative values → add absolute value to Total Penalties
+      else if (rAndPValue < 0) {
+        totalPenalties += Math.abs(rAndPValue);
+      }
+    });
+
+    return {
+      totalRefunds,
+      totalPenalties,
+    };
+  }, [allFilteredDrivers, penaltySummaries]);
 
   const handleCopyDriverId = async (driverId: string) => {
     try {
@@ -1951,7 +2234,7 @@ const AdminDrivers = () => {
                           (d) =>
                             d.vehicle_number === driver.vehicle_number &&
                             d.online &&
-                            d.id !== driver.id
+                            d.id !== driver.id,
                         ).length + 1;
                       return `${vehicleDrivers}/2`;
                     })()}
@@ -2001,7 +2284,9 @@ const AdminDrivers = () => {
                   title={!canPutDriverOnline ? "Admin/Manager only" : ""}
                 />
                 {!canPutDriverOnline && (
-                  <span className="text-xs text-amber-600">(Admin/Manager)</span>
+                  <span className="text-xs text-amber-600">
+                    (Admin/Manager)
+                  </span>
                 )}
               </div>
             </div>
@@ -2175,7 +2460,7 @@ const AdminDrivers = () => {
               </span>
               <span className="text-2xl font-bold text-green-500">
                 ₹
-                {statistics.totalRefunds.toLocaleString("en-IN", {
+                {filteredTotals.totalRefunds.toLocaleString("en-IN", {
                   minimumFractionDigits: 0,
                   maximumFractionDigits: 0,
                 })}
@@ -2187,14 +2472,44 @@ const AdminDrivers = () => {
               </span>
               <span className="text-2xl font-bold text-red-500">
                 ₹
-                {statistics.totalPenalties.toLocaleString("en-IN", {
+                {filteredTotals.totalPenalties.toLocaleString("en-IN", {
                   minimumFractionDigits: 0,
                   maximumFractionDigits: 0,
                 })}
               </span>
             </div>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-4 pt-4 border-t">
+            <div className="flex flex-col items-center">
+              <span className="text-sm font-medium text-gray-500">
+                New Joining
+              </span>
+              <span className="text-2xl font-bold text-teal-600">
+                {statistics.newJoiningCount}
+              </span>
+              <span className="text-xs text-gray-400">unique drivers</span>
+            </div>
+            <div className="flex flex-col items-center">
+              <span className="text-sm font-medium text-gray-500">
+                Rejoining
+              </span>
+              <span className="text-2xl font-bold text-cyan-600">
+                {statistics.rejoiningCount}
+              </span>
+              <span className="text-xs text-gray-400">unique drivers</span>
+            </div>
+            <div className="flex flex-col items-center">
+              <span className="text-sm font-medium text-gray-500">
+                Going to 24hr
+              </span>
+              <span className="text-2xl font-bold text-indigo-600">
+                {statistics.goingTo24hrCount}
+              </span>
+              <span className="text-xs text-gray-400">unique drivers</span>
+            </div>
+          </div>
 
-            {/* <div className="flex flex-col items-center">
+          {/* <div className="flex flex-col items-center">
               <span className="text-sm font-medium text-gray-500">
                 Offline Drivers
               </span>
@@ -2202,7 +2517,7 @@ const AdminDrivers = () => {
                 {statistics.offline}
               </span>
             </div> */}
-            {/* <div className="flex flex-col items-center">
+          {/* <div className="flex flex-col items-center">
               <span className="text-sm font-medium text-gray-500">
                 Total Neg R &amp; P Balance
               </span>
@@ -2215,7 +2530,7 @@ const AdminDrivers = () => {
               </span>
             </div> */}
 
-            {/* <div className="flex flex-col items-center">
+          {/* <div className="flex flex-col items-center">
               <span className="text-sm font-medium text-gray-500">
                 Net Balance
               </span>
@@ -2229,7 +2544,6 @@ const AdminDrivers = () => {
                 ₹{statistics.totalNetBalance.toLocaleString()}
               </span>
             </div> */}
-          </div>
         </CardContent>
       </Card>
 
@@ -2470,14 +2784,14 @@ const AdminDrivers = () => {
                           className={cn(
                             "w-full justify-start text-left font-normal",
                             !advancedFilters.joiningDateFrom &&
-                              "text-muted-foreground"
+                              "text-muted-foreground",
                           )}
                         >
                           <CalendarIcon className="mr-2 h-4 w-4" />
                           {advancedFilters.joiningDateFrom ? (
                             format(
                               advancedFilters.joiningDateFrom,
-                              "dd MMM yyyy"
+                              "dd MMM yyyy",
                             )
                           ) : (
                             <span>From date</span>
@@ -2508,7 +2822,7 @@ const AdminDrivers = () => {
                           className={cn(
                             "w-full justify-start text-left font-normal",
                             !advancedFilters.joiningDateTo &&
-                              "text-muted-foreground"
+                              "text-muted-foreground",
                           )}
                         >
                           <CalendarIcon className="mr-2 h-4 w-4" />
@@ -2649,7 +2963,9 @@ const AdminDrivers = () => {
                       <SelectItem value="offline">Offline</SelectItem>
                       <SelectItem value="leave">Leave</SelectItem>
                       <SelectItem value="resigning">Resigning</SelectItem>
-                      <SelectItem value="going_to_24hr">Going to 24hr</SelectItem>
+                      <SelectItem value="going_to_24hr">
+                        Going to 24hr
+                      </SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -2746,14 +3062,14 @@ const AdminDrivers = () => {
                           className={cn(
                             "w-full justify-start text-left font-normal",
                             !advancedFilters.resigningDateFrom &&
-                              "text-muted-foreground"
+                              "text-muted-foreground",
                           )}
                         >
                           <CalendarIcon className="mr-2 h-4 w-4" />
                           {advancedFilters.resigningDateFrom ? (
                             format(
                               advancedFilters.resigningDateFrom,
-                              "dd MMM yyyy"
+                              "dd MMM yyyy",
                             )
                           ) : (
                             <span>From date</span>
@@ -2784,14 +3100,14 @@ const AdminDrivers = () => {
                           className={cn(
                             "w-full justify-start text-left font-normal",
                             !advancedFilters.resigningDateTo &&
-                              "text-muted-foreground"
+                              "text-muted-foreground",
                           )}
                         >
                           <CalendarIcon className="mr-2 h-4 w-4" />
                           {advancedFilters.resigningDateTo ? (
                             format(
                               advancedFilters.resigningDateTo,
-                              "dd MMM yyyy"
+                              "dd MMM yyyy",
                             )
                           ) : (
                             <span>To date</span>
@@ -2934,7 +3250,7 @@ const AdminDrivers = () => {
                                   {driver.joining_date
                                     ? format(
                                         new Date(driver.joining_date),
-                                        "dd MMM yyyy"
+                                        "dd MMM yyyy",
                                       )
                                     : "Not available"}
                                 </TableCell>
@@ -2957,7 +3273,7 @@ const AdminDrivers = () => {
                                                 d.vehicle_number ===
                                                   driver.vehicle_number &&
                                                 d.online &&
-                                                d.id !== driver.id
+                                                d.id !== driver.id,
                                             ).length + 1;
                                           return `${vehicleDrivers}/2`;
                                         })()}
@@ -3013,14 +3329,19 @@ const AdminDrivers = () => {
                                       onCheckedChange={() =>
                                         toggleOnlineStatus(
                                           driver.id,
-                                          driver.online
+                                          driver.online,
                                         )
                                       }
                                       disabled={
-                                        isUpdating === driver.id || !canPutDriverOnline
+                                        isUpdating === driver.id ||
+                                        !canPutDriverOnline
                                       }
                                       className="data-[state=checked]:bg-green-500"
-                                      title={!canPutDriverOnline ? "Admin/Manager only" : ""}
+                                      title={
+                                        !canPutDriverOnline
+                                          ? "Admin/Manager only"
+                                          : ""
+                                      }
                                     />
                                     {!canPutDriverOnline && (
                                       <span className="text-xs text-amber-600">
@@ -3040,7 +3361,7 @@ const AdminDrivers = () => {
                                     onClick={() =>
                                       toggleVerification(
                                         driver.id,
-                                        driver.is_verified
+                                        driver.is_verified,
                                       )
                                     }
                                   >
@@ -3320,7 +3641,9 @@ const AdminDrivers = () => {
               <div className="grid grid-cols-2 gap-3">
                 <Button
                   type="button"
-                  variant={joiningType === "new_joining" ? "default" : "outline"}
+                  variant={
+                    joiningType === "new_joining" ? "default" : "outline"
+                  }
                   className={`h-20 flex flex-col items-center justify-center gap-2 ${
                     joiningType === "new_joining"
                       ? "bg-blue-600 text-white hover:bg-blue-700"
@@ -3493,7 +3816,7 @@ const AdminDrivers = () => {
                 <ul className="list-disc list-inside text-sm text-amber-700 space-y-1">
                   {documentWarningDriver &&
                     checkAllDocumentsUploaded(
-                      documentWarningDriver
+                      documentWarningDriver,
                     ).missing.map((doc, index) => <li key={index}>{doc}</li>)}
                 </ul>
               </div>
@@ -3683,7 +4006,7 @@ const AdminDrivers = () => {
                     variant="outline"
                     className={cn(
                       "w-full justify-start text-left font-normal",
-                      !leaveReturnDate && "text-muted-foreground"
+                      !leaveReturnDate && "text-muted-foreground",
                     )}
                   >
                     <CalendarIcon className="mr-2 h-4 w-4" />
