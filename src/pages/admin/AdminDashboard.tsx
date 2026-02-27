@@ -122,6 +122,14 @@ interface CEOInsight {
   value?: number;
 }
 
+interface DailySubmissionDay {
+  date: string; // yyyy-MM-dd
+  label: string; // e.g. Mon 18 Feb
+  submitted: number;
+  expected: number;
+  percentage: number;
+}
+
 
 const AdminDashboard = () => {
 
@@ -155,10 +163,15 @@ const AdminDashboard = () => {
     leaveDrivers: 0,
     resignedDrivers: 0,
   });
+  const [dailySubmissionData, setDailySubmissionData] = useState<DailySubmissionDay[]>([]);
+  const [dailySubmissionOverallPercent, setDailySubmissionOverallPercent] = useState<number>(0);
+  const [dailySubmissionTotalActive, setDailySubmissionTotalActive] = useState<number>(0);
+  const [weekView, setWeekView] = useState<"this_week" | "previous_week" | "last_two_weeks" | "custom_week">("this_week");
+  const [customWeekDate, setCustomWeekDate] = useState<Date | null>(null);
 
   useEffect(() => {
     fetchAllMetrics();
-  }, []);
+  }, [weekView, customWeekDate]);
 
   useEffect(() => {
     fetchDriverUpdates();
@@ -178,6 +191,23 @@ const AdminDashboard = () => {
       const lastWeekStart = startOfWeek(subWeeks(now, 1), { weekStartsOn: 1 });
       const lastWeekEnd = endOfWeek(subWeeks(now, 1), { weekStartsOn: 1 });
 
+      // Determine week range for Daily Submission card based on weekView
+      let weekRangeStart = currentWeekStart;
+      let weekRangeEnd = currentWeekEnd;
+
+      if (weekView === "previous_week") {
+        const prev = subWeeks(now, 1);
+        weekRangeStart = startOfWeek(prev, { weekStartsOn: 1 });
+        weekRangeEnd = endOfWeek(prev, { weekStartsOn: 1 });
+      } else if (weekView === "last_two_weeks") {
+        const prev = subWeeks(now, 1);
+        weekRangeStart = startOfWeek(prev, { weekStartsOn: 1 });
+        weekRangeEnd = currentWeekEnd;
+      } else if (weekView === "custom_week" && customWeekDate) {
+        weekRangeStart = startOfWeek(customWeekDate, { weekStartsOn: 1 });
+        weekRangeEnd = endOfWeek(customWeekDate, { weekStartsOn: 1 });
+      }
+
       // Fetch all data in parallel
       const today = format(now, "yyyy-MM-dd");
       const [
@@ -194,8 +224,9 @@ const AdminDashboard = () => {
         trendReports,
         leaveReportsToday,
         approvedLeaveApplications,
+        weekRangeReports,
       ] = await Promise.all([
-        supabase.from("users").select("id, online, role, resigning_date, created_at"),
+        supabase.from("users").select("id, online, role, resigning_date, created_at, vehicle_number"),
         supabase.from("vehicles").select("id, online"),
         supabase
           .from("fleet_reports")
@@ -247,6 +278,11 @@ const AdminDashboard = () => {
           .eq("status", "approved")
           .lte("start_date", today)
           .gte("end_date", today),
+        supabase
+          .from("fleet_reports")
+          .select("rent_date, user_id, submission_date")
+          .gte("submission_date", format(weekRangeStart, "yyyy-MM-dd"))
+          .lte("submission_date", format(weekRangeEnd, "yyyy-MM-dd")),
       ]);
 
       // Calculate basic stats
@@ -254,6 +290,20 @@ const AdminDashboard = () => {
       const vehicles = vehiclesData.data || [];
       const allReportsData = allReports.data || [];
       const activeDrivers = drivers.filter((d) => d.online && !d.resigning_date && d.role === "driver").length;
+      const activeDriverIdsWithVehicle = new Set(
+        drivers
+          .filter(
+            (d: any) =>
+              d.online &&
+              !d.resigning_date &&
+              d.role === "driver" &&
+              d.vehicle_number &&
+              String(d.vehicle_number).trim() !== "" &&
+              String(d.vehicle_number).toUpperCase() !== "N/A"
+          )
+          .map((d: any) => d.id)
+      );
+      const totalActiveWithVehicle = activeDriverIdsWithVehicle.size;
       const activeVehicles = vehicles.filter((v) => v.online).length;
       const approvedReports = allReportsData.filter((r) => r.status === "approved").length;
       const pendingReports = allReportsData.filter((r) => r.status === "pending_verification").length;
@@ -368,6 +418,55 @@ const AdminDashboard = () => {
         leaveRate,
         driverRetention,
       });
+
+      // Build daily submission data for selected week range: use submission_date (when report was submitted) for grouping
+      const weekRangeReportsData = weekRangeReports.data || [];
+      const weekDays: DailySubmissionDay[] = [];
+      const dayCount =
+        Math.floor(
+          (weekRangeEnd.getTime() - weekRangeStart.getTime()) /
+            (1000 * 60 * 60 * 24)
+        ) + 1;
+
+      for (let i = 0; i < dayCount; i++) {
+        const day = new Date(
+          weekRangeStart.getFullYear(),
+          weekRangeStart.getMonth(),
+          weekRangeStart.getDate() + i
+        );
+        const dateStr = format(day, "yyyy-MM-dd");
+        const label = format(day, "EEE d MMM");
+        const reportsForDay = weekRangeReportsData.filter((r: any) => {
+          const subDate = r.submission_date ? format(new Date(r.submission_date), "yyyy-MM-dd") : null;
+          return subDate === dateStr && activeDriverIdsWithVehicle.has(r.user_id);
+        });
+        const submittedDriverIds = new Set(reportsForDay.map((r: any) => r.user_id));
+        const submitted = submittedDriverIds.size;
+        const expected = totalActiveWithVehicle;
+        const percentage =
+          expected > 0 ? (submitted / expected) * 100 : 0;
+        weekDays.push({
+          date: dateStr,
+          label,
+          submitted,
+          expected,
+          percentage,
+        });
+      }
+      setDailySubmissionData(weekDays);
+
+      // Overall submission % for the selected week (distinct drivers who submitted at least once, by submission_date)
+      const distinctDriversSubmittedInWeek = new Set(
+        weekRangeReportsData
+          .filter((r: any) => activeDriverIdsWithVehicle.has(r.user_id))
+          .map((r: any) => r.user_id)
+      ).size;
+      const overallSubmissionPercent =
+        totalActiveWithVehicle > 0
+          ? (distinctDriversSubmittedInWeek / totalActiveWithVehicle) * 100
+          : 0;
+      setDailySubmissionOverallPercent(overallSubmissionPercent);
+      setDailySubmissionTotalActive(totalActiveWithVehicle);
 
       // Calculate efficiency metrics
       const revenuePerDriver = activeDrivers > 0 ? currentMonthFinancials.revenue / activeDrivers : 0;
@@ -682,6 +781,29 @@ const AdminDashboard = () => {
     return "bg-gray-500 text-white";
   };
 
+  // Week label for Daily Report Submission filter (Mon–Sun)
+  const now = new Date();
+  let filterWeekStart = startOfWeek(now, { weekStartsOn: 1 });
+  let filterWeekEnd = endOfWeek(now, { weekStartsOn: 1 });
+  if (weekView === "previous_week") {
+    const prev = subWeeks(now, 1);
+    filterWeekStart = startOfWeek(prev, { weekStartsOn: 1 });
+    filterWeekEnd = endOfWeek(prev, { weekStartsOn: 1 });
+  } else if (weekView === "last_two_weeks") {
+    const prev = subWeeks(now, 1);
+    filterWeekStart = startOfWeek(prev, { weekStartsOn: 1 });
+    filterWeekEnd = endOfWeek(now, { weekStartsOn: 1 });
+  } else if (weekView === "custom_week" && customWeekDate) {
+    filterWeekStart = startOfWeek(customWeekDate, { weekStartsOn: 1 });
+    filterWeekEnd = endOfWeek(customWeekDate, { weekStartsOn: 1 });
+  }
+  const sameMonthForWeekLabel =
+    filterWeekStart.getMonth() === filterWeekEnd.getMonth() &&
+    filterWeekStart.getFullYear() === filterWeekEnd.getFullYear();
+  const weekLabel = sameMonthForWeekLabel
+    ? `${format(filterWeekStart, "MMM d")} – ${format(filterWeekEnd, "d")}`
+    : `${format(filterWeekStart, "MMM d")} – ${format(filterWeekEnd, "MMM d")}`;
+
   return (
     <AdminLayout title="Company Overview">
       {/* Executive Summary Cards */}
@@ -774,6 +896,166 @@ const AdminDashboard = () => {
           </CardContent>
         </Card>
       </div>
+
+      {/* Daily Report Submission (Week View) */}
+      <Card className="mb-8">
+        <CardHeader className="flex flex-col gap-2 pb-2">
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-sm font-medium flex items-center gap-2">
+              <FileText className="h-5 w-5" />
+              Daily Report Submission
+            </CardTitle>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Based on online drivers with a vehicle assigned.
+          </p>
+          <p className="text-sm font-medium">
+            Submission rate (this week, by submission date):{" "}
+            {dailySubmissionTotalActive > 0 ? (
+              <span className="text-fleet-purple">
+                {dailySubmissionOverallPercent.toFixed(1)}%
+              </span>
+            ) : (
+              <span className="text-muted-foreground">N/A</span>
+            )}
+          </p>
+          <div className="inline-flex items-center gap-2 rounded-full bg-gray-50 px-2 py-1 border border-gray-200 overflow-x-auto">
+            <Button
+              type="button"
+              size="sm"
+              variant={weekView === "this_week" ? "default" : "outline"}
+              className={cn(
+                "rounded-full px-3 py-1 text-xs",
+                weekView === "this_week" &&
+                  "bg-fleet-purple text-white hover:bg-fleet-purple/90"
+              )}
+              onClick={() => {
+                setWeekView("this_week");
+                setCustomWeekDate(null);
+              }}
+            >
+              Today
+            </Button>
+            <Button
+              type="button"
+              size="icon"
+              variant="outline"
+              className="rounded-full h-7 w-7 text-xs"
+              onClick={() => {
+                if (weekView === "this_week") {
+                  setWeekView("previous_week");
+                } else if (weekView === "custom_week") {
+                  // For custom, step one week back from custom date
+                  if (customWeekDate) {
+                    setCustomWeekDate(subWeeks(customWeekDate, 1));
+                  }
+                }
+              }}
+            >
+              {"<"}
+            </Button>
+            <div className="px-4 py-1 text-xs rounded-full bg-fleet-purple text-white font-medium shadow inner-border">
+              <div className="text-[10px] uppercase tracking-wide opacity-80 text-center">
+                Week
+              </div>
+              <div className="text-xs text-center">{weekLabel}</div>
+            </div>
+            <Button
+              type="button"
+              size="icon"
+              variant="outline"
+              className="rounded-full h-7 w-7 text-xs"
+              onClick={() => {
+                if (weekView === "previous_week") {
+                  setWeekView("this_week");
+                } else if (weekView === "custom_week") {
+                  if (customWeekDate) {
+                    setCustomWeekDate(subWeeks(customWeekDate, -1));
+                  }
+                }
+              }}
+            >
+              {">"}
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant={weekView === "custom_week" ? "default" : "outline"}
+              className="rounded-full px-3 py-1 text-xs flex items-center gap-1"
+              onClick={() => setWeekView("custom_week")}
+            >
+              <Calendar className="h-3 w-3" />
+              Custom
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="rounded-full px-3 py-1 text-xs"
+              onClick={() => {
+                setWeekView("this_week");
+                setCustomWeekDate(null);
+              }}
+            >
+              Clear
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {weekView === "custom_week" && (
+            <div className="mb-4">
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="justify-start text-left font-normal"
+                  >
+                    <Calendar className="mr-2 h-4 w-4" />
+                    {customWeekDate
+                      ? format(customWeekDate, "dd MMM yyyy")
+                      : "Pick a date in the week"}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <CalendarComponent
+                    mode="single"
+                    selected={customWeekDate || undefined}
+                    onSelect={(date) => setCustomWeekDate(date || null)}
+                    initialFocus
+                  />
+                </PopoverContent>
+              </Popover>
+            </div>
+          )}
+          {dailySubmissionData.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              No submission data available for the last 7 days.
+            </p>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-7 gap-3">
+              {dailySubmissionData.map((day) => (
+                <div
+                  key={day.date}
+                  className="p-3 rounded-lg border bg-white flex flex-col gap-1"
+                >
+                  <span className="text-xs text-muted-foreground">
+                    {day.label}
+                  </span>
+                  <span className="text-sm font-medium">
+                    {day.submitted} / {day.expected}
+                  </span>
+                  <span className="text-xs">
+                    {day.expected > 0
+                      ? `${day.percentage.toFixed(1)}%`
+                      : "N/A"}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Driver Updates Section with Filters */}
       <Card className="mb-8">
