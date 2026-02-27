@@ -23,7 +23,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -50,7 +55,11 @@ type RefundRequestRow = {
   reviewed_by: string | null;
   reviewed_at: string | null;
   review_notes: string | null;
-  driver?: { name?: string | null; phone_number?: string | null; vehicle_number?: string | null };
+  driver?: {
+    name?: string | null;
+    phone_number?: string | null;
+    vehicle_number?: string | null;
+  };
   requester?: { name?: string | null };
   reviewer?: { name?: string | null };
 };
@@ -72,11 +81,15 @@ export default function RefundRequestsList() {
   const { user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [rows, setRows] = useState<RefundRequestRow[]>([]);
-  const [statusFilter, setStatusFilter] = useState<RefundRequestStatus | "all">("pending");
+  const [statusFilter, setStatusFilter] = useState<RefundRequestStatus | "all">(
+    "pending",
+  );
   const [search, setSearch] = useState("");
 
   const [reviewModalOpen, setReviewModalOpen] = useState(false);
-  const [reviewAction, setReviewAction] = useState<"approve" | "reject">("approve");
+  const [reviewAction, setReviewAction] = useState<"approve" | "reject">(
+    "approve",
+  );
   const [reviewNotes, setReviewNotes] = useState("");
   const [selected, setSelected] = useState<RefundRequestRow | null>(null);
   const [saving, setSaving] = useState(false);
@@ -85,7 +98,9 @@ export default function RefundRequestsList() {
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [editAmount, setEditAmount] = useState("");
   const [editNotes, setEditNotes] = useState("");
-  const [editSelected, setEditSelected] = useState<RefundRequestRow | null>(null);
+  const [editSelected, setEditSelected] = useState<RefundRequestRow | null>(
+    null,
+  );
   const [editSaving, setEditSaving] = useState(false);
 
   // Delete state
@@ -110,7 +125,7 @@ export default function RefundRequestsList() {
           driver:driver_id ( name, phone_number, vehicle_number ),
           requester:requested_by ( name ),
           reviewer:reviewed_by ( name )
-        `
+        `,
         )
         .order("requested_at", { ascending: false })
         .limit(500);
@@ -132,13 +147,19 @@ export default function RefundRequestsList() {
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return rows.filter((r) => {
-      const matchesStatus = statusFilter === "all" ? true : r.status === statusFilter;
+      const matchesStatus =
+        statusFilter === "all" ? true : r.status === statusFilter;
       if (!matchesStatus) return false;
       if (!q) return true;
       const driverName = (r.driver?.name || "").toLowerCase();
       const phone = (r.driver?.phone_number || "").toLowerCase();
       const vehicle = (r.driver?.vehicle_number || "").toLowerCase();
-      return driverName.includes(q) || phone.includes(q) || vehicle.includes(q) || r.id.toLowerCase().includes(q);
+      return (
+        driverName.includes(q) ||
+        phone.includes(q) ||
+        vehicle.includes(q) ||
+        r.id.toLowerCase().includes(q)
+      );
     });
   }, [rows, search, statusFilter]);
 
@@ -153,7 +174,10 @@ export default function RefundRequestsList() {
     if (!user?.id || !selected) return;
     try {
       setSaving(true);
-      const nextStatus: RefundRequestStatus = reviewAction === "approve" ? "approved" : "rejected";
+      const nextStatus: RefundRequestStatus =
+        reviewAction === "approve" ? "approved" : "rejected";
+
+      // Update the refund request status
       const { error } = await supabase
         .from("driver_refund_requests")
         .update({
@@ -167,54 +191,37 @@ export default function RefundRequestsList() {
 
       if (error) throw error;
 
-      // If approved, create a P&R transaction to deduct the amount
-      if (nextStatus === "approved") {
-        // Get current driver penalties
-        const { data: driverData, error: driverError } = await supabase
-          .from("users")
-          .select("total_penalties")
-          .eq("id", selected.driver_id)
-          .single();
+      // If approved, deduct the amount from driver's refund balance by adding a transaction
+      if (reviewAction === "approve" && selected.amount > 0) {
+        const { error: txError } = await supabase
+          .from("driver_penalty_transactions")
+          .insert({
+            user_id: selected.driver_id,
+            amount: selected.amount,
+            type: "due",
+            description: `Refund payout - Request #${selected.id.substring(0, 8)}${reviewNotes.trim() ? ` - ${reviewNotes.trim()}` : ""}`,
+            created_by: user.id,
+          });
 
-        if (driverError) {
-          console.error("Error fetching driver data:", driverError);
-        } else {
-          const currentPenalties = driverData?.total_penalties || 0;
-
-          // Create a "due" type transaction to deduct from P&R balance
-          const { error: txError } = await supabase
-            .from("driver_penalty_transactions")
-            .insert({
-              user_id: selected.driver_id,
-              amount: selected.amount,
-              type: "due",
-              description: `Refund Payout - Request approved${reviewNotes.trim() ? `: ${reviewNotes.trim()}` : ""}`,
-              created_by: user.id,
-            });
-
-          if (txError) {
-            console.error("Error creating P&R transaction:", txError);
-            toast.error("Refund approved but failed to create P&R transaction");
-          } else {
-            // Update driver's total_penalties (due adds to penalties)
-            const { error: updateError } = await supabase
-              .from("users")
-              .update({
-                total_penalties: currentPenalties + selected.amount,
-              })
-              .eq("id", selected.driver_id);
-
-            if (updateError) {
-              console.error("Error updating driver penalties:", updateError);
-            } else {
-              toast.success("Refund approved and deducted from P&R balance");
-            }
-          }
+        if (txError) {
+          console.error("Error adding penalty transaction:", txError);
+          // Rollback the refund request status update
+          await supabase
+            .from("driver_refund_requests")
+            .update({
+              status: "pending",
+              reviewed_by: null,
+              reviewed_at: null,
+              review_notes: null,
+            })
+            .eq("id", selected.id);
+          throw new Error("Failed to update driver refund balance");
         }
-      } else {
-        toast.success(`Request ${nextStatus}`);
       }
 
+      toast.success(
+        `Request ${nextStatus}${reviewAction === "approve" ? ` - Refund balance updated` : ""}`,
+      );
       setReviewModalOpen(false);
       setSelected(null);
       await fetchRequests();
@@ -230,7 +237,7 @@ export default function RefundRequestsList() {
   const openEditModal = (row: RefundRequestRow) => {
     setEditSelected(row);
     setEditAmount(row.amount.toString());
-    setEditNotes(row.notes || "");
+    setEditNotes(row.review_notes || "");
     setEditModalOpen(true);
   };
 
@@ -303,7 +310,10 @@ export default function RefundRequestsList() {
             </div>
             <div className="space-y-1">
               <Label>Status</Label>
-              <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as any)}>
+              <Select
+                value={statusFilter}
+                onValueChange={(v) => setStatusFilter(v as any)}
+              >
                 <SelectTrigger>
                   <SelectValue placeholder="Status" />
                 </SelectTrigger>
@@ -316,7 +326,11 @@ export default function RefundRequestsList() {
               </Select>
             </div>
             <div className="flex items-end">
-              <Button variant="outline" onClick={fetchRequests} disabled={loading}>
+              <Button
+                variant="outline"
+                onClick={fetchRequests}
+                disabled={loading}
+              >
                 Refresh
               </Button>
             </div>
@@ -336,13 +350,19 @@ export default function RefundRequestsList() {
               <TableBody>
                 {loading ? (
                   <TableRow>
-                    <TableCell colSpan={5} className="py-10 text-center text-muted-foreground">
+                    <TableCell
+                      colSpan={5}
+                      className="py-10 text-center text-muted-foreground"
+                    >
                       Loading...
                     </TableCell>
                   </TableRow>
                 ) : filtered.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={5} className="py-10 text-center text-muted-foreground">
+                    <TableCell
+                      colSpan={5}
+                      className="py-10 text-center text-muted-foreground"
+                    >
                       No requests found
                     </TableCell>
                   </TableRow>
@@ -350,15 +370,22 @@ export default function RefundRequestsList() {
                   filtered.map((r) => (
                     <TableRow key={r.id}>
                       <TableCell>
-                        <div className="font-medium">{r.driver?.name || "Unknown"}</div>
+                        <div className="font-medium">
+                          {r.driver?.name || "Unknown"}
+                        </div>
                         <div className="text-xs text-muted-foreground">
-                          {r.driver?.phone_number || "—"} • {r.driver?.vehicle_number || "—"}
+                          {r.driver?.phone_number || "—"} •{" "}
+                          {r.driver?.vehicle_number || "—"}
                         </div>
                       </TableCell>
-                      <TableCell className="font-semibold text-green-700">{formatMoney(r.amount)}</TableCell>
+                      <TableCell className="font-semibold text-green-700">
+                        {formatMoney(r.amount)}
+                      </TableCell>
                       <TableCell>{statusBadge(r.status)}</TableCell>
                       <TableCell className="text-sm">
-                        <div>{format(new Date(r.requested_at), "dd MMM yyyy")}</div>
+                        <div>
+                          {format(new Date(r.requested_at), "dd MMM yyyy")}
+                        </div>
                         <div className="text-xs text-muted-foreground">
                           by {r.requester?.name || "—"}
                         </div>
@@ -387,11 +414,14 @@ export default function RefundRequestsList() {
                               </AlertDialogTrigger>
                               <AlertDialogContent>
                                 <AlertDialogHeader>
-                                  <AlertDialogTitle>Delete Refund Request?</AlertDialogTitle>
+                                  <AlertDialogTitle>
+                                    Delete Refund Request?
+                                  </AlertDialogTitle>
                                   <AlertDialogDescription>
-                                    This will permanently delete this refund request for{" "}
-                                    {r.driver?.name || "Unknown"} ({formatMoney(r.amount)}).
-                                    This action cannot be undone.
+                                    This will permanently delete this refund
+                                    request for {r.driver?.name || "Unknown"} (
+                                    {formatMoney(r.amount)}). This action cannot
+                                    be undone.
                                   </AlertDialogDescription>
                                 </AlertDialogHeader>
                                 <AlertDialogFooter>
@@ -413,7 +443,10 @@ export default function RefundRequestsList() {
                             >
                               Reject
                             </Button>
-                            <Button size="sm" onClick={() => openReview(r, "approve")}>
+                            <Button
+                              size="sm"
+                              onClick={() => openReview(r, "approve")}
+                            >
                               Approve
                             </Button>
                           </div>
@@ -437,11 +470,14 @@ export default function RefundRequestsList() {
                               </AlertDialogTrigger>
                               <AlertDialogContent>
                                 <AlertDialogHeader>
-                                  <AlertDialogTitle>Delete Refund Request?</AlertDialogTitle>
+                                  <AlertDialogTitle>
+                                    Delete Refund Request?
+                                  </AlertDialogTitle>
                                   <AlertDialogDescription>
-                                    This will permanently delete this refund request for{" "}
-                                    {r.driver?.name || "Unknown"} ({formatMoney(r.amount)}).
-                                    This action cannot be undone.
+                                    This will permanently delete this refund
+                                    request for {r.driver?.name || "Unknown"} (
+                                    {formatMoney(r.amount)}). This action cannot
+                                    be undone.
                                   </AlertDialogDescription>
                                 </AlertDialogHeader>
                                 <AlertDialogFooter>
@@ -471,19 +507,27 @@ export default function RefundRequestsList() {
       <Dialog open={reviewModalOpen} onOpenChange={setReviewModalOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>{reviewAction === "approve" ? "Approve" : "Reject"} refund request</DialogTitle>
+            <DialogTitle>
+              {reviewAction === "approve" ? "Approve" : "Reject"} refund request
+            </DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
             <div className="rounded-md bg-muted/30 p-3 text-sm">
-              <div className="font-medium">{selected?.driver?.name || "Unknown"}</div>
+              <div className="font-medium">
+                {selected?.driver?.name || "Unknown"}
+              </div>
               <div className="text-muted-foreground">
-                Amount: <span className="font-semibold text-green-700">{formatMoney(selected?.amount || 0)}</span>
+                Amount:{" "}
+                <span className="font-semibold text-green-700">
+                  {formatMoney(selected?.amount || 0)}
+                </span>
               </div>
             </div>
             {reviewAction === "approve" && (
               <div className="rounded-md bg-yellow-50 border border-yellow-200 p-3 text-sm text-yellow-800">
-                <strong>Note:</strong> Approving this request will automatically deduct{" "}
-                {formatMoney(selected?.amount || 0)} from the driver's P&R balance.
+                <strong>Note:</strong> Approving this request will automatically
+                deduct {formatMoney(selected?.amount || 0)} from the driver's
+                P&R balance.
               </div>
             )}
             <div className="space-y-1">
@@ -493,15 +537,27 @@ export default function RefundRequestsList() {
                 value={reviewNotes}
                 onChange={(e) => setReviewNotes(e.target.value)}
                 rows={3}
-                placeholder={reviewAction === "approve" ? "Approved..." : "Reason for rejection..."}
+                placeholder={
+                  reviewAction === "approve"
+                    ? "Approved..."
+                    : "Reason for rejection..."
+                }
               />
             </div>
             <div className="flex justify-end gap-2 pt-2">
-              <Button variant="outline" onClick={() => setReviewModalOpen(false)} disabled={saving}>
+              <Button
+                variant="outline"
+                onClick={() => setReviewModalOpen(false)}
+                disabled={saving}
+              >
                 Cancel
               </Button>
               <Button onClick={submitReview} disabled={saving}>
-                {saving ? "Saving..." : reviewAction === "approve" ? "Approve" : "Reject"}
+                {saving
+                  ? "Saving..."
+                  : reviewAction === "approve"
+                    ? "Approve"
+                    : "Reject"}
               </Button>
             </div>
           </div>
@@ -516,9 +572,12 @@ export default function RefundRequestsList() {
           </DialogHeader>
           <div className="space-y-3">
             <div className="rounded-md bg-muted/30 p-3 text-sm">
-              <div className="font-medium">{editSelected?.driver?.name || "Unknown"}</div>
+              <div className="font-medium">
+                {editSelected?.driver?.name || "Unknown"}
+              </div>
               <div className="text-xs text-muted-foreground">
-                {editSelected?.driver?.phone_number || "—"} • {editSelected?.driver?.vehicle_number || "—"}
+                {editSelected?.driver?.phone_number || "—"} •{" "}
+                {editSelected?.driver?.vehicle_number || "—"}
               </div>
             </div>
             <div className="space-y-1">
@@ -543,7 +602,11 @@ export default function RefundRequestsList() {
               />
             </div>
             <div className="flex justify-end gap-2 pt-2">
-              <Button variant="outline" onClick={() => setEditModalOpen(false)} disabled={editSaving}>
+              <Button
+                variant="outline"
+                onClick={() => setEditModalOpen(false)}
+                disabled={editSaving}
+              >
                 Cancel
               </Button>
               <Button onClick={submitEdit} disabled={editSaving}>
@@ -556,4 +619,3 @@ export default function RefundRequestsList() {
     </div>
   );
 }
-

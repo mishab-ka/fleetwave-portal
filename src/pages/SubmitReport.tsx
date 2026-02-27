@@ -179,7 +179,7 @@ const SubmitReport = () => {
         const { data, error } = await supabase
           .from("users")
           .select("id, name")
-          .in("role", ["manager"])
+          .eq("role", "manager")
           .order("name");
 
         if (error) throw error;

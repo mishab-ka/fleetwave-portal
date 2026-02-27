@@ -172,31 +172,31 @@ export default function LeaveApplication() {
 
     if (applicationType === "leave") {
       // Validate leave form
-      if (!validateForm()) {
-        toast.error("Please fix the errors in the form");
-        return;
-      }
+    if (!validateForm()) {
+      toast.error("Please fix the errors in the form");
+      return;
+    }
 
-      try {
-        const { error } = await supabase.from("leave_applications").insert([
-          {
-            driver_id: user.id,
-            start_date: formData.start_date,
-            end_date: formData.end_date,
-            reason: formData.reason.trim(),
-            status: "pending",
-          },
-        ]);
+    try {
+      const { error } = await supabase.from("leave_applications").insert([
+        {
+          driver_id: user.id,
+          start_date: formData.start_date,
+          end_date: formData.end_date,
+          reason: formData.reason.trim(),
+          status: "pending",
+        },
+      ]);
 
-        if (error) throw error;
+      if (error) throw error;
 
-        toast.success("Leave application submitted successfully");
-        setFormData({ start_date: "", end_date: "", reason: "" });
-        setErrors({});
-        fetchLeaveApplications();
-      } catch (error) {
-        console.error("Error submitting leave application:", error);
-        toast.error("Failed to submit leave application");
+      toast.success("Leave application submitted successfully");
+      setFormData({ start_date: "", end_date: "", reason: "" });
+      setErrors({});
+      fetchLeaveApplications();
+    } catch (error) {
+      console.error("Error submitting leave application:", error);
+      toast.error("Failed to submit leave application");
       }
     } else {
       // Validate resigning form
@@ -274,7 +274,7 @@ export default function LeaveApplication() {
           <CardHeader>
             <CardTitle>Submit Application</CardTitle>
             <div className="space-y-4 mt-4">
-              <div className="space-y-2">
+            <div className="space-y-2">
                 <label className="text-sm font-medium">
                   Application Type <span className="text-red-500">*</span>
                 </label>
@@ -312,52 +312,52 @@ export default function LeaveApplication() {
               {applicationType === "leave" ? (
                 <>
                   {/* Leave Application Form */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <label className="text-sm font-medium">Start Date</label>
-                      <Input
-                        type="date"
-                        value={formData.start_date}
-                        onChange={handleStartDateChange}
-                        required
-                        className={errors.start_date ? "border-red-500" : ""}
-                      />
-                      {errors.start_date && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Start Date</label>
+                  <Input
+                    type="date"
+                    value={formData.start_date}
+                    onChange={handleStartDateChange}
+                    required
+                    className={errors.start_date ? "border-red-500" : ""}
+                  />
+                  {errors.start_date && (
                         <p className="text-sm text-red-600">
                           {errors.start_date}
                         </p>
-                      )}
-                    </div>
-                    <div className="space-y-2">
-                      <label className="text-sm font-medium">End Date</label>
-                      <Input
-                        type="date"
-                        value={formData.end_date}
-                        onChange={handleEndDateChange}
-                        required
+                  )}
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">End Date</label>
+                  <Input
+                    type="date"
+                    value={formData.end_date}
+                    onChange={handleEndDateChange}
+                    required
                         min={getMinEndDate()}
-                        className={errors.end_date ? "border-red-500" : ""}
-                      />
-                      {errors.end_date && (
+                    className={errors.end_date ? "border-red-500" : ""}
+                  />
+                  {errors.end_date && (
                         <p className="text-sm text-red-600">
                           {errors.end_date}
                         </p>
-                      )}
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">Reason</label>
-                    <Textarea
-                      value={formData.reason}
-                      onChange={handleReasonChange}
-                      placeholder="Please provide a detailed reason for your leave (minimum 10 characters)"
-                      required
-                      className={errors.reason ? "border-red-500" : ""}
-                    />
-                    {errors.reason && (
-                      <p className="text-sm text-red-600">{errors.reason}</p>
-                    )}
-                  </div>
+                  )}
+                </div>
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Reason</label>
+                <Textarea
+                  value={formData.reason}
+                  onChange={handleReasonChange}
+                  placeholder="Please provide a detailed reason for your leave (minimum 10 characters)"
+                  required
+                  className={errors.reason ? "border-red-500" : ""}
+                />
+                {errors.reason && (
+                  <p className="text-sm text-red-600">{errors.reason}</p>
+                )}
+              </div>
                 </>
               ) : (
                 <>
