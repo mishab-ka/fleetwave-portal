@@ -143,6 +143,9 @@ const getWeekDates = (
   };
 };
 
+// Rental income = ₹600 per report (only pending_verification, approved, rejected — exclude leave)
+const RENTAL_INCOME_PER_REPORT = 600;
+
 const AdminReports = () => {
   const navigate = useNavigate();
   const { isAdmin, isManager, userRole, loading: adminLoading } = useAdmin();
@@ -520,14 +523,18 @@ const AdminReports = () => {
       if (error) throw error;
 
       if (data) {
+        const rentalIncomeStatuses = ["pending_verification", "approved", "rejected"];
+        const reportsForRentalIncome = data.filter((report) =>
+          rentalIncomeStatuses.includes(report.status)
+        );
+
         const totalEarnings = data.reduce(
           (sum, report) => sum + (report.total_earnings || 0),
           0
         );
-        const totalCashCollect = data.reduce(
-          (sum, report) => sum + (report.total_cashcollect || 0),
-          0
-        );
+        // Rental Income = count of non-leave reports × ₹600 per report (exclude leave)
+        const totalCashCollect =
+          reportsForRentalIncome.length * RENTAL_INCOME_PER_REPORT;
         const totalRentPaid = data.reduce((sum, report) => {
           const amount = Number(report.rent_paid_amount) || 0;
           return amount > 0 ? sum + amount : sum;
@@ -1890,7 +1897,7 @@ const AdminReports = () => {
               ₹{statistics.totalCashCollect.toLocaleString()}
             </div>
             <p className="text-xs text-muted-foreground mt-1">
-              Total cash from reports (cash table)
+              Non-leave reports × ₹600 (pending, approved, rejected only)
             </p>
           </CardContent>
         </Card>
