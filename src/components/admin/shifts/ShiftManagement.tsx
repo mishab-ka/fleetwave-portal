@@ -105,7 +105,7 @@ const ShiftManagement = () => {
     "morning" | "night" | "none"
   >("morning");
   const [editingShift, setEditingShift] = useState<ShiftAssignment | null>(
-    null
+    null,
   );
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [onlineDrivers, setOnlineDrivers] = useState<Driver[]>([]);
@@ -132,7 +132,7 @@ const ShiftManagement = () => {
     useState(false);
   const [leaveReturnDate, setLeaveReturnDate] = useState<Date | null>(null);
   const [draggedDriver, setDraggedDriver] = useState<ShiftAssignment | null>(
-    null
+    null,
   );
   const [dragOverTarget, setDragOverTarget] = useState<{
     vehicle: string;
@@ -163,8 +163,7 @@ const ShiftManagement = () => {
         .from("users")
         .select("shift")
         .eq("role", "user")
-        .eq("online", true)
-        .is("resigning_date", null);
+        .eq("online", true);
 
       if (error) throw error;
 
@@ -208,7 +207,7 @@ const ShiftManagement = () => {
       const { data: driversData, error: driversError } = await supabase
         .from("users")
         .select(
-          "id, name, online, driver_id, phone_number, vehicle_number, shift, is_verified"
+          "id, name, online, driver_id, phone_number, vehicle_number, shift, is_verified",
         )
         .eq("online", true)
         .eq("role", "user");
@@ -217,7 +216,7 @@ const ShiftManagement = () => {
 
       // Fetch available vehicles with assignment status
       const { data: vehiclesData, error: vehiclesError } = await supabase.rpc(
-        "get_vehicle_assignment_status"
+        "get_vehicle_assignment_status",
       );
 
       if (vehiclesError) throw vehiclesError;
@@ -230,7 +229,7 @@ const ShiftManagement = () => {
           vehicle_number: driver.vehicle_number,
           shift: driver.shift,
           is_verified: driver.is_verified || false,
-        })) || []
+        })) || [],
       );
 
       setAvailableVehicles(
@@ -243,7 +242,7 @@ const ShiftManagement = () => {
           available_slots: vehicle.available_slots,
           is_full: vehicle.is_full,
           assigned_drivers: vehicle.assigned_drivers,
-        })) || []
+        })) || [],
       );
     } catch (error) {
       console.error("Error fetching drivers and vehicles:", error);
@@ -264,7 +263,7 @@ const ShiftManagement = () => {
       const { data: shiftsData, error: shiftsError } = await supabase
         .from("users")
         .select(
-          "id, name, driver_id, vehicle_number, online, shift, phone_number, is_verified"
+          "id, name, driver_id, vehicle_number, online, shift, phone_number, is_verified",
         )
         .eq("online", true)
         .eq("role", "user");
@@ -308,7 +307,7 @@ const ShiftManagement = () => {
       // Get drivers with no shift (null or empty)
       const noShiftAssignments = shiftsData
         ?.filter(
-          (user) => !user.shift || user.shift === "none" || user.shift === ""
+          (user) => !user.shift || user.shift === "none" || user.shift === "",
         )
         .map((user) => ({
           id: user.id,
@@ -336,7 +335,7 @@ const ShiftManagement = () => {
 
   const handleToggleOnline = async (
     driverId: string,
-    currentStatus: boolean
+    currentStatus: boolean,
   ) => {
     // If trying to take driver offline, check for overdue reports
     if (currentStatus) {
@@ -357,17 +356,14 @@ const ShiftManagement = () => {
 
         if (!driverError && driverData) {
           const blockingIssues = await getDriverBlockingIssues(driverData);
-          if (
-            blockingIssues.overdueCount > 0 ||
-            blockingIssues.rejectedCount > 0
-          ) {
+          if (blockingIssues.overdueCount > 0) {
             setOverdueCount(blockingIssues.overdueCount);
             setRejectedCount(blockingIssues.rejectedCount);
             setOverdueDriverName(
-              driverData?.name || driverData?.driver_id || "Unknown Driver"
+              driverData?.name || driverData?.driver_id || "Unknown Driver",
             );
             setShowOverdueWarning(true);
-            return; // Block offline action when overdue or rejected reports exist
+            return; // Block offline action when overdue reports exist
           }
 
           // No overdue/rejected, show leave/resigning/offline status modal
@@ -393,20 +389,20 @@ const ShiftManagement = () => {
       // Update shifts in state to reflect the change
       setCurrentShifts((prev) =>
         prev.map((shift) =>
-          shift.id === driverId ? { ...shift, online: !currentStatus } : shift
-        )
+          shift.id === driverId ? { ...shift, online: !currentStatus } : shift,
+        ),
       );
 
       setUpcomingShifts((prev) =>
         prev.map((shift) =>
-          shift.id === driverId ? { ...shift, online: !currentStatus } : shift
-        )
+          shift.id === driverId ? { ...shift, online: !currentStatus } : shift,
+        ),
       );
 
       // If toggling offline, remove from online drivers list
       if (currentStatus) {
         setOnlineDrivers((prev) =>
-          prev.filter((driver) => driver.id !== driverId)
+          prev.filter((driver) => driver.id !== driverId),
         );
       }
 
@@ -422,7 +418,7 @@ const ShiftManagement = () => {
   };
 
   const handleLeaveResigningSelection = async (
-    status: "leave" | "resigning" | "offline" | "going_to_24hr"
+    status: "leave" | "resigning" | "offline" | "going_to_24hr",
   ) => {
     if (!selectedDriverForStatus) return;
 
@@ -465,7 +461,10 @@ const ShiftManagement = () => {
         toast.success(`Driver is now marked as Going to 24hr`);
 
         // Refresh data
-        await Promise.all([updateShiftAssignments(), fetchDriversAndVehicles()]);
+        await Promise.all([
+          updateShiftAssignments(),
+          fetchDriversAndVehicles(),
+        ]);
       } catch (error) {
         console.error("Error updating driver status:", error);
         toast.error("Failed to update driver status");
@@ -538,8 +537,8 @@ const ShiftManagement = () => {
       toast.success(
         `Driver is now on leave. Return date: ${format(
           leaveReturnDate,
-          "dd MMM yyyy"
-        )}`
+          "dd MMM yyyy",
+        )}`,
       );
 
       // Refresh data
@@ -598,7 +597,7 @@ const ShiftManagement = () => {
 
   const handleToggleVehicleStatus = async (
     vehicleNumber: string,
-    currentStatus: boolean
+    currentStatus: boolean,
   ) => {
     try {
       setIsUpdating(vehicleNumber);
@@ -613,7 +612,7 @@ const ShiftManagement = () => {
       toast.success(
         `Vehicle ${vehicleNumber} is now ${
           !currentStatus ? "active" : "inactive"
-        }`
+        }`,
       );
 
       // Refresh data
@@ -635,23 +634,25 @@ const ShiftManagement = () => {
     // Check for overdue reports if changing to "none" shift OR removing vehicle (N/A) with no shift
     const isRemovingShift = selectedShiftType === "none";
     const isRemovingVehicle = selectedVehicle === "No Vehicle";
-    
+
     if (isRemovingShift) {
       try {
         const { data: driverData, error: driverError } = await supabase
           .from("users")
-          .select("id, name, driver_id, shift, joining_date, online, offline_from_date, online_from_date")
+          .select(
+            "id, name, driver_id, shift, joining_date, online, offline_from_date, online_from_date",
+          )
           .eq("id", editingShift.id)
           .single();
 
         if (driverError) throw driverError;
 
         const blockingIssues = await getDriverBlockingIssues(driverData);
-        if (blockingIssues.overdueCount > 0 || blockingIssues.rejectedCount > 0) {
+        if (blockingIssues.overdueCount > 0) {
           setOverdueCount(blockingIssues.overdueCount);
           setRejectedCount(blockingIssues.rejectedCount);
           setOverdueDriverName(
-            driverData?.name || driverData?.driver_id || "Unknown Driver"
+            driverData?.name || driverData?.driver_id || "Unknown Driver",
           );
           setShowOverdueWarning(true);
           return;
@@ -677,7 +678,7 @@ const ShiftManagement = () => {
         toast.success(
           selectedShiftType === "none"
             ? "Shift updated to 'No Shift' with vehicle cleared"
-            : "Shift updated successfully without vehicle"
+            : "Shift updated successfully without vehicle",
         );
         await updateShiftAssignments();
         setIsEditDialogOpen(false);
@@ -705,12 +706,12 @@ const ShiftManagement = () => {
         (d) =>
           d.vehicle_number === selectedVehicle &&
           d.online &&
-          d.id !== editingShift.id
+          d.id !== editingShift.id,
       );
 
       // Check if there's already a driver with the same shift on this vehicle
       const existingDriverWithSameShift = currentDriversForVehicle.find(
-        (d) => d.shift === selectedShiftType
+        (d) => d.shift === selectedShiftType,
       );
 
       console.log("Edit shift validation:", {
@@ -724,7 +725,7 @@ const ShiftManagement = () => {
       // Check if there's already a driver with the same shift
       if (existingDriverWithSameShift) {
         toast.error(
-          `Cannot assign ${selectedShiftType} shift driver to ${selectedVehicle}. Vehicle already has a ${selectedShiftType} shift driver: ${existingDriverWithSameShift.name}`
+          `Cannot assign ${selectedShiftType} shift driver to ${selectedVehicle}. Vehicle already has a ${selectedShiftType} shift driver: ${existingDriverWithSameShift.name}`,
         );
         return;
       }
@@ -755,11 +756,11 @@ const ShiftManagement = () => {
         console.log("Checking edit shift error message:", updateError.message);
         console.log(
           "Error includes 'already has':",
-          updateError.message.includes("already has")
+          updateError.message.includes("already has"),
         );
         console.log(
           "Error includes 'online drivers assigned':",
-          updateError.message.includes("online drivers assigned")
+          updateError.message.includes("online drivers assigned"),
         );
 
         if (
@@ -772,13 +773,13 @@ const ShiftManagement = () => {
 
           // Extract vehicle number from error message
           const vehicleMatch = updateError.message.match(
-            /Vehicle ([A-Z0-9]+) already has/
+            /Vehicle ([A-Z0-9]+) already has/,
           );
           const vehicleNumber = vehicleMatch ? vehicleMatch[1] : "Unknown";
 
           // Get current drivers for this vehicle
           const currentDriversForVehicle = onlineDrivers.filter(
-            (d) => d.vehicle_number === vehicleNumber && d.online
+            (d) => d.vehicle_number === vehicleNumber && d.online,
           );
 
           console.log("Setting error details for edit shift dialog:", {
@@ -818,18 +819,18 @@ const ShiftManagement = () => {
       ) {
         console.log(
           "Vehicle assignment limit error detected in edit shift catch block:",
-          error.message
+          error.message,
         );
 
         // Extract vehicle number from error message
         const vehicleMatch = error.message.match(
-          /Vehicle ([A-Z0-9]+) already has/
+          /Vehicle ([A-Z0-9]+) already has/,
         );
         const vehicleNumber = vehicleMatch ? vehicleMatch[1] : "Unknown";
 
         // Get current drivers for this vehicle
         const currentDriversForVehicle = onlineDrivers.filter(
-          (d) => d.vehicle_number === vehicleNumber && d.online
+          (d) => d.vehicle_number === vehicleNumber && d.online,
         );
 
         console.log("Setting error details in edit shift catch block:", {
@@ -848,7 +849,7 @@ const ShiftManagement = () => {
       } else {
         console.log(
           "Non-vehicle assignment error in edit shift:",
-          error.message
+          error.message,
         );
         toast.error("Failed to update shift");
       }
@@ -872,18 +873,20 @@ const ShiftManagement = () => {
       try {
         const { data: driverData, error: driverError } = await supabase
           .from("users")
-          .select("id, name, driver_id, shift, joining_date, online, offline_from_date, online_from_date")
+          .select(
+            "id, name, driver_id, shift, joining_date, online, offline_from_date, online_from_date",
+          )
           .eq("id", driver.id)
           .single();
 
         if (driverError) throw driverError;
 
         const blockingIssues = await getDriverBlockingIssues(driverData);
-        if (blockingIssues.overdueCount > 0 || blockingIssues.rejectedCount > 0) {
+        if (blockingIssues.overdueCount > 0) {
           setOverdueCount(blockingIssues.overdueCount);
           setRejectedCount(blockingIssues.rejectedCount);
           setOverdueDriverName(
-            driverData?.name || driverData?.driver_id || "Unknown Driver"
+            driverData?.name || driverData?.driver_id || "Unknown Driver",
           );
           setShowOverdueWarning(true);
           return;
@@ -930,7 +933,7 @@ const ShiftManagement = () => {
     }
 
     const vehicle = availableVehicles.find(
-      (v) => v.vehicle_number === selectedVehicle
+      (v) => v.vehicle_number === selectedVehicle,
     );
 
     if (!vehicle) {
@@ -942,7 +945,7 @@ const ShiftManagement = () => {
     const isAlreadyAssigned = driver.vehicle_number === vehicle.vehicle_number;
     if (isAlreadyAssigned) {
       toast.error(
-        `Driver ${driver.name} is already assigned to vehicle ${vehicle.vehicle_number}`
+        `Driver ${driver.name} is already assigned to vehicle ${vehicle.vehicle_number}`,
       );
       return;
     }
@@ -951,7 +954,7 @@ const ShiftManagement = () => {
     if (vehicle.is_full) {
       const assignedDrivers = vehicle.assigned_drivers || "Unknown drivers";
       toast.error(
-        `Vehicle ${vehicle.vehicle_number} is in use. Already assigned to: ${assignedDrivers}`
+        `Vehicle ${vehicle.vehicle_number} is in use. Already assigned to: ${assignedDrivers}`,
       );
       return;
     }
@@ -960,19 +963,19 @@ const ShiftManagement = () => {
     if (vehicle.online_drivers_count && vehicle.online_drivers_count >= 2) {
       const assignedDrivers = vehicle.assigned_drivers || "Unknown drivers";
       toast.error(
-        `Cannot assign driver to ${vehicle.vehicle_number}. Vehicle already has 2 online drivers: ${assignedDrivers}`
+        `Cannot assign driver to ${vehicle.vehicle_number}. Vehicle already has 2 online drivers: ${assignedDrivers}`,
       );
       return;
     }
 
     // Real-time validation: Check shift conflicts for this vehicle
     const currentDriversForVehicle = onlineDrivers.filter(
-      (d) => d.vehicle_number === vehicle.vehicle_number && d.online
+      (d) => d.vehicle_number === vehicle.vehicle_number && d.online,
     );
 
     // Check if there's already a driver with the same shift on this vehicle
     const existingDriverWithSameShift = currentDriversForVehicle.find(
-      (d) => d.shift === selectedShiftType
+      (d) => d.shift === selectedShiftType,
     );
 
     console.log("Vehicle assignment validation:", {
@@ -990,7 +993,7 @@ const ShiftManagement = () => {
         .map((d) => d.name)
         .join(", ");
       toast.error(
-        `Cannot assign driver to ${vehicle.vehicle_number}. Vehicle already has 2 online drivers: ${driverNames}`
+        `Cannot assign driver to ${vehicle.vehicle_number}. Vehicle already has 2 online drivers: ${driverNames}`,
       );
       return;
     }
@@ -998,7 +1001,7 @@ const ShiftManagement = () => {
     // Check if there's already a driver with the same shift
     if (existingDriverWithSameShift) {
       toast.error(
-        `Cannot assign ${selectedShiftType} shift driver to ${vehicle.vehicle_number}. Vehicle already has a ${selectedShiftType} shift driver: ${existingDriverWithSameShift.name}`
+        `Cannot assign ${selectedShiftType} shift driver to ${vehicle.vehicle_number}. Vehicle already has a ${selectedShiftType} shift driver: ${existingDriverWithSameShift.name}`,
       );
       return;
     }
@@ -1011,12 +1014,12 @@ const ShiftManagement = () => {
           {
             p_vehicle_number: vehicle.vehicle_number,
             p_driver_id: driver.id,
-          }
+          },
         );
 
         if (limitError) {
           console.log(
-            "Database function not available, using frontend validation only"
+            "Database function not available, using frontend validation only",
           );
         } else if (
           limitCheck &&
@@ -1029,7 +1032,7 @@ const ShiftManagement = () => {
       } catch (dbError) {
         console.log(
           "Database function error, using frontend validation:",
-          dbError
+          dbError,
         );
         // Continue with frontend validation only
       }
@@ -1058,11 +1061,11 @@ const ShiftManagement = () => {
         console.log("Checking error message:", updateError.message);
         console.log(
           "Error includes 'already has':",
-          updateError.message.includes("already has")
+          updateError.message.includes("already has"),
         );
         console.log(
           "Error includes 'online drivers assigned':",
-          updateError.message.includes("online drivers assigned")
+          updateError.message.includes("online drivers assigned"),
         );
 
         if (
@@ -1074,13 +1077,13 @@ const ShiftManagement = () => {
 
           // Extract vehicle number from error message
           const vehicleMatch = updateError.message.match(
-            /Vehicle ([A-Z0-9]+) already has/
+            /Vehicle ([A-Z0-9]+) already has/,
           );
           const vehicleNumber = vehicleMatch ? vehicleMatch[1] : "Unknown";
 
           // Get current drivers for this vehicle
           const currentDriversForVehicle = onlineDrivers.filter(
-            (d) => d.vehicle_number === vehicleNumber && d.online
+            (d) => d.vehicle_number === vehicleNumber && d.online,
           );
 
           console.log("Setting error details for dialog:", {
@@ -1130,18 +1133,18 @@ const ShiftManagement = () => {
       ) {
         console.log(
           "Vehicle assignment limit error detected in catch block:",
-          error.message
+          error.message,
         );
 
         // Extract vehicle number from error message
         const vehicleMatch = error.message.match(
-          /Vehicle ([A-Z0-9]+) already has/
+          /Vehicle ([A-Z0-9]+) already has/,
         );
         const vehicleNumber = vehicleMatch ? vehicleMatch[1] : "Unknown";
 
         // Get current drivers for this vehicle
         const currentDriversForVehicle = onlineDrivers.filter(
-          (d) => d.vehicle_number === vehicleNumber && d.online
+          (d) => d.vehicle_number === vehicleNumber && d.online,
         );
 
         console.log("Setting error details in catch block:", {
@@ -1192,7 +1195,7 @@ const ShiftManagement = () => {
 
   // Group drivers by vehicle
   const groupDriversByVehicle = (
-    drivers: ShiftAssignment[]
+    drivers: ShiftAssignment[],
   ): VehicleGroup[] => {
     const vehicleMap = new Map<string, VehicleGroup>();
 
@@ -1234,7 +1237,7 @@ const ShiftManagement = () => {
   const handleDragOver = (
     e: React.DragEvent,
     vehicle: string,
-    shift: "morning" | "night" | "none"
+    shift: "morning" | "night" | "none",
   ) => {
     e.preventDefault();
     e.dataTransfer.dropEffect = "move";
@@ -1249,7 +1252,7 @@ const ShiftManagement = () => {
   const handleDrop = async (
     e: React.DragEvent,
     targetVehicle: string,
-    targetShift: "morning" | "night" | "none"
+    targetShift: "morning" | "night" | "none",
   ) => {
     e.preventDefault();
     setDragOverTarget(null);
@@ -1264,18 +1267,22 @@ const ShiftManagement = () => {
         // Check for overdue/rejected reports (report submission overdue) before allowing shift removal
         const { data: fullDriverData, error: driverError } = await supabase
           .from("users")
-          .select("id, name, driver_id, shift, joining_date, online, offline_from_date, online_from_date")
+          .select(
+            "id, name, driver_id, shift, joining_date, online, offline_from_date, online_from_date",
+          )
           .eq("id", draggedDriver.id)
           .single();
 
         if (driverError) throw driverError;
 
         const blockingIssues = await getDriverBlockingIssues(fullDriverData);
-        if (blockingIssues.overdueCount > 0 || blockingIssues.rejectedCount > 0) {
+        if (blockingIssues.overdueCount > 0) {
           setOverdueCount(blockingIssues.overdueCount);
           setRejectedCount(blockingIssues.rejectedCount);
           setOverdueDriverName(
-            fullDriverData?.name || fullDriverData?.driver_id || "Unknown Driver"
+            fullDriverData?.name ||
+              fullDriverData?.driver_id ||
+              "Unknown Driver",
           );
           setShowOverdueWarning(true);
           setIsUpdating(null);
@@ -1295,7 +1302,7 @@ const ShiftManagement = () => {
         if (error) throw error;
 
         toast.success(
-          `${draggedDriver.driver_name} removed from shift and vehicle assignment`
+          `${draggedDriver.driver_name} removed from shift and vehicle assignment`,
         );
 
         // Refresh data
@@ -1323,12 +1330,12 @@ const ShiftManagement = () => {
     // Check if target slot is occupied
     const allDrivers = [...currentShifts, ...upcomingShifts];
     const existingDriver = allDrivers.find(
-      (d) => d.vehicle_number === targetVehicle && d.shift_type === targetShift
+      (d) => d.vehicle_number === targetVehicle && d.shift_type === targetShift,
     );
 
     if (existingDriver) {
       toast.error(
-        `${targetShift} shift on ${targetVehicle} is already assigned to ${existingDriver.driver_name}`
+        `${targetShift} shift on ${targetVehicle} is already assigned to ${existingDriver.driver_name}`,
       );
       return;
     }
@@ -1348,7 +1355,7 @@ const ShiftManagement = () => {
       if (error) throw error;
 
       toast.success(
-        `${draggedDriver.driver_name} assigned to ${targetShift} shift on ${targetVehicle}`
+        `${draggedDriver.driver_name} assigned to ${targetShift} shift on ${targetVehicle}`,
       );
 
       // Refresh data
@@ -1390,7 +1397,7 @@ const ShiftManagement = () => {
   const filteredVehicles = availableVehicles.filter((vehicle) =>
     vehicle.vehicle_number
       .toLowerCase()
-      .includes(vehicleSearchQuery.toLowerCase())
+      .includes(vehicleSearchQuery.toLowerCase()),
   );
 
   // Get all available vehicles from the database, not just from assigned drivers
@@ -1545,10 +1552,10 @@ const ShiftManagement = () => {
                     ...upcomingShifts,
                   ].filter((d) => d.vehicle_number === vehicle.vehicle_number);
                   const morningDriver = assignedDrivers.find(
-                    (d) => d.shift_type === "morning"
+                    (d) => d.shift_type === "morning",
                   );
                   const nightDriver = assignedDrivers.find(
-                    (d) => d.shift_type === "night"
+                    (d) => d.shift_type === "night",
                   );
 
                   // Only show if at least one slot is available (not both assigned)
@@ -1595,7 +1602,7 @@ const ShiftManagement = () => {
                                 onCheckedChange={() =>
                                   handleToggleVehicleStatus(
                                     vehicle.vehicle_number,
-                                    vehicle.online
+                                    vehicle.online,
                                   )
                                 }
                                 disabled={isUpdating === vehicle.vehicle_number}
@@ -1617,9 +1624,9 @@ const ShiftManagement = () => {
                               </Badge>
                               <div className="flex items-center gap-1">
                                 <div className="flex flex-col">
-                                <span className="text-xs text-gray-700 font-medium truncate ml-2">
-                                  {morningDriver.driver_name}
-                                </span>
+                                  <span className="text-xs text-gray-700 font-medium truncate ml-2">
+                                    {morningDriver.driver_name}
+                                  </span>
                                   {morningDriver.user_driver_id && (
                                     <div className="flex items-center gap-1 ml-2">
                                       <span className="text-[10px] font-mono text-gray-600">
@@ -1629,7 +1636,7 @@ const ShiftManagement = () => {
                                         onClick={(e) => {
                                           e.stopPropagation();
                                           handleCopyDriverId(
-                                            morningDriver.user_driver_id!
+                                            morningDriver.user_driver_id!,
                                           );
                                         }}
                                         className="p-0.5 hover:bg-gray-200 rounded transition-colors"
@@ -1673,9 +1680,9 @@ const ShiftManagement = () => {
                               </Badge>
                               <div className="flex items-center gap-1">
                                 <div className="flex flex-col">
-                                <span className="text-xs text-gray-700 font-medium truncate ml-2">
-                                  {nightDriver.driver_name}
-                                </span>
+                                  <span className="text-xs text-gray-700 font-medium truncate ml-2">
+                                    {nightDriver.driver_name}
+                                  </span>
                                   {nightDriver.user_driver_id && (
                                     <div className="flex items-center gap-1 ml-2">
                                       <span className="text-[10px] font-mono text-gray-600">
@@ -1685,7 +1692,7 @@ const ShiftManagement = () => {
                                         onClick={(e) => {
                                           e.stopPropagation();
                                           handleCopyDriverId(
-                                            nightDriver.user_driver_id!
+                                            nightDriver.user_driver_id!,
                                           );
                                         }}
                                         className="p-0.5 hover:bg-gray-200 rounded transition-colors"
@@ -1746,8 +1753,8 @@ const ShiftManagement = () => {
                           {!morningDriver && !nightDriver
                             ? "2 slots"
                             : morningDriver && nightDriver
-                            ? "Full"
-                            : "1 slot"}
+                              ? "Full"
+                              : "1 slot"}
                         </div>
                       </div>
                     </CardContent>
@@ -1828,29 +1835,38 @@ const ShiftManagement = () => {
                           size="icon"
                           onClick={async (e) => {
                             e.stopPropagation();
-                            
+
                             // Check for overdue reports before opening edit dialog
                             try {
-                              const { data: driverData, error: driverError } = await supabase
-                                .from("users")
-                                .select("id, name, driver_id, shift, joining_date, online, offline_from_date, online_from_date")
-                                .eq("id", assignment.id)
-                                .single();
+                              const { data: driverData, error: driverError } =
+                                await supabase
+                                  .from("users")
+                                  .select(
+                                    "id, name, driver_id, shift, joining_date, online, offline_from_date, online_from_date",
+                                  )
+                                  .eq("id", assignment.id)
+                                  .single();
 
                               if (driverError) throw driverError;
 
-                              const blockingIssues = await getDriverBlockingIssues(driverData);
+                              const blockingIssues =
+                                await getDriverBlockingIssues(driverData);
                               if (blockingIssues.overdueCount > 0) {
                                 setOverdueCount(blockingIssues.overdueCount);
                                 setRejectedCount(0);
                                 setOverdueDriverName(
-                                  driverData?.name || driverData?.driver_id || "Unknown Driver"
+                                  driverData?.name ||
+                                    driverData?.driver_id ||
+                                    "Unknown Driver",
                                 );
                                 setShowOverdueWarning(true);
                                 return; // Block edit dialog from opening
                               }
                             } catch (error) {
-                              console.error("Error checking for overdue reports:", error);
+                              console.error(
+                                "Error checking for overdue reports:",
+                                error,
+                              );
                             }
 
                             setEditingShift(assignment);
@@ -1889,7 +1905,7 @@ const ShiftManagement = () => {
                               onCheckedChange={() =>
                                 handleToggleOnline(
                                   assignment.id,
-                                  assignment.online
+                                  assignment.online,
                                 )
                               }
                               disabled={isUpdating === assignment.id}
@@ -1903,9 +1919,9 @@ const ShiftManagement = () => {
                       <div className="flex items-center gap-2">
                         <Users className="h-4 w-4 text-gray-700" />
                         <div className="flex flex-col">
-                        <span className="font-semibold text-black">
-                          {assignment.driver_name}
-                        </span>
+                          <span className="font-semibold text-black">
+                            {assignment.driver_name}
+                          </span>
                           {assignment.user_driver_id && (
                             <div className="flex items-center gap-1">
                               <span className="text-xs font-mono text-gray-600">
@@ -1915,13 +1931,14 @@ const ShiftManagement = () => {
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   handleCopyDriverId(
-                                    assignment.user_driver_id!
+                                    assignment.user_driver_id!,
                                   );
                                 }}
                                 className="p-0.5 hover:bg-gray-200 rounded transition-colors"
                                 title="Copy Driver ID"
                               >
-                                {copiedDriverId === assignment.user_driver_id ? (
+                                {copiedDriverId ===
+                                assignment.user_driver_id ? (
                                   <Check className="h-3 w-3 text-green-600" />
                                 ) : (
                                   <Copy className="h-3 w-3 text-gray-500" />
@@ -2055,7 +2072,7 @@ const ShiftManagement = () => {
                   <div className="text-xs text-muted-foreground">
                     {(() => {
                       const vehicle = availableVehicles.find(
-                        (v) => v.vehicle_number === selectedVehicle
+                        (v) => v.vehicle_number === selectedVehicle,
                       );
                       if (vehicle) {
                         if (vehicle.is_full) {
@@ -2119,7 +2136,7 @@ const ShiftManagement = () => {
               .filter((vg) =>
                 vg.vehicle_number
                   .toLowerCase()
-                  .includes(vehicleSearchQuery.toLowerCase())
+                  .includes(vehicleSearchQuery.toLowerCase()),
               )
               .map((vehicleGroup) => (
                 <Card
@@ -2150,7 +2167,7 @@ const ShiftManagement = () => {
                         handleDragOver(
                           e,
                           vehicleGroup.vehicle_number,
-                          "morning"
+                          "morning",
                         )
                       }
                       onDragLeave={handleDragLeave}
@@ -2179,26 +2196,32 @@ const ShiftManagement = () => {
                               <GripVertical className="h-4 w-4 text-gray-700 cursor-grab" />
                               <Users className="h-4 w-4 text-gray-700" />
                               <div className="flex flex-col">
-                              <span className="font-semibold text-black">
-                                {vehicleGroup.morningDriver.driver_name}
-                              </span>
+                                <span className="font-semibold text-black">
+                                  {vehicleGroup.morningDriver.driver_name}
+                                </span>
                                 {vehicleGroup.morningDriver.user_driver_id && (
                                   <div className="flex items-center gap-1">
                                     <span className="text-xs font-mono text-gray-600">
-                                      ID: {vehicleGroup.morningDriver.user_driver_id}
+                                      ID:{" "}
+                                      {
+                                        vehicleGroup.morningDriver
+                                          .user_driver_id
+                                      }
                                     </span>
                                     <button
                                       onClick={(e) => {
                                         e.stopPropagation();
                                         handleCopyDriverId(
-                                          vehicleGroup.morningDriver.user_driver_id!
+                                          vehicleGroup.morningDriver
+                                            .user_driver_id!,
                                         );
                                       }}
                                       className="p-0.5 hover:bg-gray-200 rounded transition-colors"
                                       title="Copy Driver ID"
                                     >
                                       {copiedDriverId ===
-                                      vehicleGroup.morningDriver.user_driver_id ? (
+                                      vehicleGroup.morningDriver
+                                        .user_driver_id ? (
                                         <Check className="h-3 w-3 text-green-600" />
                                       ) : (
                                         <Copy className="h-3 w-3 text-gray-500" />
@@ -2232,37 +2255,50 @@ const ShiftManagement = () => {
                                 className="h-7 w-7"
                                 onClick={async (e) => {
                                   e.stopPropagation();
-                                  
+
                                   // Check for overdue reports before opening edit dialog
                                   try {
-                                    const { data: driverData, error: driverError } = await supabase
+                                    const {
+                                      data: driverData,
+                                      error: driverError,
+                                    } = await supabase
                                       .from("users")
-                                      .select("id, name, driver_id, shift, joining_date, online, offline_from_date, online_from_date")
+                                      .select(
+                                        "id, name, driver_id, shift, joining_date, online, offline_from_date, online_from_date",
+                                      )
                                       .eq("id", vehicleGroup.morningDriver!.id)
                                       .single();
 
                                     if (driverError) throw driverError;
 
-                                    const blockingIssues = await getDriverBlockingIssues(driverData);
+                                    const blockingIssues =
+                                      await getDriverBlockingIssues(driverData);
                                     if (blockingIssues.overdueCount > 0) {
-                                      setOverdueCount(blockingIssues.overdueCount);
+                                      setOverdueCount(
+                                        blockingIssues.overdueCount,
+                                      );
                                       setRejectedCount(0);
                                       setOverdueDriverName(
-                                        driverData?.name || driverData?.driver_id || "Unknown Driver"
+                                        driverData?.name ||
+                                          driverData?.driver_id ||
+                                          "Unknown Driver",
                                       );
                                       setShowOverdueWarning(true);
                                       return; // Block edit dialog from opening
                                     }
                                   } catch (error) {
-                                    console.error("Error checking for overdue reports:", error);
+                                    console.error(
+                                      "Error checking for overdue reports:",
+                                      error,
+                                    );
                                   }
 
                                   setEditingShift(vehicleGroup.morningDriver!);
                                   setSelectedDriver(
-                                    vehicleGroup.morningDriver!.id
+                                    vehicleGroup.morningDriver!.id,
                                   );
                                   setSelectedVehicle(
-                                    vehicleGroup.vehicle_number
+                                    vehicleGroup.vehicle_number,
                                   );
                                   setSelectedShiftType("morning");
                                   setIsEditDialogOpen(true);
@@ -2282,7 +2318,7 @@ const ShiftManagement = () => {
                                     onCheckedChange={() =>
                                       handleToggleOnline(
                                         vehicleGroup.morningDriver!.id,
-                                        vehicleGroup.morningDriver!.online
+                                        vehicleGroup.morningDriver!.online,
                                       )
                                     }
                                     disabled={
@@ -2355,26 +2391,29 @@ const ShiftManagement = () => {
                               <GripVertical className="h-4 w-4 text-gray-700 cursor-grab" />
                               <Users className="h-4 w-4 text-gray-700" />
                               <div className="flex flex-col">
-                              <span className="font-semibold text-black">
-                                {vehicleGroup.nightDriver.driver_name}
-                              </span>
+                                <span className="font-semibold text-black">
+                                  {vehicleGroup.nightDriver.driver_name}
+                                </span>
                                 {vehicleGroup.nightDriver.user_driver_id && (
                                   <div className="flex items-center gap-1">
                                     <span className="text-xs font-mono text-gray-600">
-                                      ID: {vehicleGroup.nightDriver.user_driver_id}
+                                      ID:{" "}
+                                      {vehicleGroup.nightDriver.user_driver_id}
                                     </span>
                                     <button
                                       onClick={(e) => {
                                         e.stopPropagation();
                                         handleCopyDriverId(
-                                          vehicleGroup.nightDriver.user_driver_id!
+                                          vehicleGroup.nightDriver
+                                            .user_driver_id!,
                                         );
                                       }}
                                       className="p-0.5 hover:bg-gray-200 rounded transition-colors"
                                       title="Copy Driver ID"
                                     >
                                       {copiedDriverId ===
-                                      vehicleGroup.nightDriver.user_driver_id ? (
+                                      vehicleGroup.nightDriver
+                                        .user_driver_id ? (
                                         <Check className="h-3 w-3 text-green-600" />
                                       ) : (
                                         <Copy className="h-3 w-3 text-gray-500" />
@@ -2408,37 +2447,50 @@ const ShiftManagement = () => {
                                 className="h-7 w-7"
                                 onClick={async (e) => {
                                   e.stopPropagation();
-                                  
+
                                   // Check for overdue reports before opening edit dialog
                                   try {
-                                    const { data: driverData, error: driverError } = await supabase
+                                    const {
+                                      data: driverData,
+                                      error: driverError,
+                                    } = await supabase
                                       .from("users")
-                                      .select("id, name, driver_id, shift, joining_date, online, offline_from_date, online_from_date")
+                                      .select(
+                                        "id, name, driver_id, shift, joining_date, online, offline_from_date, online_from_date",
+                                      )
                                       .eq("id", vehicleGroup.nightDriver!.id)
                                       .single();
 
                                     if (driverError) throw driverError;
 
-                                    const blockingIssues = await getDriverBlockingIssues(driverData);
+                                    const blockingIssues =
+                                      await getDriverBlockingIssues(driverData);
                                     if (blockingIssues.overdueCount > 0) {
-                                      setOverdueCount(blockingIssues.overdueCount);
+                                      setOverdueCount(
+                                        blockingIssues.overdueCount,
+                                      );
                                       setRejectedCount(0);
                                       setOverdueDriverName(
-                                        driverData?.name || driverData?.driver_id || "Unknown Driver"
+                                        driverData?.name ||
+                                          driverData?.driver_id ||
+                                          "Unknown Driver",
                                       );
                                       setShowOverdueWarning(true);
                                       return; // Block edit dialog from opening
                                     }
                                   } catch (error) {
-                                    console.error("Error checking for overdue reports:", error);
+                                    console.error(
+                                      "Error checking for overdue reports:",
+                                      error,
+                                    );
                                   }
 
                                   setEditingShift(vehicleGroup.nightDriver!);
                                   setSelectedDriver(
-                                    vehicleGroup.nightDriver!.id
+                                    vehicleGroup.nightDriver!.id,
                                   );
                                   setSelectedVehicle(
-                                    vehicleGroup.vehicle_number
+                                    vehicleGroup.vehicle_number,
                                   );
                                   setSelectedShiftType("night");
                                   setIsEditDialogOpen(true);
@@ -2458,7 +2510,7 @@ const ShiftManagement = () => {
                                     onCheckedChange={() =>
                                       handleToggleOnline(
                                         vehicleGroup.nightDriver!.id,
-                                        vehicleGroup.nightDriver!.online
+                                        vehicleGroup.nightDriver!.online,
                                       )
                                     }
                                     disabled={
@@ -2636,7 +2688,7 @@ const ShiftManagement = () => {
         </DialogContent>
       </Dialog>
 
-      {/* Overdue/Rejected Reports Warning Popup */}
+      {/* Overdue Reports Warning Popup (only when driver has overdue reports) */}
       <Dialog open={showOverdueWarning} onOpenChange={setShowOverdueWarning}>
         <DialogContent className="sm:max-w-[425px]">
           <DialogHeader>
@@ -2645,8 +2697,9 @@ const ShiftManagement = () => {
               Cannot Assign No Shift
             </DialogTitle>
             <DialogDescription>
-              This driver has overdue or rejected reports (report submission) and cannot
-              be put on No Shift until all reports are submitted and resolved.
+              This driver has overdue reports (report not submitted past
+              deadline) and cannot be put on No Shift until all reports are
+              submitted.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
@@ -2655,31 +2708,27 @@ const ShiftManagement = () => {
                 <AlertCircle className="h-4 w-4" />
                 <span className="font-medium">Driver: {overdueDriverName}</span>
               </div>
-              {overdueCount > 0 && (
-                <div className="flex items-center gap-2 text-red-800 mb-2">
-                  <AlertCircle className="h-4 w-4" />
-                  <span className="font-medium">
-                    Overdue Reports: {overdueCount} (report not submitted past deadline)
-                  </span>
-                </div>
-              )}
-              {rejectedCount > 0 && (
-                <div className="flex items-center gap-2 text-red-800 mb-2">
-                  <AlertCircle className="h-4 w-4" />
-                  <span className="font-medium">
-                    Rejected Reports: {rejectedCount}
-                  </span>
-                </div>
-              )}
+              <div className="flex items-center gap-2 text-red-800 mb-2">
+                <AlertCircle className="h-4 w-4" />
+                <span className="font-medium">
+                  Overdue Reports: {overdueCount} (report not submitted past
+                  deadline)
+                </span>
+              </div>
               <p className="text-sm text-red-600 mt-2">
-                Please ensure all reports are submitted and approved before
-                assigning No Shift to this driver.
+                Please ensure all reports are submitted before assigning No
+                Shift to this driver.
               </p>
             </div>
             <div className="text-sm text-gray-600">
-              <p>• Driver must submit all pending reports before No Shift can be assigned</p>
+              <p>
+                • Driver must submit all pending reports before No Shift can be
+                assigned
+              </p>
               <p>• Review reports in the calendar or reports section</p>
-              <p>• Once all reports are submitted and approved, you can assign No Shift</p>
+              <p>
+                • Once all reports are submitted, you can assign No Shift
+              </p>
             </div>
           </div>
           <DialogFooter>
@@ -2840,7 +2889,7 @@ const ShiftManagement = () => {
                     variant="outline"
                     className={cn(
                       "w-full justify-start text-left font-normal",
-                      !leaveReturnDate && "text-muted-foreground"
+                      !leaveReturnDate && "text-muted-foreground",
                     )}
                   >
                     <Calendar className="mr-2 h-4 w-4" />

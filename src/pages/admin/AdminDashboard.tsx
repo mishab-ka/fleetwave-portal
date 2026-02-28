@@ -247,9 +247,7 @@ const AdminDashboard = () => {
       ] = await Promise.all([
         supabase
           .from("users")
-          .select(
-            "id, online, role, resigning_date, created_at, vehicle_number, shift, is_driver",
-          ),
+          .select("id, online, role, resigning_date, vehicle_number, shift"),
         supabase.from("vehicles").select("id, online"),
         supabase
           .from("fleet_reports")
@@ -297,7 +295,7 @@ const AdminDashboard = () => {
           .eq("status", "leave"),
         supabase
           .from("leave_applications")
-          .select("user_id, start_date, end_date")
+          .select("driver_id, start_date, end_date")
           .eq("status", "approved")
           .lte("start_date", today)
           .gte("end_date", today),
@@ -318,24 +316,21 @@ const AdminDashboard = () => {
       const activeDrivers = drivers.filter(
         (d) => d.online && !d.resigning_date && d.role === "driver",
       ).length;
-      // Expected to submit: online, not resigning, driver (role 'driver' or 'user' per schema), has vehicle, has shift (morning/night/24hr)
-      const activeDriverIdsWithVehicle = new Set(
+      // Expected to submit: online drivers with shift assigned (shift column only: morning/night/24hr).
+      const hasValidShift = (d: any) => {
+        const s = (d.shift && String(d.shift).trim()) || "";
+        const validShifts = ["morning", "night", "24hr"];
+        return validShifts.includes(s.toLowerCase());
+      };
+      const expectedDriverIds = new Set(
         drivers
           .filter(
             (d: any) =>
-              d.online === true &&
-              !d.resigning_date &&
-              (d.role === "driver" || d.role === "user" || d.is_driver === true) &&
-              d.vehicle_number &&
-              String(d.vehicle_number).trim() !== "" &&
-              String(d.vehicle_number).toUpperCase() !== "N/A" &&
-              d.shift &&
-              String(d.shift).trim() !== "" &&
-              String(d.shift).toLowerCase() !== "none",
+              d.online === true && !d.resigning_date && hasValidShift(d),
           )
           .map((d: any) => d.id),
       );
-      const totalActiveWithVehicle = activeDriverIdsWithVehicle.size;
+      const totalActiveWithVehicle = expectedDriverIds.size;
       const activeVehicles = vehicles.filter((v) => v.online).length;
       const approvedReports = allReportsData.filter(
         (r) => r.status === "approved",
@@ -372,7 +367,12 @@ const AdminDashboard = () => {
       // Also check approved leave applications that cover today
       const approvedLeaveApps = approvedLeaveApplications.data || [];
       const leaveDriverIdsFromApps = new Set(
-        approvedLeaveApps.map((app) => app.user_id),
+        approvedLeaveApps
+          .map(
+            (app: { driver_id?: string; user_id?: string }) =>
+              app.driver_id ?? app.user_id,
+          )
+          .filter(Boolean),
       );
 
       // Combine both sources and get unique driver IDs
@@ -521,9 +521,7 @@ const AdminDashboard = () => {
           const subDate = r.submission_date
             ? format(new Date(r.submission_date), "yyyy-MM-dd")
             : null;
-          return (
-            subDate === dateStr && activeDriverIdsWithVehicle.has(r.user_id)
-          );
+          return subDate === dateStr && expectedDriverIds.has(r.user_id);
         });
         const submittedDriverIds = new Set(
           reportsForDay.map((r: any) => r.user_id),
@@ -544,7 +542,7 @@ const AdminDashboard = () => {
       // Overall submission % for the selected week (distinct drivers who submitted at least once, by submission_date)
       const distinctDriversSubmittedInWeek = new Set(
         weekRangeReportsData
-          .filter((r: any) => activeDriverIdsWithVehicle.has(r.user_id))
+          .filter((r: any) => expectedDriverIds.has(r.user_id))
           .map((r: any) => r.user_id),
       ).size;
       const overallSubmissionPercent =
@@ -786,19 +784,19 @@ const AdminDashboard = () => {
       const startDateStr = format(startDate, "yyyy-MM-dd");
       const endDateStr = format(endDate, "yyyy-MM-dd");
 
-      // Fetch drivers joined in the period
+      // Fetch drivers joined in the period (users table has joining_date, not created_at)
       const { data: joinedDrivers } = await supabase
         .from("users")
         .select("id")
-        .eq("role", "driver")
-        .gte("created_at", startDateStr + "T00:00:00")
-        .lte("created_at", endDateStr + "T23:59:59");
+        .or("role.eq.driver,role.eq.user")
+        .gte("joining_date", startDateStr)
+        .lte("joining_date", endDateStr);
 
       // Fetch drivers resigned in the period
       const { data: resignedDrivers } = await supabase
         .from("users")
         .select("id")
-        .eq("role", "driver")
+        .or("role.eq.driver,role.eq.user")
         .not("resigning_date", "is", null)
         .gte("resigning_date", startDateStr)
         .lte("resigning_date", endDateStr);
@@ -814,7 +812,7 @@ const AdminDashboard = () => {
       // Fetch approved leave applications that overlap with the period
       const { data: leaveApplications } = await supabase
         .from("leave_applications")
-        .select("user_id, start_date, end_date")
+        .select("driver_id, start_date, end_date")
         .eq("status", "approved")
         .lte("start_date", endDateStr)
         .gte("end_date", startDateStr);
@@ -831,9 +829,12 @@ const AdminDashboard = () => {
 
       // Add drivers from leave applications
       if (leaveApplications) {
-        leaveApplications.forEach((app) => {
-          leaveDriverIds.add(app.user_id);
-        });
+        leaveApplications.forEach(
+          (app: { driver_id?: string; user_id?: string }) => {
+            const id = app.driver_id ?? app.user_id;
+            if (id) leaveDriverIds.add(id);
+          },
+        );
       }
 
       setDriverUpdates({
@@ -1055,19 +1056,33 @@ const AdminDashboard = () => {
             </CardTitle>
           </div>
           <p className="text-xs text-muted-foreground">
-            Expected: drivers who are online, assigned to a shift (morning/night/24hr), and assigned a vehicle. Counted by submission date in fleet_reports (late submissions do not count for the original day).
+            Expected: online drivers with a shift assigned (morning / night /
+            24hr). Counted by submission date in fleet_reports (late submissions
+            do not count for the original day).
           </p>
           <p className="text-sm font-medium">
             Submission rate (this week, by submission date):{" "}
             {dailySubmissionTotalActive > 0 ? (
               <span className="text-fleet-purple">
-                {dailySubmissionOverallPercent.toFixed(1)}%{" "}
+                {Number.isFinite(dailySubmissionOverallPercent)
+                  ? dailySubmissionOverallPercent.toFixed(1)
+                  : "0"}
+                %{" "}
                 <span className="text-muted-foreground font-normal">
-                  ({Math.round((dailySubmissionOverallPercent / 100) * dailySubmissionTotalActive)} of {dailySubmissionTotalActive} drivers submitted at least once)
+                  (
+                  {Math.round(
+                    (dailySubmissionOverallPercent / 100) *
+                      dailySubmissionTotalActive,
+                  )}{" "}
+                  of {dailySubmissionTotalActive} drivers submitted at least
+                  once)
                 </span>
               </span>
             ) : (
-              <span className="text-muted-foreground">No drivers expected to submit (0 online with shift + vehicle)</span>
+              <span className="text-muted-foreground">
+                0% — No drivers expected to submit (0 online with shift
+                assigned)
+              </span>
             )}
           </p>
           <div className="inline-flex items-center gap-2 rounded-full bg-gray-50 px-2 py-1 border border-gray-200 overflow-x-auto">
@@ -1197,7 +1212,9 @@ const AdminDashboard = () => {
                     {day.submitted} / {day.expected}
                   </span>
                   <span className="text-xs">
-                    {day.expected > 0 ? `${day.percentage.toFixed(1)}%` : "N/A"}
+                    {day.expected > 0
+                      ? `${Number.isFinite(day.percentage) ? day.percentage.toFixed(1) : "0"}%`
+                      : "N/A"}
                   </span>
                 </div>
               ))}

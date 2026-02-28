@@ -578,7 +578,7 @@ export const DriverDetailsModal = ({
         return;
       }
 
-      // Block No Shift if driver has overdue or rejected reports (report submission overdue)
+      // Block No Shift only if driver has overdue reports (report not submitted past deadline)
       if (newShift === "none") {
         const { data: driverData } = await supabase
           .from("users")
@@ -589,9 +589,9 @@ export const DriverDetailsModal = ({
           .single();
 
         const blocking = await getDriverBlockingIssues(driverData);
-        if (blocking.overdueCount > 0 || blocking.rejectedCount > 0) {
+        if (blocking.overdueCount > 0) {
           toast.error(
-            `Driver has ${blocking.overdueCount} overdue and ${blocking.rejectedCount} rejected reports. Submit and approve all reports before assigning No Shift.`
+            `Driver has ${blocking.overdueCount} overdue report(s). Submit all reports before assigning No Shift.`
           );
           setIsProcessing(false);
           return;
