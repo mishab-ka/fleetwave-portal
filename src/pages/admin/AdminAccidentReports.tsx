@@ -31,6 +31,7 @@ interface AccidentReport {
   vehicle_number: string;
   shift: string;
   driver_name: string;
+  driver_id: string | null;
   description: string;
   place: string;
   status: string;
@@ -137,6 +138,9 @@ const AdminAccidentReports = () => {
       return;
     }
 
+    const report = accidentReports.find((r) => r.id === reportId);
+    if (!report) return;
+
     setProcessingId(reportId);
     try {
       const { error } = await supabase
@@ -146,7 +150,52 @@ const AdminAccidentReports = () => {
 
       if (error) throw error;
 
-      toast.success("Report approved successfully");
+      // Apply accident penalty to driver's Penalties & Refunds balance (idempotent)
+      const penaltyAmount = Number(report.penalty_amount ?? 0);
+      let penaltyApplied = false;
+      if (penaltyAmount > 0 && report.driver_id) {
+        const description = `Accident penalty applied for Report ID #${reportId}`;
+
+        const { data: existing } = await supabase
+          .from("driver_penalty_transactions")
+          .select("id")
+          .eq("user_id", report.driver_id)
+          .eq("description", description)
+          .limit(1);
+
+        if (!existing?.length) {
+          const { error: insertError } = await supabase
+            .from("driver_penalty_transactions")
+            .insert({
+              user_id: report.driver_id,
+              amount: penaltyAmount,
+              type: "penalty",
+              description,
+              created_by: user?.id ?? null,
+            });
+
+          if (insertError) {
+            console.error("Error applying accident penalty:", insertError);
+            toast.error(
+              "Report approved but penalty could not be applied: " +
+                (insertError.message || "Unknown error")
+            );
+          } else {
+            penaltyApplied = true;
+            toast.success(
+              `Report approved. Penalty of ₹${penaltyAmount.toLocaleString()} added to driver's Penalties & Refunds.`
+            );
+          }
+        }
+      } else if (penaltyAmount > 0 && !report.driver_id) {
+        toast.info(
+          "Report approved. Penalty was not applied: driver is not linked to this report."
+        );
+      }
+
+      if (!penaltyApplied) {
+        toast.success("Report approved successfully");
+      }
       fetchAccidentReports();
     } catch (error: any) {
       console.error("Error approving report:", error);
