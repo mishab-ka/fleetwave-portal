@@ -2410,7 +2410,7 @@ const AdminDrivers = () => {
     <AdminLayout title="Drivers Management">
       <Card className="mb-4">
         <CardContent className="p-4">
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-4">
             <div className="flex flex-col items-center">
               <span className="text-sm font-medium text-gray-500">
                 Active Drivers
@@ -2418,6 +2418,24 @@ const AdminDrivers = () => {
               <span className="text-2xl font-bold text-green-500">
                 {statistics.online}
               </span>
+            </div>
+            <div className="flex flex-col items-center">
+              <span className="text-sm font-medium text-gray-500">
+                New Joining
+              </span>
+              <span className="text-2xl font-bold text-teal-600">
+                {statistics.newJoiningCount}
+              </span>
+              <span className="text-xs text-gray-400">unique drivers</span>
+            </div>
+            <div className="flex flex-col items-center">
+              <span className="text-sm font-medium text-gray-500">
+                Rejoining
+              </span>
+              <span className="text-2xl font-bold text-cyan-600">
+                {statistics.rejoiningCount}
+              </span>
+              <span className="text-xs text-gray-400">unique drivers</span>
             </div>
             <div className="flex flex-col items-center">
               <span className="text-sm font-medium text-gray-500">
@@ -2429,19 +2447,37 @@ const AdminDrivers = () => {
             </div>
             <div className="flex flex-col items-center">
               <span className="text-sm font-medium text-gray-500">
+                Going to 24hr
+              </span>
+              <span className="text-2xl font-bold text-indigo-600">
+                {statistics.goingTo24hrCount}
+              </span>
+              <span className="text-xs text-gray-400">unique drivers</span>
+            </div>
+            <div className="flex flex-col items-center">
+              <span className="text-sm font-medium text-gray-500">
+                Just Offline
+              </span>
+              <span className="text-2xl font-bold text-red-500">
+                {statistics.offline}
+              </span>
+            </div>
+            <div className="flex flex-col items-center">
+              <span className="text-sm font-medium text-gray-500">
                 Total Resigning
               </span>
               <span className="text-2xl font-bold text-purple-500">
                 {statistics.totalResigning}
               </span>
             </div>
-
             <div className="flex flex-col items-center">
               <span className="text-sm font-medium text-gray-500">
                 Total Drivers
               </span>
               <span className="text-2xl font-bold">{statistics.total}</span>
             </div>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 mt-4 pt-4 border-t">
             <div className="flex flex-col items-center">
               <span className="text-sm font-medium text-gray-500">
                 Total Drivers Deposit
@@ -2479,44 +2515,7 @@ const AdminDrivers = () => {
               </span>
             </div>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-4 pt-4 border-t">
-            <div className="flex flex-col items-center">
-              <span className="text-sm font-medium text-gray-500">
-                New Joining
-              </span>
-              <span className="text-2xl font-bold text-teal-600">
-                {statistics.newJoiningCount}
-              </span>
-              <span className="text-xs text-gray-400">unique drivers</span>
-            </div>
-            <div className="flex flex-col items-center">
-              <span className="text-sm font-medium text-gray-500">
-                Rejoining
-              </span>
-              <span className="text-2xl font-bold text-cyan-600">
-                {statistics.rejoiningCount}
-              </span>
-              <span className="text-xs text-gray-400">unique drivers</span>
-            </div>
-            <div className="flex flex-col items-center">
-              <span className="text-sm font-medium text-gray-500">
-                Going to 24hr
-              </span>
-              <span className="text-2xl font-bold text-indigo-600">
-                {statistics.goingTo24hrCount}
-              </span>
-              <span className="text-xs text-gray-400">unique drivers</span>
-            </div>
-          </div>
 
-          {/* <div className="flex flex-col items-center">
-              <span className="text-sm font-medium text-gray-500">
-                Offline Drivers
-              </span>
-              <span className="text-2xl font-bold text-red-500">
-                {statistics.offline}
-              </span>
-            </div> */}
           {/* <div className="flex flex-col items-center">
               <span className="text-sm font-medium text-gray-500">
                 Total Neg R &amp; P Balance
