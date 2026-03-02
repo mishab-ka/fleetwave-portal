@@ -1301,11 +1301,12 @@ const SubmitReport = () => {
             </div>
 
             {/* Paying cash option */}
-            <div className="mb-4 p-4 bg-gray-50 border border-gray-200 rounded-md">
+            <div className="mb-4 p-4 bg-gray-50 border border-gray-200 rounded-md opacity-60">
               <div className="flex items-center space-x-2">
                 <Checkbox
                   id="paying-cash"
                   checked={payingCash}
+                  disabled
                   onCheckedChange={(checked) => {
                     setPayingCash(!!checked);
                     if (!checked) {
@@ -1316,7 +1317,7 @@ const SubmitReport = () => {
                 />
                 <label
                   htmlFor="paying-cash"
-                  className="text-sm font-medium flex items-center gap-2 cursor-pointer"
+                  className="text-sm font-medium flex items-center gap-2 cursor-not-allowed"
                 >
                   <Banknote className="h-4 w-4 text-green-600" />
                   Paying by cash
