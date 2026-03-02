@@ -67,6 +67,7 @@ const UserProfile = () => {
     ifsc_code: "",
     bank_name: "",
     date_of_birth: "",
+    religion: "",
   });
   const [penaltyHistory, setPenaltyHistory] = useState([]);
   const [loadingPenalties, setLoadingPenalties] = useState(false);
@@ -120,6 +121,7 @@ const UserProfile = () => {
           date_of_birth: data?.date_of_birth
             ? format(new Date(data.date_of_birth), "yyyy-MM-dd")
             : "",
+          religion: data?.religion || "",
         });
       } catch (error) {
         console.error("Error fetching user profile:", error);
@@ -276,6 +278,7 @@ const UserProfile = () => {
           ifsc_code: editForm.ifsc_code,
           bank_name: editForm.bank_name,
           date_of_birth: editForm.date_of_birth || null,
+          religion: editForm.religion && editForm.religion !== "none" ? editForm.religion : null,
         })
         .eq("id", user.id);
 
@@ -288,6 +291,7 @@ const UserProfile = () => {
         ifsc_code: editForm.ifsc_code,
         bank_name: editForm.bank_name,
         date_of_birth: editForm.date_of_birth,
+        religion: editForm.religion && editForm.religion !== "none" ? editForm.religion : null,
       }));
 
       setIsEditing(false);
@@ -755,6 +759,15 @@ const UserProfile = () => {
 
                 <div className="p-4 bg-gray-50 rounded-lg">
                   <div className="flex items-center gap-2 text-sm font-medium text-gray-500 mb-1">
+                    Religion
+                  </div>
+                  <p className="text-lg font-semibold capitalize">
+                    {profileData.religion || "Not provided"}
+                  </p>
+                </div>
+
+                <div className="p-4 bg-gray-50 rounded-lg">
+                  <div className="flex items-center gap-2 text-sm font-medium text-gray-500 mb-1">
                     Current Shift
                   </div>
                   <p className="text-lg font-semibold capitalize">
@@ -919,6 +932,28 @@ const UserProfile = () => {
                           }
                         />
                       </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="religion">Religion</Label>
+                        <Select
+                          value={editForm.religion || "none"}
+                          onValueChange={(value) =>
+                            setEditForm({
+                              ...editForm,
+                              religion: value === "none" ? "" : value,
+                            })
+                          }
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select religion" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="none">Not specified</SelectItem>
+                            <SelectItem value="hindu">Hindu</SelectItem>
+                            <SelectItem value="muslim">Muslim</SelectItem>
+                            <SelectItem value="christian">Christian</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
                     </div>
                     <div className="flex gap-2">
                       <Button type="submit" disabled={uploading}>
@@ -977,6 +1012,15 @@ const UserProfile = () => {
                               "dd MMM yyyy"
                             )
                           : "Not provided"}
+                      </p>
+                    </div>
+
+                    <div className="p-4 bg-gray-50 rounded-lg">
+                      <div className="flex items-center gap-2 text-sm font-medium text-gray-500 mb-1">
+                        Religion
+                      </div>
+                      <p className="text-lg font-semibold capitalize">
+                        {profileData.religion || "Not provided"}
                       </p>
                     </div>
                   </div>

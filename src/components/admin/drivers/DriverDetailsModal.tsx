@@ -47,6 +47,7 @@ import {
   User,
   Ban,
   AlertTriangle,
+  BookOpen,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -109,6 +110,7 @@ export const DriverDetailsModal = ({
   const [isLoadingRent, setIsLoadingRent] = useState(false);
   const [resigningDate, setResigningDate] = useState<string>("");
   const [resignationReason, setResignationReason] = useState<string>("");
+  const [religion, setReligion] = useState<string>("");
   const [dateOfBirth, setDateOfBirth] = useState<string>("");
   const [isPenaltyModalOpen, setIsPenaltyModalOpen] = useState<boolean>(false);
   const [showOverdueWarning, setShowOverdueWarning] = useState(false);
@@ -210,7 +212,11 @@ export const DriverDetailsModal = ({
       setDriver(driverData);
       setIsOnline(driverData.online || false);
       setSelectedShift(driverData.shift || "none");
-      setSelectedVehicle(driverData.vehicle_number || "");
+      setSelectedVehicle(
+        driverData.vehicle_number && driverData.vehicle_number.trim() !== ""
+          ? driverData.vehicle_number
+          : "No Vehicle"
+      );
       setSelectedCategory(driverData.driver_category || "hub_base");
       setDeposit(driverData.deposit_amount?.toString() || "0");
       setTotalTrips(driverData.total_trip?.toString() || "0");
@@ -222,6 +228,7 @@ export const DriverDetailsModal = ({
       setDateOfBirth(driverData.date_of_birth || "");
       setResigningDate(driverData.resigning_date || "");
       setResignationReason(driverData.resignation_reason || "");
+      setReligion(driverData.religion || "");
       setEnableDepositCollection(driverData.enable_deposit_collection ?? true);
     } catch (error) {
       console.error("Error fetching driver details:", error);
@@ -568,7 +575,9 @@ export const DriverDetailsModal = ({
 
       // Validate vehicle/shift combination before saving
       const newVehicle =
-        selectedVehicle === "No Vehicle" ? null : selectedVehicle;
+        !selectedVehicle || selectedVehicle === "No Vehicle"
+          ? null
+          : selectedVehicle;
       const newShift = selectedShift; // Keep "none" as string, don't convert to null
 
       const validation = validateVehicleShiftAssignment(newVehicle, newShift);
@@ -613,6 +622,7 @@ export const DriverDetailsModal = ({
           total_trip: parseFloat(totalTrips) || 0,
           resigning_date: resigningDate || null,
           resignation_reason: resignationReason || null,
+          religion: religion && religion !== "none" ? religion : null,
           vehicle_number: newVehicle,
           shift: newShift,
         })
@@ -843,6 +853,13 @@ export const DriverDetailsModal = ({
                       <span className="text-sm font-medium">Vehicle:</span>
                       <span className="text-sm">
                         {driver?.vehicle_number || "Not assigned"}
+                      </span>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <BookOpen className="h-4 w-4 text-muted-foreground" />
+                      <span className="text-sm font-medium">Religion:</span>
+                      <span className="text-sm capitalize">
+                        {driver?.religion || "Not provided"}
                       </span>
                     </div>
                     <div className="flex items-center space-x-2">
@@ -1454,6 +1471,25 @@ export const DriverDetailsModal = ({
                       placeholder="Enter resignation reason"
                       disabled={isProcessing}
                     />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="religion">Religion</Label>
+                    <Select
+                      value={religion || "none"}
+                      onValueChange={(v) => setReligion(v === "none" ? "" : v)}
+                      disabled={isProcessing}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select religion" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">Not specified</SelectItem>
+                        <SelectItem value="hindu">Hindu</SelectItem>
+                        <SelectItem value="muslim">Muslim</SelectItem>
+                        <SelectItem value="christian">Christian</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
 
                   <Separator />
