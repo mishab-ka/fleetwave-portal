@@ -160,6 +160,41 @@ export const PenaltyManagement = ({
     }
   };
 
+  /** Recalculate users.net_balance from driver_penalty_transactions (credits − debits) and update users. */
+  const updateUserNetBalance = async (userId: string) => {
+    try {
+      const { data: rows, error: fetchError } = await supabase
+        .from("driver_penalty_transactions")
+        .select("type, amount")
+        .eq("user_id", userId);
+
+      if (fetchError) throw fetchError;
+
+      const credits = ["penalty_paid", "refund", "bonus"];
+      const debits = [
+        "penalty",
+        "due",
+        "extra_collection",
+        "insurance_claim_charge",
+      ];
+      let net = 0;
+      (rows || []).forEach((row) => {
+        const amount = Number(row.amount ?? 0);
+        if (credits.includes(row.type)) net += amount;
+        else if (debits.includes(row.type)) net -= amount;
+      });
+
+      const { error: updateError } = await supabase
+        .from("users")
+        .update({ net_balance: net })
+        .eq("id", userId);
+
+      if (updateError) throw updateError;
+    } catch (err) {
+      console.error("Error updating user net_balance:", err);
+    }
+  };
+
   const fetchDriverInfo = async () => {
     try {
       const { data, error } = await supabase
@@ -474,6 +509,8 @@ export const PenaltyManagement = ({
 
       if (userError) throw userError;
 
+      await updateUserNetBalance(driverId);
+
       // If this is a penalty type, distribute to vehicles as income
       // Only for "penalty" type, not for insurance_claim_charge
       if (penaltyType === "penalty") {
@@ -650,6 +687,8 @@ export const PenaltyManagement = ({
 
       if (userError) throw userError;
 
+      await updateUserNetBalance(driverId);
+
       toast.success("Transaction deleted successfully");
       fetchTransactions();
       if (onPenaltyUpdate) onPenaltyUpdate();
@@ -734,6 +773,8 @@ export const PenaltyManagement = ({
         .eq("id", driverId);
 
       if (userError) throw userError;
+
+      await updateUserNetBalance(driverId);
 
       // Handle vehicle transaction updates for penalties
       // Only handle "penalty" type for vehicle transactions
@@ -838,6 +879,8 @@ export const PenaltyManagement = ({
         .eq("id", driverId);
 
       if (userError) throw userError;
+
+      await updateUserNetBalance(driverId);
 
       toast.success("Penalties updated successfully");
 

@@ -2125,8 +2125,8 @@ const AdminDrivers = () => {
 
   const getNetBalanceInfo = (driver: any) => {
     const deposit = Number(driver?.pending_balance ?? 0);
-    const penaltyInfo = getDriverPenaltyDisplay(driver);
-    const netValue = deposit + penaltyInfo.value;
+    const rAndF = Number(driver?.net_balance ?? 0); // R&F balance from users
+    const netValue = deposit - rAndF; // deposit - R&F = net balance
     const formatted = netValue.toLocaleString("en-IN", {
       minimumFractionDigits: 0,
       maximumFractionDigits: 2,
@@ -2138,22 +2138,18 @@ const AdminDrivers = () => {
     };
   };
 
-  // Calculate Total Refunds and Total Penalties from filtered drivers' R & P values
+  // Total Refunds / Total Penalties from users.net_balance (R&F balance after all transactions)
   const filteredTotals = useMemo(() => {
     let totalRefunds = 0;
     let totalPenalties = 0;
 
     allFilteredDrivers.forEach((driver) => {
-      const penaltyInfo = getDriverPenaltyDisplay(driver);
-      const rAndPValue = penaltyInfo.value;
+      const netBalance = Number(driver.net_balance ?? 0);
 
-      // Positive values → add to Total Refunds
-      if (rAndPValue > 0) {
-        totalRefunds += rAndPValue;
-      }
-      // Negative values → add absolute value to Total Penalties
-      else if (rAndPValue < 0) {
-        totalPenalties += Math.abs(rAndPValue);
+      if (netBalance > 0) {
+        totalRefunds += netBalance;
+      } else if (netBalance < 0) {
+        totalPenalties += Math.abs(netBalance);
       }
     });
 
@@ -2161,7 +2157,7 @@ const AdminDrivers = () => {
       totalRefunds,
       totalPenalties,
     };
-  }, [allFilteredDrivers, penaltySummaries]);
+  }, [allFilteredDrivers]);
 
   const handleCopyDriverId = async (driverId: string) => {
     try {
@@ -3196,7 +3192,6 @@ const AdminDrivers = () => {
                           </TableRow>
                         ) : (
                           drivers.map((driver) => {
-                            const penaltyInfo = getDriverPenaltyDisplay(driver);
                             const netInfo = getNetBalanceInfo(driver);
 
                             return (
@@ -3430,17 +3425,19 @@ const AdminDrivers = () => {
                                 <TableCell>
                                   <div
                                     className={`flex items-center ${
-                                      penaltySummariesLoading &&
-                                      !penaltyInfo.hasSummary
-                                        ? "text-muted-foreground"
-                                        : penaltyInfo.className
+                                      Number(driver.net_balance ?? 0) >= 0
+                                        ? "text-green-500"
+                                        : "text-red-500"
                                     }`}
                                   >
                                     <IndianRupee className="h-3 w-3 mr-1" />
-                                    {penaltySummariesLoading &&
-                                    !penaltyInfo.hasSummary
-                                      ? "..."
-                                      : penaltyInfo.display}
+                                    {Number(driver.net_balance ?? 0).toLocaleString(
+                                      "en-IN",
+                                      {
+                                        minimumFractionDigits: 0,
+                                        maximumFractionDigits: 2,
+                                      }
+                                    )}
                                   </div>
                                 </TableCell>
                                 <TableCell>
