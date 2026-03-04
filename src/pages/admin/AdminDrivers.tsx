@@ -204,6 +204,8 @@ const AdminDrivers = () => {
     total: 0,
     online: 0,
     offline: 0,
+    driverStatusNullCount: 0, // total drivers where driver_status IS NULL
+    justOfflineCount: 0, // offline AND driver_status IS NULL (mutually exclusive with leave/resigning/going_to_24hr)
     totalDeposit: 0,
     totalNegBalance: 0,
     totalPenalties: 0,
@@ -1186,46 +1188,33 @@ const AdminDrivers = () => {
           return sum + (driver.net_balance || 0);
         }, 0) || 0;
 
-      // Count leave and resigning drivers
+      // Mutually exclusive driver_status counts (so Leave + Resigning + Going to 24hr + Just Offline = Total Drivers)
+      // Priority: Resigning (resigning_date set OR driver_status = 'resigning') → Leave → Going to 24hr → Just Offline (driver_status null)
       let leaveCount = 0;
       let resigningCount = 0;
-
-      try {
-        const { count: leave } = await supabase
-          .from("users")
-          .select("*", { count: "exact", head: true })
-          .eq("driver_status", "leave");
-        leaveCount = leave || 0;
-      } catch (error) {
-        // Column might not exist, set to 0
-        console.warn("driver_status column might not exist:", error);
-        leaveCount = 0;
+      let goingTo24hrCount = 0;
+      let driverStatusNullCount = 0;
+      let justOfflineCount = 0;
+      if (depositData && depositData.length > 0) {
+        depositData.forEach((d: { driver_status?: string | null; resigning_date?: string | null }) => {
+          const isResigning =
+            d.resigning_date != null || d.driver_status === "resigning";
+          if (isResigning) {
+            resigningCount += 1;
+          } else if (d.driver_status === "leave") {
+            leaveCount += 1;
+          } else if (d.driver_status === "going_to_24hr") {
+            goingTo24hrCount += 1;
+          } else {
+            // driver_status IS NULL or any other value → Just Offline
+            driverStatusNullCount += 1;
+          }
+        });
       }
 
-      try {
-        const { count: resigning } = await supabase
-          .from("users")
-          .select("*", { count: "exact", head: true })
-          .or("driver_status.eq.resigning,resigning_date.not.is.null");
-        resigningCount = resigning || 0;
-      } catch (error) {
-        // Column might not exist, try with just resigning_date
-        try {
-          const { count: resigning } = await supabase
-            .from("users")
-            .select("*", { count: "exact", head: true })
-            .not("resigning_date", "is", null);
-          resigningCount = resigning || 0;
-        } catch (err) {
-          console.warn("Error counting resigning drivers:", err);
-          resigningCount = 0;
-        }
-      }
-
-      // Total New Joining, Rejoining, Going to 24hr from public.users (each driver counted once by unique id; all existing saved records)
+      // Total New Joining, Rejoining (separate attributes; not mutually exclusive with status)
       let newJoiningCount = 0;
       let rejoiningCount = 0;
-      let goingTo24hrCount = 0;
       try {
         const { count: newJoin } = await supabase
           .from("users")
@@ -1244,20 +1233,23 @@ const AdminDrivers = () => {
       } catch (e) {
         console.warn("Error counting rejoining:", e);
       }
-      try {
-        const { count: going24 } = await supabase
+
+      // justOfflineCount = offline AND driver_status null (for reference; not used in the 4-bucket sum)
+      if (depositData && depositData.length > 0) {
+        const { data: offlineNullRows } = await supabase
           .from("users")
-          .select("id", { count: "exact", head: true })
-          .eq("driver_status", "going_to_24hr");
-        goingTo24hrCount = going24 ?? 0;
-      } catch (e) {
-        console.warn("Error counting going_to_24hr:", e);
+          .select("id")
+          .eq("online", false)
+          .is("driver_status", null);
+        justOfflineCount = offlineNullRows?.length ?? 0;
       }
 
       setStatistics({
         total: totalCount || 0,
         online: onlineCount || 0,
         offline: (totalCount || 0) - (onlineCount || 0),
+        driverStatusNullCount,
+        justOfflineCount,
         totalDeposit,
         totalNegBalance: totalNegRAndFBalance, // Now shows total negative R&P balance
         totalPenalties: Math.abs(totalNegRAndFBalance), // Total Penalties (absolute value of negative balances)
@@ -1416,6 +1408,8 @@ const AdminDrivers = () => {
           online: false,
           offline_from_date: new Date().toISOString().split("T")[0],
           driver_status: "going_to_24hr",
+          resigning_date: null,
+          resignation_reason: null,
         };
 
         const { error } = await supabase
@@ -1433,6 +1427,8 @@ const AdminDrivers = () => {
                   online: false,
                   offline_from_date: updateData.offline_from_date,
                   driver_status: updateData.driver_status,
+                  resigning_date: null,
+                  resignation_reason: null,
                 }
               : driver,
           ),
@@ -1488,6 +1484,8 @@ const AdminDrivers = () => {
         offline_from_date: new Date().toISOString().split("T")[0],
         driver_status: "leave",
         leave_return_date: format(leaveReturnDate, "yyyy-MM-dd"),
+        resigning_date: null,
+        resignation_reason: null,
       };
 
       const { error } = await supabase
@@ -1506,6 +1504,8 @@ const AdminDrivers = () => {
                 offline_from_date: updateData.offline_from_date,
                 driver_status: updateData.driver_status,
                 leave_return_date: updateData.leave_return_date,
+                resigning_date: null,
+                resignation_reason: null,
               }
             : driver,
         ),
@@ -1549,6 +1549,8 @@ const AdminDrivers = () => {
         driver_status: null, // Just offline, no status
         vehicle_number: null, // Set vehicle to N/A
         shift: "none", // Set shift to non-shift (use "none" string, not null)
+        resigning_date: null,
+        resignation_reason: null,
       };
 
       const { error } = await supabase
@@ -1580,6 +1582,8 @@ const AdminDrivers = () => {
                 driver_status: updateData.driver_status,
                 vehicle_number: null,
                 shift: "none", // Use "none" string, not null
+                resigning_date: null,
+                resignation_reason: null,
               }
             : driver,
         ),
@@ -1763,6 +1767,8 @@ const AdminDrivers = () => {
         joining_type: joiningType,
         online_from_date: new Date().toISOString().split("T")[0],
         offline_from_date: null,
+        resigning_date: null, // Clear when new_joining or rejoining
+        resignation_reason: null,
       };
 
       const { error } = await supabase
@@ -1782,6 +1788,8 @@ const AdminDrivers = () => {
                 online_from_date: updateData.online_from_date,
                 driver_status: null,
                 joining_type: updateData.joining_type,
+                resigning_date: null,
+                resignation_reason: null,
               }
             : d,
         ),
@@ -2455,8 +2463,9 @@ const AdminDrivers = () => {
                 Just Offline
               </span>
               <span className="text-2xl font-bold text-red-500">
-                {statistics.offline}
+                {statistics.driverStatusNullCount}
               </span>
+              <span className="text-xs text-gray-400">driver_status null</span>
             </div>
             <div className="flex flex-col items-center">
               <span className="text-sm font-medium text-gray-500">

@@ -609,6 +609,8 @@ export const DriverDetailsModal = ({
 
       const today = new Date().toISOString().split("T")[0];
 
+      // Only persist resigning_date/resignation_reason when driver is in resigning status; otherwise clear them
+      const isResigning = driver?.driver_status === "resigning";
       const { error } = await supabase
         .from("users")
         .update({
@@ -620,8 +622,8 @@ export const DriverDetailsModal = ({
           date_of_birth: dateOfBirth || null,
           deposit_amount: parseFloat(deposit) || 0,
           total_trip: parseFloat(totalTrips) || 0,
-          resigning_date: resigningDate || null,
-          resignation_reason: resignationReason || null,
+          resigning_date: isResigning ? (resigningDate || null) : null,
+          resignation_reason: isResigning ? (resignationReason || null) : null,
           religion: religion && religion !== "none" ? religion : null,
           vehicle_number: newVehicle,
           shift: newShift,
