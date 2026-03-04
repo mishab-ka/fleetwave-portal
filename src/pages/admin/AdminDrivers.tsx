@@ -2125,8 +2125,8 @@ const AdminDrivers = () => {
 
   const getNetBalanceInfo = (driver: any) => {
     const deposit = Number(driver?.pending_balance ?? 0);
-    const rAndF = Number(driver?.net_balance ?? 0); // R&F balance from users
-    const netValue = deposit - rAndF; // deposit - R&F = net balance
+    const rAndF = Number(driver?.net_balance ?? 0); // R&F: negative = driver owes, positive = we owe driver
+    const netValue = deposit + rAndF; // deposit + R&F = net balance (e.g. 750 + (-1633) = -883, 2500 + 2000 = 4500)
     const formatted = netValue.toLocaleString("en-IN", {
       minimumFractionDigits: 0,
       maximumFractionDigits: 2,
