@@ -26,6 +26,11 @@ import { SalaryBaseReportForm } from "@/components/SalaryBaseReportForm";
 // import { Alert } from "@/components/ui/alert";
 // import UpiPayment from "@/components/UpiPayment";
 
+// Deposit cutting: only reports with status pending_verification / rejected / approved count.
+const DEPOSIT_CUTTING_TARGET = 2500;
+const DEPOSIT_CUTTING_PER_REPORT = 125;
+const DEPOSIT_CUTTING_MAX_REPORTS = 20;
+
 const SubmitReport = () => {
   const [totalTrips, setTotalTrips] = useState(0); // Default to 0
   const [vehicleTrips, setVehicleTrips] = useState<number>(0);
@@ -123,7 +128,7 @@ const SubmitReport = () => {
             setEnableDepositCollection(data.enable_deposit_collection ?? true);
             setDriverCategory(data.driver_category || "hub_base");
 
-            // Count reports that count toward the 12 deposit slots: rejected, pending_verification, approved only.
+            // Count reports that count toward the 20 deposit slots: pending_verification, rejected, approved only.
             // Leave and offline reports do NOT count.
             const { count: depositSlotCount, error: countError } =
               await supabase
@@ -333,29 +338,23 @@ const SubmitReport = () => {
   // Note: Other fee (expenses) is now manually entered by the driver
   // It can include platform fees, fuel costs, maintenance, or any other expenses
 
-  // Deposit cutting: 12 reports (rejected / pending_verification / approved), ₹250 per report, stop when balance reaches ₹3000.
-  // Leave and offline reports do NOT count toward the 12.
+  // Deposit cutting: only pending_verification / rejected / approved reports count; leave/offline do not.
   useEffect(() => {
     if (!userData) return;
 
     const currentDeposit = Number(userData.pending_balance) || 0;
-    const targetDeposit = 3000;
-    const cuttingPerReport = 250;
-    const maxCuttingReports = 12;
 
-    // Stop if: deposit collection off, or already have 12 approved reports, or balance >= 3000
     if (
       !enableDepositCollection ||
-      approvedReportsCount >= maxCuttingReports ||
-      currentDeposit >= targetDeposit
+      approvedReportsCount >= DEPOSIT_CUTTING_MAX_REPORTS ||
+      currentDeposit >= DEPOSIT_CUTTING_TARGET
     ) {
       setDepositCutting(0);
       return;
     }
 
-    // Fixed ₹250 cutting per approved report; cap so balance never exceeds ₹3000
-    const roomLeft = Math.max(0, targetDeposit - currentDeposit);
-    const cutting = Math.min(cuttingPerReport, roomLeft);
+    const roomLeft = Math.max(0, DEPOSIT_CUTTING_TARGET - currentDeposit);
+    const cutting = Math.min(DEPOSIT_CUTTING_PER_REPORT, roomLeft);
     setDepositCutting(Math.round(cutting));
   }, [userData, approvedReportsCount, enableDepositCollection]);
 
@@ -1133,9 +1132,11 @@ const SubmitReport = () => {
                 </p>
                 <p className="text-xs text-blue-600 mt-1">
                   Current deposit: ₹
-                  {(userData?.pending_balance || 0).toFixed(2)} | Target: ₹3,000
-                  (12 approved reports, ₹250 each) | Remaining: ₹
-                  {(3000 - (userData?.pending_balance || 0)).toFixed(2)}
+                  {(userData?.pending_balance || 0).toFixed(2)} | Target: ₹
+                  {DEPOSIT_CUTTING_TARGET.toLocaleString()}
+                  ({DEPOSIT_CUTTING_MAX_REPORTS} reports, ₹
+                  {DEPOSIT_CUTTING_PER_REPORT} each) | Remaining: ₹
+                  {(DEPOSIT_CUTTING_TARGET - (userData?.pending_balance || 0)).toFixed(2)}
                 </p>
                 <p className="text-xs text-blue-600 mt-1">
                   This amount will be added to your deposit balance.
