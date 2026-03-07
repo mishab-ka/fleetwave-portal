@@ -28,8 +28,12 @@ import { SalaryBaseReportForm } from "@/components/SalaryBaseReportForm";
 
 // Deposit cutting: only reports with status pending_verification / rejected / approved count.
 const DEPOSIT_CUTTING_TARGET = 2500;
-const DEPOSIT_CUTTING_PER_REPORT = 125;
-const DEPOSIT_CUTTING_MAX_REPORTS = 20;
+const DEPOSIT_CUTTING_PER_REPORT = 100;
+const DEPOSIT_CUTTING_MAX_REPORTS = 25;
+
+// Rent breakdown: Base rent + Advance rent = total rent used in payment calculation.
+const BASE_RENT = 600;
+const ADVANCE_RENT = 100;
 
 const SubmitReport = () => {
   const [totalTrips, setTotalTrips] = useState(0); // Default to 0
@@ -73,6 +77,7 @@ const SubmitReport = () => {
     totalIncome: 0,
     cashCollected: 0,
     baseRent: 0,
+    adrent: 0,
     penalty: 0,
     otherFees: 0,
     depositCutting: 0,
@@ -363,7 +368,7 @@ const SubmitReport = () => {
     if (!userData) return;
 
     const trips = Number(formData.total_trips);
-    const rent = calculateCompanyEarningsForShift(trips, userData.shift);
+    const rent = BASE_RENT + ADVANCE_RENT; // Total rent = Base (600) + Advance (100)
     const tollandEarnings =
       Number(formData.toll) + Number(formData.total_earnings);
     const cashcollect = Number(formData.total_cashcollect) || 0;
@@ -396,7 +401,8 @@ const SubmitReport = () => {
       toll: Number(formData.toll) || 0,
       totalIncome: tollandEarnings,
       cashCollected: cashcollect,
-      baseRent: rent,
+      baseRent: BASE_RENT,
+      adrent: ADVANCE_RENT,
       penalty: dailyPenaltyAmount,
       otherFees: otherFee,
       depositCutting: depositCutting,
@@ -1184,16 +1190,22 @@ const SubmitReport = () => {
                   </div>
                 </div>
 
-                {/* Deductions Section */}
+                {/* Expenses Section */}
                 <div className="mb-4">
                   <h4 className="text-sm font-medium text-gray-700 mb-2">
-                    Deductions
+                    Expenses
                   </h4>
                   <div className="space-y-1 pl-4">
                     <div className="flex justify-between text-sm">
                       <span className="text-gray-600">Base Rent:</span>
                       <span className="font-medium text-gray-800">
                         ₹{paymentBreakdown.baseRent.toFixed(2)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-600">Advance Rent:</span>
+                      <span className="font-medium text-gray-800">
+                        ₹{paymentBreakdown.adrent.toFixed(2)}
                       </span>
                     </div>
                     {paymentBreakdown.penalty > 0 && (
@@ -1234,7 +1246,7 @@ const SubmitReport = () => {
                     )}
                     <div className="flex justify-between text-sm pt-2 border-t border-gray-200">
                       <span className="font-semibold text-gray-700">
-                        Total Deductions:
+                        Total Expenses:
                       </span>
                       <span className="font-bold text-red-600">
                         ₹{paymentBreakdown.totalDeductions.toFixed(2)}

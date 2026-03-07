@@ -14,7 +14,18 @@ import {
   LogIn,
   LogOut,
   Activity,
+  Plus,
 } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { useAuth } from "@/context/AuthContext";
 import HRStaffLeads from "./HRStaffLeads";
 import HRJoiningCalendar from "./HRJoiningCalendar";
@@ -57,6 +68,13 @@ const HRMobileView: React.FC<HRMobileViewProps> = ({
   const [isClockedIn, setIsClockedIn] = useState(false);
   const [workDuration, setWorkDuration] = useState(0);
   const [clockInTime, setClockInTime] = useState<Date | null>(null);
+
+  // Add lead state (assigned to logged-in user)
+  const [showAddLeadDialog, setShowAddLeadDialog] = useState(false);
+  const [addLeadPhone, setAddLeadPhone] = useState("");
+  const [addLeadName, setAddLeadName] = useState("");
+  const [addLeadSubmitting, setAddLeadSubmitting] = useState(false);
+  const [leadsRefreshKey, setLeadsRefreshKey] = useState(0);
 
   useEffect(() => {
     if (user) {
@@ -205,6 +223,41 @@ const HRMobileView: React.FC<HRMobileViewProps> = ({
     const hours = Math.floor(seconds / 3600);
     const minutes = Math.floor((seconds % 3600) / 60);
     return `${hours}h ${minutes}m`;
+  };
+
+  const handleAddLead = async () => {
+    const phone = addLeadPhone.trim();
+    if (!phone) {
+      toast.error("Please enter a phone number");
+      return;
+    }
+    if (!user?.id) {
+      toast.error("You must be logged in to add a lead");
+      return;
+    }
+    setAddLeadSubmitting(true);
+    try {
+      const { error } = await supabase.from("hr_leads").insert([
+        {
+          phone,
+          name: addLeadName.trim() || "Lead",
+          status: "new",
+          assigned_staff_user_id: user.id,
+        },
+      ]);
+      if (error) throw error;
+      toast.success("Lead added and assigned to you");
+      setShowAddLeadDialog(false);
+      setAddLeadPhone("");
+      setAddLeadName("");
+      setLeadsRefreshKey((k) => k + 1);
+      fetchStats(); // refresh total leads count
+    } catch (err: any) {
+      console.error("Error adding lead:", err);
+      toast.error(err?.message || "Failed to add lead");
+    } finally {
+      setAddLeadSubmitting(false);
+    }
   };
 
   if (loading) {
@@ -419,6 +472,23 @@ const HRMobileView: React.FC<HRMobileViewProps> = ({
                 </h3>
                 <div className="space-y-3">
                   <Button
+                    onClick={() => setShowAddLeadDialog(true)}
+                    className="w-full bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white h-14 justify-between"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 bg-white/20 rounded-lg flex items-center justify-center">
+                        <Plus className="w-5 h-5" />
+                      </div>
+                      <div className="text-left">
+                        <div className="font-semibold">Add Lead</div>
+                        <div className="text-xs opacity-90">
+                          Add a lead assigned to you
+                        </div>
+                      </div>
+                    </div>
+                    <ChevronRight className="w-5 h-5" />
+                  </Button>
+                  <Button
                     onClick={() => {
                       if (user) {
                         logActivity(user.id, "page_viewed", { page: "leads" });
@@ -528,7 +598,16 @@ const HRMobileView: React.FC<HRMobileViewProps> = ({
         {/* Leads Tab */}
         {activeTab === "leads" && (
           <div className="space-y-4">
-            <HRStaffLeads />
+            <div className="flex justify-end">
+              <Button
+                onClick={() => setShowAddLeadDialog(true)}
+                className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white rounded-xl"
+              >
+                <Plus className="w-5 h-5 mr-2" />
+                Add Lead
+              </Button>
+            </div>
+            <HRStaffLeads key={leadsRefreshKey} />
           </div>
         )}
 
@@ -658,6 +737,57 @@ const HRMobileView: React.FC<HRMobileViewProps> = ({
           </div>
         )}
       </div>
+
+      {/* Add Lead Dialog (global so it stays mounted when switching tabs) */}
+      <Dialog open={showAddLeadDialog} onOpenChange={setShowAddLeadDialog}>
+        <DialogContent className="sm:max-w-[340px]">
+          <DialogHeader>
+            <DialogTitle>Add Lead</DialogTitle>
+            <DialogDescription>
+              Add a new lead. It will be assigned to you.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid gap-2">
+              <Label htmlFor="add-lead-phone">Phone *</Label>
+              <Input
+                id="add-lead-phone"
+                type="tel"
+                placeholder="e.g. 9876543210"
+                value={addLeadPhone}
+                onChange={(e) => setAddLeadPhone(e.target.value)}
+                className="rounded-lg"
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="add-lead-name">Name (optional)</Label>
+              <Input
+                id="add-lead-name"
+                placeholder="Lead name"
+                value={addLeadName}
+                onChange={(e) => setAddLeadName(e.target.value)}
+                className="rounded-lg"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setShowAddLeadDialog(false)}
+              disabled={addLeadSubmitting}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleAddLead}
+              disabled={addLeadSubmitting || !addLeadPhone.trim()}
+              className="bg-gradient-to-r from-purple-600 to-blue-600"
+            >
+              {addLeadSubmitting ? "Adding…" : "Add Lead"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Bottom Navigation */}
       <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 px-4 py-3 shadow-lg">
