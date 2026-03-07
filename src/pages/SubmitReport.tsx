@@ -369,19 +369,20 @@ const SubmitReport = () => {
 
     const trips = Number(formData.total_trips);
     const rent = BASE_RENT + ADVANCE_RENT; // Total rent = Base (600) + Advance (100)
-    const tollandEarnings =
-      Number(formData.toll) + Number(formData.total_earnings);
+    const totalEarnings = Number(formData.total_earnings) || 0;
+    const tollandEarnings = Number(formData.toll) + totalEarnings;
     const cashcollect = Number(formData.total_cashcollect) || 0;
-    const otherFee = Number(formData.other_fee) || 0;
+    // Driver pass = 13% of total earnings (auto-calculated, not editable)
+    const driverPass = Math.round(totalEarnings * 0.13 * 100) / 100;
 
     // Get daily penalty amount from user data
     const dailyPenaltyAmount = userData.daily_penalty_amount || 0;
 
-    // Calculate total amount including penalty, other fee (expenses), deposit cutting, and service day adjustment discount
+    // Total expenses: rent + penalty + driver pass (13% of earnings) + deposit cutting - service day discount
     const totalRentWithExtras =
       rent +
       dailyPenaltyAmount +
-      otherFee +
+      driverPass +
       depositCutting -
       serviceDayAdjustmentDiscount;
     const amount = tollandEarnings - cashcollect - totalRentWithExtras;
@@ -404,7 +405,7 @@ const SubmitReport = () => {
       baseRent: BASE_RENT,
       adrent: ADVANCE_RENT,
       penalty: dailyPenaltyAmount,
-      otherFees: otherFee,
+      otherFees: driverPass,
       depositCutting: depositCutting,
       serviceDayDiscount: serviceDayAdjustmentDiscount,
       totalDeductions: totalDeductions,
@@ -415,13 +416,13 @@ const SubmitReport = () => {
     setFormData((prev) => ({
       ...prev,
       rent_paid: amount.toFixed(2),
+      other_fee: driverPass.toFixed(2), // Driver pass = 13% of total earnings
     }));
   }, [
     formData.total_earnings,
     formData.total_cashcollect,
     formData.total_trips,
     formData.toll,
-    formData.other_fee,
     userData,
     depositCutting,
     approvedReportsCount,
@@ -798,6 +799,10 @@ const SubmitReport = () => {
     );
   }
 
+  const difference =
+    Number(paymentBreakdown.totalIncome) -
+    Number(paymentBreakdown.cashCollected);
+
   // Show confirmation screen after successful submission
   if (showConfirmation) {
     return (
@@ -1029,18 +1034,19 @@ const SubmitReport = () => {
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
               <div>
-                <Label htmlFor="other_fee">Other Fee / Expenses (₹)</Label>
+                <Label htmlFor="other_fee">Driver Pass (₹)</Label>
                 <Input
                   id="other_fee"
                   name="other_fee"
                   type="tel"
-                  required
-                  placeholder="Enter expenses amount"
+                  readOnly
+                  disabled
+                  className="bg-gray-100 cursor-not-allowed"
+                  placeholder="0.00"
                   value={formData.other_fee}
-                  onChange={handleInputChange}
                 />
                 <p className="text-xs text-gray-500 mt-1">
-                  Enter any expenses (platform fee, fuel, maintenance, etc.)
+                  Auto-calculated: 13% of total earnings
                 </p>
               </div>
             </div>
@@ -1171,6 +1177,15 @@ const SubmitReport = () => {
                         ₹{paymentBreakdown.totalEarnings.toFixed(2)}
                       </span>
                     </div>
+                    {/* Cash Collected */}
+                    <div className="mb-4">
+                      <div className="flex justify-between text-sm ">
+                        <span className="text-gray-600">Cash Collected:</span>
+                        <span className="font-medium text-gray-800">
+                          ₹{paymentBreakdown.cashCollected.toFixed(2)}
+                        </span>
+                      </div>
+                    </div>
                     {paymentBreakdown.toll > 0 && (
                       <div className="flex justify-between text-sm">
                         <span className="text-gray-600">Toll:</span>
@@ -1179,12 +1194,18 @@ const SubmitReport = () => {
                         </span>
                       </div>
                     )}
+
                     <div className="flex justify-between text-sm pt-2 border-t border-gray-200">
                       <span className="font-semibold text-gray-700">
-                        Total Income:
+                        Total Difference:
                       </span>
-                      <span className="font-bold text-green-600">
-                        ₹{paymentBreakdown.totalIncome.toFixed(2)}
+
+                      <span
+                        className={`font-bold ${
+                          difference < 0 ? "text-red-600" : "text-green-600"
+                        }`}
+                      >
+                        ₹{difference.toFixed(2)}
                       </span>
                     </div>
                   </div>
@@ -1216,11 +1237,10 @@ const SubmitReport = () => {
                         </span>
                       </div>
                     )}
-                    {paymentBreakdown.otherFees > 0 && (
+                    {(paymentBreakdown.otherFees > 0 ||
+                      paymentBreakdown.totalEarnings > 0) && (
                       <div className="flex justify-between text-sm">
-                        <span className="text-gray-600">
-                          Other Fees/Expenses:
-                        </span>
+                        <span className="text-gray-600">Driver Pass:</span>
                         <span className="font-medium text-gray-800">
                           ₹{paymentBreakdown.otherFees.toFixed(2)}
                         </span>
@@ -1252,16 +1272,6 @@ const SubmitReport = () => {
                         ₹{paymentBreakdown.totalDeductions.toFixed(2)}
                       </span>
                     </div>
-                  </div>
-                </div>
-
-                {/* Cash Collected */}
-                <div className="mb-4">
-                  <div className="flex justify-between text-sm pl-4">
-                    <span className="text-gray-600">Cash Collected:</span>
-                    <span className="font-medium text-gray-800">
-                      ₹{paymentBreakdown.cashCollected.toFixed(2)}
-                    </span>
                   </div>
                 </div>
 
