@@ -1156,6 +1156,173 @@ const SubmitReport = () => {
               </div>
             )} */}
 
+            <div
+              className={`mb-4 p-4 bg-gray-100 border border-gray-300 rounded-md ${
+                paymentMessage.includes("Refund")
+                  ? "bg-green-500"
+                  : "bg-red-500 "
+              }`}
+            >
+              <p
+                className={`text-sm text-center font-bold ${
+                  paymentMessage.includes("Refund")
+                    ? "text-white"
+                    : "text-white"
+                }`}
+              >
+                {paymentMessage}
+              </p>
+            </div>
+
+            {/* Paying cash option */}
+            {/* <div className="mb-4 p-4 bg-gray-50 border border-gray-200 rounded-md opacity-60">
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="paying-cash"
+                  checked={payingCash}
+                  disabled
+                  onCheckedChange={(checked) => {
+                    setPayingCash(!!checked);
+                    if (!checked) {
+                      setCashAmount("");
+                      setCashManagerId("");
+                    }
+                  }}
+                />
+                <label
+                  htmlFor="paying-cash"
+                  className="text-sm font-medium flex items-center gap-2 cursor-not-allowed"
+                >
+                  <Banknote className="h-4 w-4 text-green-600" />
+                  Paying by cash
+                </label>
+              </div>
+              {payingCash && (
+                <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="cash-amount">Cash amount (₹)</Label>
+                    <Input
+                      id="cash-amount"
+                      type="number"
+                      min={0}
+                      step={1}
+                      placeholder="Amount"
+                      value={cashAmount}
+                      onChange={(e) => setCashAmount(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="cash-manager">Select manager</Label>
+                    <Select
+                      value={cashManagerId}
+                      onValueChange={setCashManagerId}
+                    >
+                      <SelectTrigger id="cash-manager">
+                        <SelectValue placeholder="Choose manager" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {managers.map((m) => (
+                          <SelectItem key={m.id} value={m.id}>
+                            {m.name || "Unknown"}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              )}
+            </div> */}
+
+            {/* Company Earnings Slabs Display */}
+            {/* {!settingsLoading &&
+              companyEarningsSlabs &&
+              companyEarningsSlabs.length > 0 && (
+                <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-md">
+                  <h3 className="text-sm font-semibold text-blue-800 mb-2">
+                    Company Earnings Slabs
+                  </h3>
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-2 text-xs">
+                    {companyEarningsSlabs.map((slab, index) => (
+                      <div key={index} className="bg-white p-2 rounded border">
+                        <span className="font-medium">
+                          {slab.min_trips}
+                          {slab.max_trips ? `-${slab.max_trips}` : "+"} trips
+                        </span>
+                        <br />
+                        <span className="text-green-600">₹{slab.amount}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="text-xs text-blue-600 mt-2">
+                    * For 24-hour shifts, earnings are doubled
+                  </p>
+                </div>
+              )} */}
+            <div className="mb-6">
+              <Label htmlFor="remarks">Remarks (Optional)</Label>
+              <Textarea
+                id="remarks"
+                name="remarks"
+                placeholder="Any additional notes or comments"
+                value={formData.remarks}
+                onChange={handleInputChange}
+                rows={3}
+              />
+            </div>
+
+            <div
+              className={`grid gap-6 mb-6 ${
+                paymentMessage.includes("Pay")
+                  ? "grid-cols-1 md:grid-cols-2"
+                  : "grid-cols-1"
+              }`}
+            >
+              <div>
+                <Label htmlFor="uber_screenshot">Uber Screenshot</Label>
+                <div className="mt-1 flex items-center">
+                  <label className="w-full flex items-center justify-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 cursor-pointer">
+                    <FileUp className="mr-2 h-5 w-5 text-gray-400" />
+                    {uberScreenshot
+                      ? uberScreenshot.name
+                      : "Upload Uber Screenshot"}
+                    <input
+                      id="uber_screenshot"
+                      name="uber_screenshot"
+                      type="file"
+                      required
+                      accept="image/*"
+                      onChange={(e) => handleFileChange(e, "uber")}
+                      className="sr-only"
+                    />
+                  </label>
+                </div>
+              </div>
+
+              {/* Only show payment screenshot if driver needs to pay (positive amount) */}
+              {paymentMessage.includes("Pay") && (
+                <div>
+                  <Label htmlFor="payment_screenshot">Payment Screenshot</Label>
+                  <div className="mt-1 flex items-center">
+                    <label className="w-full flex items-center justify-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 cursor-pointer">
+                      <FileUp className="mr-2 h-5 w-5 text-gray-400" />
+                      {rentScreenshot
+                        ? rentScreenshot.name
+                        : "Upload Payment Screenshot"}
+                      <input
+                        id="payment_screenshot"
+                        name="payment_screenshot"
+                        type="file"
+                        accept="image/*"
+                        onChange={(e) => handleFileChange(e, "rent")}
+                        className="sr-only"
+                        required
+                      />
+                    </label>
+                  </div>
+                </div>
+              )}
+            </div>
+
             {/* Payment Breakdown */}
             {(formData.total_earnings ||
               formData.toll ||
@@ -1304,173 +1471,6 @@ const SubmitReport = () => {
                 </div>
               </div>
             )}
-
-            <div
-              className={`mb-4 p-4 bg-gray-100 border border-gray-300 rounded-md ${
-                paymentMessage.includes("Refund")
-                  ? "bg-green-500"
-                  : "bg-red-500 "
-              }`}
-            >
-              <p
-                className={`text-sm text-center font-bold ${
-                  paymentMessage.includes("Refund")
-                    ? "text-white"
-                    : "text-white"
-                }`}
-              >
-                {paymentMessage}
-              </p>
-            </div>
-
-            {/* Paying cash option */}
-            <div className="mb-4 p-4 bg-gray-50 border border-gray-200 rounded-md opacity-60">
-              <div className="flex items-center space-x-2">
-                <Checkbox
-                  id="paying-cash"
-                  checked={payingCash}
-                  disabled
-                  onCheckedChange={(checked) => {
-                    setPayingCash(!!checked);
-                    if (!checked) {
-                      setCashAmount("");
-                      setCashManagerId("");
-                    }
-                  }}
-                />
-                <label
-                  htmlFor="paying-cash"
-                  className="text-sm font-medium flex items-center gap-2 cursor-not-allowed"
-                >
-                  <Banknote className="h-4 w-4 text-green-600" />
-                  Paying by cash
-                </label>
-              </div>
-              {payingCash && (
-                <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="cash-amount">Cash amount (₹)</Label>
-                    <Input
-                      id="cash-amount"
-                      type="number"
-                      min={0}
-                      step={1}
-                      placeholder="Amount"
-                      value={cashAmount}
-                      onChange={(e) => setCashAmount(e.target.value)}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="cash-manager">Select manager</Label>
-                    <Select
-                      value={cashManagerId}
-                      onValueChange={setCashManagerId}
-                    >
-                      <SelectTrigger id="cash-manager">
-                        <SelectValue placeholder="Choose manager" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {managers.map((m) => (
-                          <SelectItem key={m.id} value={m.id}>
-                            {m.name || "Unknown"}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Company Earnings Slabs Display */}
-            {/* {!settingsLoading &&
-              companyEarningsSlabs &&
-              companyEarningsSlabs.length > 0 && (
-                <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-md">
-                  <h3 className="text-sm font-semibold text-blue-800 mb-2">
-                    Company Earnings Slabs
-                  </h3>
-                  <div className="grid grid-cols-2 md:grid-cols-3 gap-2 text-xs">
-                    {companyEarningsSlabs.map((slab, index) => (
-                      <div key={index} className="bg-white p-2 rounded border">
-                        <span className="font-medium">
-                          {slab.min_trips}
-                          {slab.max_trips ? `-${slab.max_trips}` : "+"} trips
-                        </span>
-                        <br />
-                        <span className="text-green-600">₹{slab.amount}</span>
-                      </div>
-                    ))}
-                  </div>
-                  <p className="text-xs text-blue-600 mt-2">
-                    * For 24-hour shifts, earnings are doubled
-                  </p>
-                </div>
-              )} */}
-            <div className="mb-6">
-              <Label htmlFor="remarks">Remarks (Optional)</Label>
-              <Textarea
-                id="remarks"
-                name="remarks"
-                placeholder="Any additional notes or comments"
-                value={formData.remarks}
-                onChange={handleInputChange}
-                rows={3}
-              />
-            </div>
-
-            <div
-              className={`grid gap-6 mb-6 ${
-                paymentMessage.includes("Pay")
-                  ? "grid-cols-1 md:grid-cols-2"
-                  : "grid-cols-1"
-              }`}
-            >
-              <div>
-                <Label htmlFor="uber_screenshot">Uber Screenshot</Label>
-                <div className="mt-1 flex items-center">
-                  <label className="w-full flex items-center justify-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 cursor-pointer">
-                    <FileUp className="mr-2 h-5 w-5 text-gray-400" />
-                    {uberScreenshot
-                      ? uberScreenshot.name
-                      : "Upload Uber Screenshot"}
-                    <input
-                      id="uber_screenshot"
-                      name="uber_screenshot"
-                      type="file"
-                      required
-                      accept="image/*"
-                      onChange={(e) => handleFileChange(e, "uber")}
-                      className="sr-only"
-                    />
-                  </label>
-                </div>
-              </div>
-
-              {/* Only show payment screenshot if driver needs to pay (positive amount) */}
-              {paymentMessage.includes("Pay") && (
-                <div>
-                  <Label htmlFor="payment_screenshot">Payment Screenshot</Label>
-                  <div className="mt-1 flex items-center">
-                    <label className="w-full flex items-center justify-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 cursor-pointer">
-                      <FileUp className="mr-2 h-5 w-5 text-gray-400" />
-                      {rentScreenshot
-                        ? rentScreenshot.name
-                        : "Upload Payment Screenshot"}
-                      <input
-                        id="payment_screenshot"
-                        name="payment_screenshot"
-                        type="file"
-                        accept="image/*"
-                        onChange={(e) => handleFileChange(e, "rent")}
-                        className="sr-only"
-                        required
-                      />
-                    </label>
-                  </div>
-                </div>
-              )}
-            </div>
 
             <div className="flex items-center gap-2 mb-6">
               <span className="text-sm font-medium">{upiId}</span>
