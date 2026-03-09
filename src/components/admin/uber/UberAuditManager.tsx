@@ -180,6 +180,12 @@ export function UberAuditManager() {
   const [reportServiceDayAdjustments, setReportServiceDayAdjustments] =
     useState<any[]>([]);
 
+  // Per-driver Happy/Unhappy status (per day income < 1000 → Unhappy)
+  const [driverStatusMap, setDriverStatusMap] = useState<
+    Record<string, { status: "happy" | "unhappy"; perDayIncome: number } | null>
+  >({});
+  const [loadingDriverStatus, setLoadingDriverStatus] = useState(false);
+
   // Weekly rent: one rate for the week based on total trips vs working_days × 10
   const weeklyRentVars = useMemo(() => {
     if (!reportSummary?.reports?.length) return null;
@@ -207,6 +213,121 @@ export function UberAuditManager() {
     }
     fetchAudits();
   }, [selectedWeek, isAdmin, adminLoading]);
+
+  // Fetch Happy/Unhappy status for all drivers in the current week
+  const fetchAllDriversStatus = async () => {
+    if (!audits.length || !selectedWeek) {
+      setDriverStatusMap({});
+      return;
+    }
+    setLoadingDriverStatus(true);
+    try {
+      const weekEndDate = new Date(selectedWeek);
+      const weekStartDate = new Date(weekEndDate);
+      weekStartDate.setDate(weekEndDate.getDate() - 6);
+      const weekStartStr = weekStartDate.toISOString().split("T")[0];
+      const weekEndStr = weekEndDate.toISOString().split("T")[0];
+      const userIds = audits.map((a) => a.user_id);
+
+      const { data: reports, error: reportsError } = await supabase
+        .from("fleet_reports")
+        .select(
+          "user_id, total_earnings, total_cashcollect, other_fee, toll, total_trips",
+        )
+        .in("user_id", userIds)
+        .not("status", "eq", "offline")
+        .not("status", "eq", "leave")
+        .gte("rent_date", weekStartStr)
+        .lte("rent_date", weekEndStr);
+
+      if (reportsError) throw reportsError;
+
+      const { data: adjustments, error: adjError } = await supabase
+        .from("common_adjustments")
+        .select("user_id, amount")
+        .in("user_id", userIds)
+        .in("status", ["approved", "applied"])
+        .gte("adjustment_date", weekStartStr)
+        .lte("adjustment_date", weekEndStr);
+
+      if (adjError) console.error("Adjustments fetch error:", adjError);
+
+      const adjByUser: Record<string, number> = {};
+      (adjustments || []).forEach((adj) => {
+        adjByUser[adj.user_id] =
+          (adjByUser[adj.user_id] || 0) + Math.abs(adj.amount || 0);
+      });
+
+      const reportsByUser: Record<
+        string,
+        {
+          total_earnings: number;
+          total_cashcollect: number;
+          total_other_fee: number;
+          total_toll: number;
+          total_trips: number;
+          workingDays: number;
+        }
+      > = {};
+      (reports || []).forEach((r) => {
+        const uid = r.user_id;
+        if (!reportsByUser[uid]) {
+          reportsByUser[uid] = {
+            total_earnings: 0,
+            total_cashcollect: 0,
+            total_other_fee: 0,
+            total_toll: 0,
+            total_trips: 0,
+            workingDays: 0,
+          };
+        }
+        const rec = reportsByUser[uid];
+        rec.total_earnings += Number(r.total_earnings) || 0;
+        rec.total_cashcollect += Number(r.total_cashcollect) || 0;
+        rec.total_other_fee += Number(r.other_fee) || 0;
+        rec.total_toll += Number(r.toll) || 0;
+        rec.total_trips += Number(r.total_trips) || 0;
+        rec.workingDays += 1;
+      });
+
+      const map: Record<
+        string,
+        { status: "happy" | "unhappy"; perDayIncome: number } | null
+      > = {};
+      userIds.forEach((uid) => {
+        const rec = reportsByUser[uid];
+        if (!rec || rec.workingDays === 0) {
+          map[uid] = null;
+          return;
+        }
+        const totalEarningsWeek = rec.total_earnings + rec.total_toll;
+        const totalDriverPass = rec.total_other_fee;
+        const requiredTrips = rec.workingDays * 10;
+        const rentPerDay = rec.total_trips >= requiredTrips ? 600 : 700;
+        const weeklyRent = rec.workingDays * rentPerDay;
+        const foodCng = rec.workingDays * 1000;
+        const totalAdjustments = adjByUser[uid] || 0;
+        const totalExpenses =
+          totalDriverPass + weeklyRent + foodCng - totalAdjustments;
+        const gross = totalEarningsWeek - totalExpenses;
+        const perDayIncome = rec.workingDays > 0 ? gross / rec.workingDays : 0;
+        map[uid] = {
+          status: perDayIncome < 1000 ? "unhappy" : "happy",
+          perDayIncome: Math.round(perDayIncome),
+        };
+      });
+      setDriverStatusMap(map);
+    } catch (err) {
+      console.error("Error fetching driver status:", err);
+      setDriverStatusMap({});
+    } finally {
+      setLoadingDriverStatus(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchAllDriversStatus();
+  }, [audits, selectedWeek]);
 
   const fetchAudits = async () => {
     if (!isAdmin) return;
@@ -1126,7 +1247,7 @@ export function UberAuditManager() {
   return (
     <div className="space-y-6">
       {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
         <div className="bg-card rounded-lg p-4 shadow-sm border">
           <div className="flex items-center gap-2">
             <Users className="h-5 w-5 text-muted-foreground" />
@@ -1154,6 +1275,38 @@ export function UberAuditManager() {
             <h3 className="font-medium">Not Verified</h3>
           </div>
           <p className="text-2xl font-bold mt-2">{summary.notVerified}</p>
+        </div>
+        <div className="bg-card rounded-lg p-4 shadow-sm border">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="h-5 w-5 text-green-600" />
+            <h3 className="font-medium">Happy Drivers</h3>
+          </div>
+          <p className="text-2xl font-bold mt-2 text-green-600">
+            {loadingDriverStatus
+              ? "…"
+              : Object.values(driverStatusMap).filter(
+                  (v) => v?.status === "happy",
+                ).length}
+          </p>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Per day income ≥ ₹1,000
+          </p>
+        </div>
+        <div className="bg-card rounded-lg p-4 shadow-sm border">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="h-5 w-5 text-orange-600" />
+            <h3 className="font-medium">Unhappy Drivers</h3>
+          </div>
+          <p className="text-2xl font-bold mt-2 text-orange-600">
+            {loadingDriverStatus
+              ? "…"
+              : Object.values(driverStatusMap).filter(
+                  (v) => v?.status === "unhappy",
+                ).length}
+          </p>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Per day income &lt; ₹1,000
+          </p>
         </div>
       </div>
 
@@ -1320,6 +1473,9 @@ export function UberAuditManager() {
                     Status
                   </TableHead>
                   <TableHead className="py-4 font-semibold text-slate-900">
+                    Income Status
+                  </TableHead>
+                  <TableHead className="py-4 font-semibold text-slate-900">
                     Last Verified
                   </TableHead>
                   <TableHead className="py-4 font-semibold text-slate-900 text-right">
@@ -1374,6 +1530,47 @@ export function UberAuditManager() {
                     </TableCell>
                     <TableCell className="py-3">
                       {getStatusBadge(audit.audit_status)}
+                    </TableCell>
+                    <TableCell className="py-3">
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <span className="inline-block">
+                              {loadingDriverStatus ? (
+                                <span className="text-xs text-muted-foreground">
+                                  …
+                                </span>
+                              ) : driverStatusMap[audit.user_id] == null ? (
+                                <span className="text-xs text-muted-foreground">
+                                  —
+                                </span>
+                              ) : driverStatusMap[audit.user_id]?.status ===
+                                "happy" ? (
+                                <Badge
+                                  variant="secondary"
+                                  className="bg-green-100 text-green-800 hover:bg-green-100"
+                                >
+                                  Happy
+                                </Badge>
+                              ) : (
+                                <Badge
+                                  variant="secondary"
+                                  className="bg-orange-100 text-orange-800 hover:bg-orange-100"
+                                >
+                                  Unhappy
+                                </Badge>
+                              )}
+                            </span>
+                          </TooltipTrigger>
+                          <TooltipContent side="top" className="max-w-xs">
+                            <p>
+                              {driverStatusMap[audit.user_id] != null
+                                ? `Per day income: ₹${driverStatusMap[audit.user_id]?.perDayIncome ?? 0}. Per day income < ₹1,000 → Unhappy`
+                                : "No reports for this week"}
+                            </p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
                     </TableCell>
                     <TableCell className="py-3">
                       <div className="flex items-center gap-1.5">
@@ -1657,9 +1854,19 @@ export function UberAuditManager() {
                     <div className="p-4 w-full bg-gray-50 rounded-lg">
                       <div className="flex items-center gap-2 mb-3">
                         <Receipt className="h-4 w-4 text-gray-600" />
-                        <h4 className="font-semibold">Summary Details</h4>
+                        <h4 className="font-semibold">Driver Summary </h4>
                       </div>
                       <div className="space-y-2 text-sm">
+                        <div className="flex justify-between">
+                          <span>Total Earnings:</span>
+                          <span className="font-medium text-green-600">
+                            ₹
+                            {Math.round(
+                              reportSummary.total_earnings || 0,
+                            ).toLocaleString()}
+                          </span>
+                        </div>
+
                         <div className="flex justify-between">
                           <span>Total cash collected:</span>
                           <span className="font-medium text-green-600">
@@ -1740,8 +1947,7 @@ export function UberAuditManager() {
                             ₹
                             {Math.round(
                               reportServiceDayAdjustments.reduce(
-                                (sum, adj) =>
-                                  sum + Math.abs(adj.amount || 0),
+                                (sum, adj) => sum + Math.abs(adj.amount || 0),
                                 0,
                               ),
                             ).toLocaleString()}
@@ -1759,8 +1965,7 @@ export function UberAuditManager() {
                                 (weeklyRentVars?.workingDays ?? 0) * 1000;
                               const totalAdjustments =
                                 reportServiceDayAdjustments.reduce(
-                                  (sum, adj) =>
-                                    sum + Math.abs(adj.amount || 0),
+                                  (sum, adj) => sum + Math.abs(adj.amount || 0),
                                   0,
                                 );
                               const total =
@@ -1773,16 +1978,15 @@ export function UberAuditManager() {
                           </span>
                         </div>
                         <div className="text-xs text-gray-500 pl-2">
-                          (Total driver pass + total rent + food and CNG −
-                          Total Adjustments)
+                          (Total driver pass + total rent + food and CNG − Total
+                          Adjustments)
                         </div>
                         <div className="flex justify-between">
                           <span>Total driver Net income (week):</span>
                           <span
                             className={`font-semibold ${(() => {
                               const totalEarningsWeek =
-                                (reportSummary.total_earnings || 0) +
-                                (reportSummary.total_toll || 0);
+                                reportSummary.total_earnings || 0;
                               const totalDriverPass =
                                 reportSummary.total_other_fee || 0;
                               const totalRent = weeklyRentVars?.weeklyRent ?? 0;
@@ -1790,8 +1994,7 @@ export function UberAuditManager() {
                                 (weeklyRentVars?.workingDays ?? 0) * 1000;
                               const totalAdjustments =
                                 reportServiceDayAdjustments.reduce(
-                                  (sum, adj) =>
-                                    sum + Math.abs(adj.amount || 0),
+                                  (sum, adj) => sum + Math.abs(adj.amount || 0),
                                   0,
                                 );
                               const totalExpenses =
@@ -1808,8 +2011,7 @@ export function UberAuditManager() {
                             ₹
                             {(() => {
                               const totalEarningsWeek =
-                                (reportSummary.total_earnings || 0) +
-                                (reportSummary.total_toll || 0);
+                                reportSummary.total_earnings || 0;
                               const totalDriverPass =
                                 reportSummary.total_other_fee || 0;
                               const totalRent = weeklyRentVars?.weeklyRent ?? 0;
@@ -1817,8 +2019,7 @@ export function UberAuditManager() {
                                 (weeklyRentVars?.workingDays ?? 0) * 1000;
                               const totalAdjustments =
                                 reportServiceDayAdjustments.reduce(
-                                  (sum, adj) =>
-                                    sum + Math.abs(adj.amount || 0),
+                                  (sum, adj) => sum + Math.abs(adj.amount || 0),
                                   0,
                                 );
                               const totalExpenses =
@@ -1839,8 +2040,7 @@ export function UberAuditManager() {
                           <span
                             className={`font-semibold text-xl ${(() => {
                               const totalEarningsWeek =
-                                (reportSummary.total_earnings || 0) +
-                                (reportSummary.total_toll || 0);
+                                reportSummary.total_earnings || 0;
                               const totalDriverPass =
                                 reportSummary.total_other_fee || 0;
                               const totalRent = weeklyRentVars?.weeklyRent ?? 0;
@@ -1848,8 +2048,7 @@ export function UberAuditManager() {
                               const foodCng = wd * 1000;
                               const totalAdjustments =
                                 reportServiceDayAdjustments.reduce(
-                                  (sum, adj) =>
-                                    sum + Math.abs(adj.amount || 0),
+                                  (sum, adj) => sum + Math.abs(adj.amount || 0),
                                   0,
                                 );
                               const totalExpenses =
@@ -1867,8 +2066,7 @@ export function UberAuditManager() {
                             ₹
                             {(() => {
                               const totalEarningsWeek =
-                                (reportSummary.total_earnings || 0) +
-                                (reportSummary.total_toll || 0);
+                                reportSummary.total_earnings || 0;
                               const totalDriverPass =
                                 reportSummary.total_other_fee || 0;
                               const totalRent = weeklyRentVars?.weeklyRent ?? 0;
@@ -1876,8 +2074,7 @@ export function UberAuditManager() {
                               const foodCng = wd * 1000;
                               const totalAdjustments =
                                 reportServiceDayAdjustments.reduce(
-                                  (sum, adj) =>
-                                    sum + Math.abs(adj.amount || 0),
+                                  (sum, adj) => sum + Math.abs(adj.amount || 0),
                                   0,
                                 );
                               const totalExpenses =
@@ -1908,8 +2105,7 @@ export function UberAuditManager() {
                               const foodCng = wd * 1000;
                               const totalAdjustments =
                                 reportServiceDayAdjustments.reduce(
-                                  (sum, adj) =>
-                                    sum + Math.abs(adj.amount || 0),
+                                  (sum, adj) => sum + Math.abs(adj.amount || 0),
                                   0,
                                 );
                               const totalExpenses =
@@ -1935,8 +2131,7 @@ export function UberAuditManager() {
                               const foodCng = wd * 1000;
                               const totalAdjustments =
                                 reportServiceDayAdjustments.reduce(
-                                  (sum, adj) =>
-                                    sum + Math.abs(adj.amount || 0),
+                                  (sum, adj) => sum + Math.abs(adj.amount || 0),
                                   0,
                                 );
                               const totalExpenses =
