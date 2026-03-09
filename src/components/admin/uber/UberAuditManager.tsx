@@ -1734,6 +1734,19 @@ export function UberAuditManager() {
                             </span>
                           </div>
                         )}
+                        <div className="flex justify-between">
+                          <span>Total Adjustments:</span>
+                          <span className="font-medium text-purple-600">
+                            ₹
+                            {Math.round(
+                              reportServiceDayAdjustments.reduce(
+                                (sum, adj) =>
+                                  sum + Math.abs(adj.amount || 0),
+                                0,
+                              ),
+                            ).toLocaleString()}
+                          </span>
+                        </div>
                         <div className="flex justify-between border-t pt-2">
                           <span>Total driver expenses:</span>
                           <span className="font-semibold text-red-700">
@@ -1744,14 +1757,24 @@ export function UberAuditManager() {
                               const totalRent = weeklyRentVars?.weeklyRent ?? 0;
                               const foodCng =
                                 (weeklyRentVars?.workingDays ?? 0) * 1000;
+                              const totalAdjustments =
+                                reportServiceDayAdjustments.reduce(
+                                  (sum, adj) =>
+                                    sum + Math.abs(adj.amount || 0),
+                                  0,
+                                );
                               const total =
-                                totalDriverPass + totalRent + foodCng;
+                                totalDriverPass +
+                                totalRent +
+                                foodCng -
+                                totalAdjustments;
                               return Math.round(total).toLocaleString();
                             })()}
                           </span>
                         </div>
                         <div className="text-xs text-gray-500 pl-2">
-                          (Total driver pass + total rent + food and CNG)
+                          (Total driver pass + total rent + food and CNG −
+                          Total Adjustments)
                         </div>
                         <div className="flex justify-between">
                           <span>Total driver Net income (week):</span>
@@ -1765,8 +1788,17 @@ export function UberAuditManager() {
                               const totalRent = weeklyRentVars?.weeklyRent ?? 0;
                               const foodCng =
                                 (weeklyRentVars?.workingDays ?? 0) * 1000;
+                              const totalAdjustments =
+                                reportServiceDayAdjustments.reduce(
+                                  (sum, adj) =>
+                                    sum + Math.abs(adj.amount || 0),
+                                  0,
+                                );
                               const totalExpenses =
-                                totalDriverPass + totalRent + foodCng;
+                                totalDriverPass +
+                                totalRent +
+                                foodCng -
+                                totalAdjustments;
                               const gross = totalEarningsWeek - totalExpenses;
                               return gross >= 0
                                 ? "text-green-600"
@@ -1783,8 +1815,17 @@ export function UberAuditManager() {
                               const totalRent = weeklyRentVars?.weeklyRent ?? 0;
                               const foodCng =
                                 (weeklyRentVars?.workingDays ?? 0) * 1000;
+                              const totalAdjustments =
+                                reportServiceDayAdjustments.reduce(
+                                  (sum, adj) =>
+                                    sum + Math.abs(adj.amount || 0),
+                                  0,
+                                );
                               const totalExpenses =
-                                totalDriverPass + totalRent + foodCng;
+                                totalDriverPass +
+                                totalRent +
+                                foodCng -
+                                totalAdjustments;
                               const gross = totalEarningsWeek - totalExpenses;
                               return Math.round(gross).toLocaleString();
                             })()}
@@ -1805,8 +1846,17 @@ export function UberAuditManager() {
                               const totalRent = weeklyRentVars?.weeklyRent ?? 0;
                               const wd = weeklyRentVars?.workingDays ?? 0;
                               const foodCng = wd * 1000;
+                              const totalAdjustments =
+                                reportServiceDayAdjustments.reduce(
+                                  (sum, adj) =>
+                                    sum + Math.abs(adj.amount || 0),
+                                  0,
+                                );
                               const totalExpenses =
-                                totalDriverPass + totalRent + foodCng;
+                                totalDriverPass +
+                                totalRent +
+                                foodCng -
+                                totalAdjustments;
                               const gross = totalEarningsWeek - totalExpenses;
                               const perDay = wd > 0 ? gross / wd : 0;
                               return perDay >= 0
@@ -1824,8 +1874,17 @@ export function UberAuditManager() {
                               const totalRent = weeklyRentVars?.weeklyRent ?? 0;
                               const wd = weeklyRentVars?.workingDays ?? 0;
                               const foodCng = wd * 1000;
+                              const totalAdjustments =
+                                reportServiceDayAdjustments.reduce(
+                                  (sum, adj) =>
+                                    sum + Math.abs(adj.amount || 0),
+                                  0,
+                                );
                               const totalExpenses =
-                                totalDriverPass + totalRent + foodCng;
+                                totalDriverPass +
+                                totalRent +
+                                foodCng -
+                                totalAdjustments;
                               const gross = totalEarningsWeek - totalExpenses;
                               const perDay = wd > 0 ? gross / wd : 0;
                               return Math.round(perDay).toLocaleString();
@@ -1847,8 +1906,17 @@ export function UberAuditManager() {
                               const totalRent = weeklyRentVars?.weeklyRent ?? 0;
                               const wd = weeklyRentVars?.workingDays ?? 0;
                               const foodCng = wd * 1000;
+                              const totalAdjustments =
+                                reportServiceDayAdjustments.reduce(
+                                  (sum, adj) =>
+                                    sum + Math.abs(adj.amount || 0),
+                                  0,
+                                );
                               const totalExpenses =
-                                totalDriverPass + totalRent + foodCng;
+                                totalDriverPass +
+                                totalRent +
+                                foodCng -
+                                totalAdjustments;
                               const gross = totalEarningsWeek - totalExpenses;
                               const perDay = wd > 0 ? gross / wd : 0;
                               return perDay < 1000
@@ -1865,8 +1933,17 @@ export function UberAuditManager() {
                               const totalRent = weeklyRentVars?.weeklyRent ?? 0;
                               const wd = weeklyRentVars?.workingDays ?? 0;
                               const foodCng = wd * 1000;
+                              const totalAdjustments =
+                                reportServiceDayAdjustments.reduce(
+                                  (sum, adj) =>
+                                    sum + Math.abs(adj.amount || 0),
+                                  0,
+                                );
                               const totalExpenses =
-                                totalDriverPass + totalRent + foodCng;
+                                totalDriverPass +
+                                totalRent +
+                                foodCng -
+                                totalAdjustments;
                               const gross = totalEarningsWeek - totalExpenses;
                               const perDay = wd > 0 ? gross / wd : 0;
                               return perDay < 1000 ? "Unhappy" : "Happy";
