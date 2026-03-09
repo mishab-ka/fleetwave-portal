@@ -1944,7 +1944,7 @@ const AdminReports = () => {
               Cash in Uber
             </div>
             <div className="text-2xl font-bold">
-              ₹{cashInUber.toLocaleString()}
+              ₹{Math.round(cashInUber).toLocaleString()}
             </div>
           </CardContent>
         </Card>
@@ -1955,7 +1955,7 @@ const AdminReports = () => {
               Cash at Bank
             </div>
             <div className="text-2xl font-bold">
-              ₹{cashInHand.toLocaleString()}
+              ₹{Math.round(cashInHand).toLocaleString()}
             </div>
           </CardContent>
         </Card>
@@ -1966,7 +1966,7 @@ const AdminReports = () => {
               Cash in Hand
             </div>
             <div className="text-2xl font-bold">
-              ₹{statistics.totalCashInHand.toLocaleString()}
+              ₹{Math.round(Number(statistics.totalCashInHand) || 0).toLocaleString()}
             </div>
             <p className="text-xs text-muted-foreground mt-1">
               Sum of cash_amount for selected period (today / week / custom)
@@ -2238,16 +2238,16 @@ const AdminReports = () => {
                               <TableCell>{report.vehicle_number}</TableCell>
                               <TableCell>{report.total_trips}</TableCell>
                               <TableCell className="font-bold">
-                                ₹{report.total_earnings.toLocaleString()}
+                                ₹{Math.round(Number(report.total_earnings) || 0).toLocaleString()}
                               </TableCell>
                               <TableCell className="font-bold">
                                 ₹{report.toll}
                               </TableCell>
                               <TableCell className="font-bold">
-                                ₹{report.total_cashcollect.toLocaleString()}
+                                ₹{Math.round(Number(report.total_cashcollect) || 0).toLocaleString()}
                               </TableCell>
                               <TableCell>
-                                ₹{report.other_fee?.toLocaleString() || "0"}
+                                ₹{Math.round(Number(report.other_fee) || 0).toLocaleString()}
                               </TableCell>
                               <TableCell
                                 className={`whitespace-nowrap ${
@@ -2256,15 +2256,15 @@ const AdminReports = () => {
                                     : "text-green-500 font-bold"
                                 }`}
                               >
-                                ₹{report.rent_paid_amount.toLocaleString()}
+                                ₹{Math.round(Number(report.rent_paid_amount) || 0).toLocaleString()}
                               </TableCell>
                               <TableCell className="whitespace-nowrap text-sm">
                                 {report.paying_cash &&
                                 report.cash_amount != null ? (
                                   <span className="text-green-700 font-medium">
                                     ₹
-                                    {Number(
-                                      report.cash_amount
+                                    {Math.round(
+                                      Number(report.cash_amount) || 0
                                     ).toLocaleString()}
                                     {report.cash_manager_id && (
                                       <span className="text-muted-foreground font-normal">
@@ -2282,7 +2282,11 @@ const AdminReports = () => {
                               </TableCell>
                               <TableCell className="text-yellow-600">
                                 ₹
-                                {report.total_earnings - report.other_fee - 600}
+                                {Math.round(
+                                  (Number(report.total_earnings) || 0) -
+                                    (Number(report.other_fee) || 0) -
+                                    600
+                                ).toLocaleString()}
                               </TableCell>
 
                               <TableCell>

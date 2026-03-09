@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import {
   format,
   endOfWeek,
@@ -179,6 +179,22 @@ export function UberAuditManager() {
   const [serviceDayAdjustments, setServiceDayAdjustments] = useState<any[]>([]);
   const [reportServiceDayAdjustments, setReportServiceDayAdjustments] =
     useState<any[]>([]);
+
+  // Weekly rent: one rate for the week based on total trips vs working_days × 10
+  const weeklyRentVars = useMemo(() => {
+    if (!reportSummary?.reports?.length) return null;
+    const workingDays = reportSummary.reports.length;
+    const totalTrips = reportSummary.total_trips ?? 0;
+    const requiredTrips = workingDays * 10;
+    const rentPerDay = totalTrips >= requiredTrips ? 600 : 700;
+    return {
+      workingDays,
+      totalTrips,
+      requiredTrips,
+      rentPerDay,
+      weeklyRent: workingDays * rentPerDay,
+    };
+  }, [reportSummary]);
 
   useEffect(() => {
     if (!adminLoading && !isAdmin) {
@@ -1433,31 +1449,38 @@ export function UberAuditManager() {
                 </Label>
 
                 {/* Summary Cards */}
-                <div className="grid grid-cols-2 gap-4">
+                <div className="">
                   {/* Detailed Breakdown */}
-                  <div className="grid grid-cols-1 gap-4">
-                    <div className="p-4 bg-gray-50 rounded-lg">
+                  <div className="flex w-full  gap-6">
+                    <div className="p-4 w-full bg-gray-50 rounded-lg">
                       <div className="flex items-center gap-2 mb-3">
                         <DollarSign className="h-4 w-4 text-gray-600" />
                         <h4 className="font-semibold">Financial Summary</h4>
                       </div>
                       <div className="space-y-2 text-sm">
-                        {/* Weekly Rent: 700 * number of approved reports */}
+                        {/* Weekly Rent: ₹600/day if total trips ≥ working_days×10, else ₹700/day */}
                         <div className="flex justify-between">
-                          <span>Weekly Rent (700 × approved reports)</span>
+                          <span>
+                            Total rent (₹600/day if weekly trips ≥ target, else
+                            ₹700/day):
+                          </span>
                           <span className="font-medium">
                             ₹
-                            {(() => {
-                              // Count only approved reports
-                              const approvedReports =
-                                reportSummary.reports.filter(
-                                  (report) =>
-                                    report.status?.toLowerCase() === "approved",
-                                );
-                              return approvedReports.length * 700;
-                            })()}
+                            {weeklyRentVars
+                              ? weeklyRentVars.weeklyRent.toLocaleString()
+                              : "0"}
                           </span>
                         </div>
+                        {weeklyRentVars && (
+                          <div className="flex justify-between text-xs text-gray-500 pl-2">
+                            <span>
+                              {weeklyRentVars.workingDays} day(s) @ ₹
+                              {weeklyRentVars.rentPerDay} (
+                              {weeklyRentVars.totalTrips} trips vs{" "}
+                              {weeklyRentVars.requiredTrips} target)
+                            </span>
+                          </div>
+                        )}
 
                         {/* Deposit Cutting */}
                         <div className="flex justify-between">
@@ -1495,13 +1518,8 @@ export function UberAuditManager() {
                           <span className="font-semibold text-blue-600">
                             ₹
                             {(() => {
-                              // 1. Weekly Rent (700 * approved reports)
-                              const approvedReports =
-                                reportSummary.reports.filter(
-                                  (report) =>
-                                    report.status?.toLowerCase() === "approved",
-                                );
-                              const weeklyRent = approvedReports.length * 700;
+                              const weeklyRent =
+                                weeklyRentVars?.weeklyRent ?? 0;
 
                               // 2. Deposit Cutting
                               const depositCutting =
@@ -1521,8 +1539,8 @@ export function UberAuditManager() {
                                 );
 
                               // Formula: Weekly Rent + Deposit Cutting - Total Adjustments
-                              return (
-                                weeklyRent + depositCutting - totalAdjustments
+                              return Math.round(
+                                weeklyRent + depositCutting - totalAdjustments,
                               );
                             })()}
                           </span>
@@ -1533,11 +1551,13 @@ export function UberAuditManager() {
                           <span>Cash at Bank:</span>
                           <span className="font-bold text-green-600">
                             ₹
-                            {reportSummary.reports.reduce((acc, report) => {
-                              const amount =
-                                Number(report.rent_paid_amount) || 0;
-                              return acc + (amount > 0 ? amount : 0);
-                            }, 0)}
+                            {Math.round(
+                              reportSummary.reports.reduce((acc, report) => {
+                                const amount =
+                                  Number(report.rent_paid_amount) || 0;
+                                return acc + (amount > 0 ? amount : 0);
+                              }, 0),
+                            ).toLocaleString()}
                           </span>
                         </div>
 
@@ -1546,13 +1566,8 @@ export function UberAuditManager() {
                           <span className="font-semibold">Difference:</span>
                           <span
                             className={`font-bold text-lg ${(() => {
-                              // Calculate Final Pay
-                              const approvedReports =
-                                reportSummary.reports.filter(
-                                  (report) =>
-                                    report.status?.toLowerCase() === "approved",
-                                );
-                              const weeklyRent = approvedReports.length * 700;
+                              const weeklyRent =
+                                weeklyRentVars?.weeklyRent ?? 0;
                               const depositCutting =
                                 reportSummary.reports.reduce((acc, report) => {
                                   const amount =
@@ -1591,13 +1606,8 @@ export function UberAuditManager() {
                             })()}`}
                           >
                             {(() => {
-                              // Calculate Final Pay
-                              const approvedReports =
-                                reportSummary.reports.filter(
-                                  (report) =>
-                                    report.status?.toLowerCase() === "approved",
-                                );
-                              const weeklyRent = approvedReports.length * 700;
+                              const weeklyRent =
+                                weeklyRentVars?.weeklyRent ?? 0;
                               const depositCutting =
                                 reportSummary.reports.reduce((acc, report) => {
                                   const amount =
@@ -1629,10 +1639,10 @@ export function UberAuditManager() {
 
                               // Format with sign
                               if (difference > 0) {
-                                return `+₹${difference.toLocaleString()}`;
+                                return `+₹${Math.round(difference).toLocaleString()}`;
                               } else if (difference < 0) {
-                                return `-₹${Math.abs(
-                                  difference,
+                                return `-₹${Math.round(
+                                  Math.abs(difference),
                                 ).toLocaleString()}`;
                               } else {
                                 return "₹0";
@@ -1643,47 +1653,240 @@ export function UberAuditManager() {
                       </div>
                     </div>
 
-                    {/* <div className="p-4 bg-gray-50 rounded-lg">
-                    <div className="flex items-center gap-2 mb-3">
-                      <MapPin className="h-4 w-4 text-gray-600" />
-                      <h4 className="font-semibold">Performance Summary</h4>
+                    {/* Summary Details (driver income vs expenses, Happy/Unhappy by per-day income) */}
+                    <div className="p-4 w-full bg-gray-50 rounded-lg">
+                      <div className="flex items-center gap-2 mb-3">
+                        <Receipt className="h-4 w-4 text-gray-600" />
+                        <h4 className="font-semibold">Summary Details</h4>
+                      </div>
+                      <div className="space-y-2 text-sm">
+                        <div className="flex justify-between">
+                          <span>Total cash collected:</span>
+                          <span className="font-medium text-green-600">
+                            ₹
+                            {Math.round(
+                              reportSummary.total_cashcollect || 0,
+                            ).toLocaleString()}
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>Total toll:</span>
+                          <span className="font-medium text-green-600">
+                            ₹
+                            {Math.round(
+                              reportSummary.total_toll || 0,
+                            ).toLocaleString()}
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>Total driver pass:</span>
+                          <span className="font-medium text-red-600">
+                            ₹
+                            {Math.round(
+                              reportSummary.total_other_fee || 0,
+                            ).toLocaleString()}
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>Online cash:</span>
+                          <span className="font-medium text-green-600">
+                            ₹
+                            {Math.round(
+                              Math.max(
+                                0,
+                                (reportSummary.total_earnings || 0) -
+                                  (reportSummary.total_cashcollect || 0),
+                              ),
+                            ).toLocaleString()}
+                          </span>
+                        </div>
+                        <div className="flex justify-between border-t pt-2 mt-1">
+                          <span>
+                            Total rent (daily: ₹600 if ≥10 trips, ₹700 if
+                            &lt;10):
+                          </span>
+                          <span className="font-medium text-red-600">
+                            ₹
+                            {weeklyRentVars
+                              ? weeklyRentVars.weeklyRent.toLocaleString()
+                              : "0"}
+                          </span>
+                        </div>
+                        {weeklyRentVars && (
+                          <div className="flex justify-between text-xs text-gray-500 pl-2">
+                            <span>
+                              {weeklyRentVars.workingDays} day(s) @ ₹
+                              {weeklyRentVars.rentPerDay}
+                            </span>
+                          </div>
+                        )}
+                        <div className="flex justify-between">
+                          <span>Driver food and CNG expense (₹1,000/day):</span>
+                          <span className="font-medium text-red-600">
+                            ₹{(weeklyRentVars?.workingDays ?? 0) * 1000}
+                          </span>
+                        </div>
+                        {(weeklyRentVars?.workingDays ?? 0) > 0 && (
+                          <div className="flex justify-between text-xs text-gray-500 pl-2">
+                            <span>
+                              {weeklyRentVars?.workingDays} working day(s) ×
+                              ₹1,000
+                            </span>
+                          </div>
+                        )}
+                        <div className="flex justify-between border-t pt-2">
+                          <span>Total driver expenses:</span>
+                          <span className="font-semibold text-red-700">
+                            ₹
+                            {(() => {
+                              const totalDriverPass =
+                                reportSummary.total_other_fee || 0;
+                              const totalRent = weeklyRentVars?.weeklyRent ?? 0;
+                              const foodCng =
+                                (weeklyRentVars?.workingDays ?? 0) * 1000;
+                              const total =
+                                totalDriverPass + totalRent + foodCng;
+                              return Math.round(total).toLocaleString();
+                            })()}
+                          </span>
+                        </div>
+                        <div className="text-xs text-gray-500 pl-2">
+                          (Total driver pass + total rent + food and CNG)
+                        </div>
+                        <div className="flex justify-between">
+                          <span>Total driver Net income (week):</span>
+                          <span
+                            className={`font-semibold ${(() => {
+                              const totalEarningsWeek =
+                                (reportSummary.total_earnings || 0) +
+                                (reportSummary.total_toll || 0);
+                              const totalDriverPass =
+                                reportSummary.total_other_fee || 0;
+                              const totalRent = weeklyRentVars?.weeklyRent ?? 0;
+                              const foodCng =
+                                (weeklyRentVars?.workingDays ?? 0) * 1000;
+                              const totalExpenses =
+                                totalDriverPass + totalRent + foodCng;
+                              const gross = totalEarningsWeek - totalExpenses;
+                              return gross >= 0
+                                ? "text-green-600"
+                                : "text-red-600";
+                            })()}`}
+                          >
+                            ₹
+                            {(() => {
+                              const totalEarningsWeek =
+                                (reportSummary.total_earnings || 0) +
+                                (reportSummary.total_toll || 0);
+                              const totalDriverPass =
+                                reportSummary.total_other_fee || 0;
+                              const totalRent = weeklyRentVars?.weeklyRent ?? 0;
+                              const foodCng =
+                                (weeklyRentVars?.workingDays ?? 0) * 1000;
+                              const totalExpenses =
+                                totalDriverPass + totalRent + foodCng;
+                              const gross = totalEarningsWeek - totalExpenses;
+                              return Math.round(gross).toLocaleString();
+                            })()}
+                          </span>
+                        </div>
+                        <div className="text-xs text-gray-500 pl-2">
+                          (Total earnings − Total driver expenses)
+                        </div>
+                        <div className="flex justify-between">
+                          <span>Total driver Net income/day:</span>
+                          <span
+                            className={`font-semibold text-xl ${(() => {
+                              const totalEarningsWeek =
+                                (reportSummary.total_earnings || 0) +
+                                (reportSummary.total_toll || 0);
+                              const totalDriverPass =
+                                reportSummary.total_other_fee || 0;
+                              const totalRent = weeklyRentVars?.weeklyRent ?? 0;
+                              const wd = weeklyRentVars?.workingDays ?? 0;
+                              const foodCng = wd * 1000;
+                              const totalExpenses =
+                                totalDriverPass + totalRent + foodCng;
+                              const gross = totalEarningsWeek - totalExpenses;
+                              const perDay = wd > 0 ? gross / wd : 0;
+                              return perDay >= 0
+                                ? "text-green-600"
+                                : "text-red-600";
+                            })()}`}
+                          >
+                            ₹
+                            {(() => {
+                              const totalEarningsWeek =
+                                (reportSummary.total_earnings || 0) +
+                                (reportSummary.total_toll || 0);
+                              const totalDriverPass =
+                                reportSummary.total_other_fee || 0;
+                              const totalRent = weeklyRentVars?.weeklyRent ?? 0;
+                              const wd = weeklyRentVars?.workingDays ?? 0;
+                              const foodCng = wd * 1000;
+                              const totalExpenses =
+                                totalDriverPass + totalRent + foodCng;
+                              const gross = totalEarningsWeek - totalExpenses;
+                              const perDay = wd > 0 ? gross / wd : 0;
+                              return Math.round(perDay).toLocaleString();
+                            })()}
+                          </span>
+                        </div>
+                        <div className="text-xs text-gray-500 pl-2">
+                          (Gross income ÷ working days)
+                        </div>
+                        <div className="flex justify-between border-t pt-2 mt-2">
+                          <span className="font-medium">Status:</span>
+                          <span
+                            className={`font-semibold ${(() => {
+                              const totalEarningsWeek =
+                                (reportSummary.total_earnings || 0) +
+                                (reportSummary.total_toll || 0);
+                              const totalDriverPass =
+                                reportSummary.total_other_fee || 0;
+                              const totalRent = weeklyRentVars?.weeklyRent ?? 0;
+                              const wd = weeklyRentVars?.workingDays ?? 0;
+                              const foodCng = wd * 1000;
+                              const totalExpenses =
+                                totalDriverPass + totalRent + foodCng;
+                              const gross = totalEarningsWeek - totalExpenses;
+                              const perDay = wd > 0 ? gross / wd : 0;
+                              return perDay < 1000
+                                ? "text-orange-600"
+                                : "text-green-600";
+                            })()}`}
+                          >
+                            {(() => {
+                              const totalEarningsWeek =
+                                (reportSummary.total_earnings || 0) +
+                                (reportSummary.total_toll || 0);
+                              const totalDriverPass =
+                                reportSummary.total_other_fee || 0;
+                              const totalRent = weeklyRentVars?.weeklyRent ?? 0;
+                              const wd = weeklyRentVars?.workingDays ?? 0;
+                              const foodCng = wd * 1000;
+                              const totalExpenses =
+                                totalDriverPass + totalRent + foodCng;
+                              const gross = totalEarningsWeek - totalExpenses;
+                              const perDay = wd > 0 ? gross / wd : 0;
+                              return perDay < 1000 ? "Unhappy" : "Happy";
+                            })()}
+                          </span>
+                        </div>
+                        <div className="text-xs text-gray-500 pl-2">
+                          Per day income &lt; ₹1,000 → Unhappy
+                        </div>
+                      </div>
                     </div>
-                    <div className="space-y-2 text-sm">
-                      <div className="flex justify-between">
-                        <span>Total Distance:</span>
-                        <span className="font-medium">
-                          {reportSummary.total_distance.toLocaleString()} km
-                        </span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span>Avg Distance/Day:</span>
-                        <span className="font-medium">
-                          {Math.round(
-                            reportSummary.total_distance /
-                              reportSummary.total_reports
-                          ).toLocaleString()}{" "}
-                          km
-                        </span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span>Avg Trips/Day:</span>
-                        <span className="font-medium">
-                          {Math.round(
-                            reportSummary.total_trips /
-                              reportSummary.total_reports
-                          )}
-                        </span>
-                      </div>
-                    </div>
-                  </div> */}
                   </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="grid grid-cols-1 gap-4">
+                  {/* Column 2: Statistics */}
+                  <div className="mt-6">
+                    <div className="grid grid-cols-2 gap-4">
                       <div className="p-4 bg-blue-50 rounded-lg border">
                         <div className="flex items-center gap-2 mb-2">
                           <Receipt className="h-4 w-4 text-blue-600" />
                           <p className="text-sm text-blue-600 font-medium">
-                            Total WorkingDays
+                            Total Working Days
                           </p>
                         </div>
                         <p className="text-2xl font-bold text-blue-900">
@@ -1701,8 +1904,6 @@ export function UberAuditManager() {
                           ₹{reportSummary.total_earnings.toLocaleString()}
                         </p>
                       </div>
-                    </div>
-                    <div className="grid grid-cols-1 gap-4">
                       <div className="p-4 bg-purple-50 rounded-lg border">
                         <div className="flex items-center gap-2 mb-2">
                           <TrendingUp className="h-4 w-4 text-purple-600" />
@@ -1778,16 +1979,25 @@ export function UberAuditManager() {
                                   ).toLocaleDateString()}
                                 </td>
                                 <td className="px-3 py-2 text-right font-medium">
-                                  ₹{report.total_earnings}
+                                  ₹
+                                  {Math.round(
+                                    Number(report.total_earnings) || 0,
+                                  ).toLocaleString()}
                                 </td>
                                 <td className="px-3 py-2 text-right">
-                                  ₹{report.total_cashcollect}
+                                  ₹
+                                  {Math.round(
+                                    Number(report.total_cashcollect) || 0,
+                                  ).toLocaleString()}
                                 </td>
                                 <td className="px-3 py-2 text-right">
                                   {report.total_trips}
                                 </td>
                                 <td className="px-3 py-2 text-right">
-                                  ₹{report.other_fee}
+                                  ₹
+                                  {Math.round(
+                                    Number(report.other_fee) || 0,
+                                  ).toLocaleString()}
                                 </td>
                                 <td className="px-3 py-2 text-right">
                                   {getReportStatusBadge(report.status)}
@@ -1800,7 +2010,10 @@ export function UberAuditManager() {
                                         : "text-green-600"
                                     }
                                   >
-                                    ₹{report.rent_paid_amount}
+                                    ₹
+                                    {Math.round(
+                                      Number(report.rent_paid_amount) || 0,
+                                    ).toLocaleString()}
                                   </span>
                                 </td>
                               </tr>
