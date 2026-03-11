@@ -32,6 +32,7 @@ import {
   Loader2,
   CheckCircle2,
   AlertCircle,
+  Gauge,
   Calendar as CalendarIcon,
   ChevronLeft,
   ChevronRight,
@@ -180,13 +181,21 @@ export function UberAuditManager() {
   const [reportServiceDayAdjustments, setReportServiceDayAdjustments] =
     useState<any[]>([]);
 
-  // Per-driver Happy/Unhappy status (per day income < 1000 → Unhappy)
+  // Manual "Online cash" in Financial Summary (drawer); pre-filled from formula when report loads
+  const [financialOnlineCash, setFinancialOnlineCash] = useState("");
+
+  // Per-driver status: Happy >1000, Neutral 500–1000, Unhappy 0–500, Very Unhappy <0 (₹/day)
   const [driverStatusMap, setDriverStatusMap] = useState<
-    Record<string, { status: "happy" | "unhappy"; perDayIncome: number } | null>
+    Record<
+      string,
+      | { status: "happy" | "neutral" | "unhappy" | "very_unhappy"; perDayIncome: number }
+      | null
+    >
   >({});
   const [loadingDriverStatus, setLoadingDriverStatus] = useState(false);
 
-  // Weekly rent: one rate for the week based on total trips vs working_days × 10
+  // Weekly rent: trip-based for Driver Summary (₹600/day if trips ≥ target, else ₹700/day).
+  // Financial Summary uses fixed ₹700/day via (workingDays * 700) in that section only.
   const weeklyRentVars = useMemo(() => {
     if (!reportSummary?.reports?.length) return null;
     const workingDays = reportSummary.reports.length;
@@ -214,7 +223,7 @@ export function UberAuditManager() {
     fetchAudits();
   }, [selectedWeek, isAdmin, adminLoading]);
 
-  // Fetch Happy/Unhappy status for all drivers in the current week
+  // Fetch Happy / Neutral / Unhappy status for all drivers in the current week
   const fetchAllDriversStatus = async () => {
     if (!audits.length || !selectedWeek) {
       setDriverStatusMap({});
@@ -235,8 +244,7 @@ export function UberAuditManager() {
           "user_id, total_earnings, total_cashcollect, other_fee, toll, total_trips",
         )
         .in("user_id", userIds)
-        .not("status", "eq", "offline")
-        .not("status", "eq", "leave")
+        .in("status", ["approved", "rejected", "pending_verification"])
         .gte("rent_date", weekStartStr)
         .lte("rent_date", weekEndStr);
 
@@ -292,7 +300,11 @@ export function UberAuditManager() {
 
       const map: Record<
         string,
-        { status: "happy" | "unhappy"; perDayIncome: number } | null
+        | {
+            status: "happy" | "neutral" | "unhappy" | "very_unhappy";
+            perDayIncome: number;
+          }
+        | null
       > = {};
       userIds.forEach((uid) => {
         const rec = reportsByUser[uid];
@@ -300,7 +312,7 @@ export function UberAuditManager() {
           map[uid] = null;
           return;
         }
-        const totalEarningsWeek = rec.total_earnings + rec.total_toll;
+        const totalEarningsWeek = rec.total_earnings;
         const totalDriverPass = rec.total_other_fee;
         const requiredTrips = rec.workingDays * 10;
         const rentPerDay = rec.total_trips >= requiredTrips ? 600 : 700;
@@ -311,10 +323,13 @@ export function UberAuditManager() {
           totalDriverPass + weeklyRent + foodCng - totalAdjustments;
         const gross = totalEarningsWeek - totalExpenses;
         const perDayIncome = rec.workingDays > 0 ? gross / rec.workingDays : 0;
-        map[uid] = {
-          status: perDayIncome < 1000 ? "unhappy" : "happy",
-          perDayIncome: Math.round(perDayIncome),
-        };
+        const rounded = Math.round(perDayIncome);
+        let status: "happy" | "neutral" | "unhappy" | "very_unhappy" = "unhappy";
+        if (rounded > 1000) status = "happy";
+        else if (rounded >= 500 && rounded <= 1000) status = "neutral";
+        else if (rounded >= 0 && rounded < 500) status = "unhappy";
+        else status = "very_unhappy"; // rounded < 0
+        map[uid] = { status, perDayIncome: rounded };
       });
       setDriverStatusMap(map);
     } catch (err) {
@@ -328,6 +343,20 @@ export function UberAuditManager() {
   useEffect(() => {
     fetchAllDriversStatus();
   }, [audits, selectedWeek]);
+
+  // Pre-fill manual Online cash in Financial Summary when report summary loads for the selected driver
+  useEffect(() => {
+    if (!reportSummary?.reports?.length) {
+      setFinancialOnlineCash("");
+      return;
+    }
+    const calculated =
+      (reportSummary.total_earnings || 0) +
+      (reportSummary.total_toll || 0) -
+      (reportSummary.total_cashcollect || 0) -
+      (reportSummary.total_other_fee || 0);
+    setFinancialOnlineCash(String(Math.round(calculated)));
+  }, [reportSummary, selectedAudit?.user_id]);
 
   const fetchAudits = async () => {
     if (!isAdmin) return;
@@ -348,7 +377,7 @@ export function UberAuditManager() {
         weekEndDate.toISOString().split("T")[0],
       );
 
-      // Get drivers who submitted reports during this week
+      // Get drivers who have at least one report in the week with status approved, rejected, or pending_verification
       const { data: reportsData, error: reportsError } = await supabase
         .from("fleet_reports")
         .select(
@@ -365,7 +394,7 @@ export function UberAuditManager() {
           )
         `,
         )
-        // .eq(status, "approved")
+        .in("status", ["approved", "rejected", "pending_verification"])
         .gte("rent_date", weekStartDate.toISOString().split("T")[0])
         .lte("rent_date", weekEndDate.toISOString().split("T")[0]);
 
@@ -1247,11 +1276,11 @@ export function UberAuditManager() {
   return (
     <div className="space-y-6">
       {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8 gap-4">
         <div className="bg-card rounded-lg p-4 shadow-sm border">
           <div className="flex items-center gap-2">
             <Users className="h-5 w-5 text-muted-foreground" />
-            <h3 className="font-medium">Drivers with Reports</h3>
+            <h3 className="font-medium"> Drivers</h3>
           </div>
           <p className="text-2xl font-bold mt-2">{summary.total}</p>
         </div>
@@ -1289,8 +1318,44 @@ export function UberAuditManager() {
                 ).length}
           </p>
           <p className="text-xs text-muted-foreground mt-0.5">
-            Per day income ≥ ₹1,000
+            Per day income &gt; ₹1,000
           </p>
+          {!loadingDriverStatus && (() => {
+            const values = Object.values(driverStatusMap).filter(Boolean);
+            const total = values.length;
+            const happy = values.filter((v) => v?.status === "happy").length;
+            return total > 0 ? (
+              <p className="text-xs font-medium text-green-600 mt-1">
+                {Math.round((happy / total) * 100)}%
+              </p>
+            ) : null;
+          })()}
+        </div>
+        <div className="bg-card rounded-lg p-4 shadow-sm border">
+          <div className="flex items-center gap-2">
+            <Gauge className="h-5 w-5 text-slate-500" />
+            <h3 className="font-medium">Neutral Drivers</h3>
+          </div>
+          <p className="text-2xl font-bold mt-2 text-slate-600">
+            {loadingDriverStatus
+              ? "…"
+              : Object.values(driverStatusMap).filter(
+                  (v) => v?.status === "neutral",
+                ).length}
+          </p>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            ₹500–₹1,000/day
+          </p>
+          {!loadingDriverStatus && (() => {
+            const values = Object.values(driverStatusMap).filter(Boolean);
+            const total = values.length;
+            const neutral = values.filter((v) => v?.status === "neutral").length;
+            return total > 0 ? (
+              <p className="text-xs font-medium text-slate-600 mt-1">
+                {Math.round((neutral / total) * 100)}%
+              </p>
+            ) : null;
+          })()}
         </div>
         <div className="bg-card rounded-lg p-4 shadow-sm border">
           <div className="flex items-center gap-2">
@@ -1305,7 +1370,69 @@ export function UberAuditManager() {
                 ).length}
           </p>
           <p className="text-xs text-muted-foreground mt-0.5">
-            Per day income &lt; ₹1,000
+            ₹0–₹500/day
+          </p>
+          {!loadingDriverStatus && (() => {
+            const values = Object.values(driverStatusMap).filter(Boolean);
+            const total = values.length;
+            const unhappy = values.filter((v) => v?.status === "unhappy").length;
+            return total > 0 ? (
+              <p className="text-xs font-medium text-orange-600 mt-1">
+                {Math.round((unhappy / total) * 100)}%
+              </p>
+            ) : null;
+          })()}
+        </div>
+        <div className="bg-card rounded-lg p-4 shadow-sm border">
+          <div className="flex items-center gap-2">
+            <XCircle className="h-5 w-5 text-red-700" />
+            <h3 className="font-medium">Very Unhappy Drivers</h3>
+          </div>
+          <p className="text-2xl font-bold mt-2 text-red-700">
+            {loadingDriverStatus
+              ? "…"
+              : Object.values(driverStatusMap).filter(
+                  (v) => v?.status === "very_unhappy",
+                ).length}
+          </p>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Negative income/day
+          </p>
+          {!loadingDriverStatus && (() => {
+            const values = Object.values(driverStatusMap).filter(Boolean);
+            const total = values.length;
+            const veryUnhappy = values.filter(
+              (v) => v?.status === "very_unhappy",
+            ).length;
+            return total > 0 ? (
+              <p className="text-xs font-medium text-red-700 mt-1">
+                {Math.round((veryUnhappy / total) * 100)}%
+              </p>
+            ) : null;
+          })()}
+        </div>
+        {/* Average driver satisfaction score */}
+        <div className="bg-card rounded-lg p-4 shadow-sm border">
+          <div className="flex items-center gap-2">
+            <TrendingUp className="h-5 w-5 text-blue-600" />
+            <h3 className="font-medium">Satisfaction Score</h3>
+          </div>
+          <p className="text-2xl font-bold mt-2 text-blue-600">
+            {loadingDriverStatus
+              ? "…"
+              : (() => {
+                  const values = Object.values(driverStatusMap).filter(Boolean);
+                  if (values.length === 0) return "—";
+                  const sum = values.reduce(
+                    (acc, v) => acc + (v?.perDayIncome ?? 0) / 10,
+                    0,
+                  );
+                  const avg = sum / values.length;
+                  return `${Math.round(avg)}%`;
+                })()}
+          </p>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Avg. (₹1,000/day = 100%)
           </p>
         </div>
       </div>
@@ -1535,7 +1662,7 @@ export function UberAuditManager() {
                       <TooltipProvider>
                         <Tooltip>
                           <TooltipTrigger asChild>
-                            <span className="inline-block">
+                            <span className="inline-flex flex-col gap-0.5">
                               {loadingDriverStatus ? (
                                 <span className="text-xs text-muted-foreground">
                                   …
@@ -1544,28 +1671,68 @@ export function UberAuditManager() {
                                 <span className="text-xs text-muted-foreground">
                                   —
                                 </span>
-                              ) : driverStatusMap[audit.user_id]?.status ===
-                                "happy" ? (
-                                <Badge
-                                  variant="secondary"
-                                  className="bg-green-100 text-green-800 hover:bg-green-100"
-                                >
-                                  Happy
-                                </Badge>
                               ) : (
-                                <Badge
-                                  variant="secondary"
-                                  className="bg-orange-100 text-orange-800 hover:bg-orange-100"
-                                >
-                                  Unhappy
-                                </Badge>
+                                <>
+                                  {driverStatusMap[audit.user_id]?.status ===
+                                  "happy" ? (
+                                    <Badge
+                                      variant="secondary"
+                                      className="bg-green-100 text-green-800 hover:bg-green-100 w-fit"
+                                    >
+                                      Happy
+                                    </Badge>
+                                  ) : driverStatusMap[audit.user_id]?.status ===
+                                    "neutral" ? (
+                                    <Badge
+                                      variant="secondary"
+                                      className="bg-slate-100 text-slate-800 hover:bg-slate-100 w-fit"
+                                    >
+                                      Neutral
+                                    </Badge>
+                                  ) : driverStatusMap[audit.user_id]?.status ===
+                                    "very_unhappy" ? (
+                                    <Badge
+                                      variant="secondary"
+                                      className="bg-red-100 text-red-800 hover:bg-red-100 w-fit"
+                                    >
+                                      Very Unhappy
+                                    </Badge>
+                                  ) : (
+                                    <Badge
+                                      variant="secondary"
+                                      className="bg-orange-100 text-orange-800 hover:bg-orange-100 w-fit"
+                                    >
+                                      Unhappy
+                                    </Badge>
+                                  )}
+                                  <span className="text-xs font-medium text-muted-foreground">
+                                    {Math.round(
+                                      ((driverStatusMap[audit.user_id]?.perDayIncome ?? 0) / 1000) *
+                                        100,
+                                    )}
+                                    %
+                                  </span>
+                                </>
                               )}
                             </span>
                           </TooltipTrigger>
                           <TooltipContent side="top" className="max-w-xs">
                             <p>
                               {driverStatusMap[audit.user_id] != null
-                                ? `Per day income: ₹${driverStatusMap[audit.user_id]?.perDayIncome ?? 0}. Per day income < ₹1,000 → Unhappy`
+                                ? (() => {
+                                    const s = driverStatusMap[audit.user_id];
+                                    const income = s?.perDayIncome ?? 0;
+                                    const score = Math.round((income / 1000) * 100);
+                                    const label =
+                                      income > 1000
+                                        ? "Happy (>₹1,000/day)"
+                                        : income >= 500 && income <= 1000
+                                          ? "Neutral (₹500–₹1,000/day)"
+                                          : income >= 0 && income < 500
+                                            ? "Unhappy (₹0–₹500/day)"
+                                            : "Very Unhappy (negative/day)";
+                                    return `Per day income: ₹${income.toLocaleString()}. Satisfaction score: ${score}% (₹1,000/day = 100%). ${label}`;
+                                  })()
                                 : "No reports for this week"}
                             </p>
                           </TooltipContent>
@@ -1655,26 +1822,22 @@ export function UberAuditManager() {
                         <h4 className="font-semibold">Financial Summary</h4>
                       </div>
                       <div className="space-y-2 text-sm">
-                        {/* Weekly Rent: ₹600/day if total trips ≥ working_days×10, else ₹700/day */}
+                        {/* Weekly Rent: fixed ₹700/day (Financial Summary only) */}
                         <div className="flex justify-between">
-                          <span>
-                            Total rent (₹600/day if weekly trips ≥ target, else
-                            ₹700/day):
-                          </span>
+                          <span>Total rent (₹700/day):</span>
                           <span className="font-medium">
                             ₹
                             {weeklyRentVars
-                              ? weeklyRentVars.weeklyRent.toLocaleString()
+                              ? (
+                                  weeklyRentVars.workingDays * 700
+                                ).toLocaleString()
                               : "0"}
                           </span>
                         </div>
                         {weeklyRentVars && (
                           <div className="flex justify-between text-xs text-gray-500 pl-2">
                             <span>
-                              {weeklyRentVars.workingDays} day(s) @ ₹
-                              {weeklyRentVars.rentPerDay} (
-                              {weeklyRentVars.totalTrips} trips vs{" "}
-                              {weeklyRentVars.requiredTrips} target)
+                              {weeklyRentVars.workingDays} day(s) @ ₹700
                             </span>
                           </div>
                         )}
@@ -1709,14 +1872,14 @@ export function UberAuditManager() {
                           </span>
                         </div>
 
-                        {/* Final Pay: Weekly Rent + Deposit Cutting - Total Adjustments */}
+                        {/* Final Pay: Weekly Rent (fixed ₹700/day) + Deposit Cutting - Total Adjustments */}
                         <div className="flex justify-between border-t pt-2">
                           <span className="font-semibold">Final Pay:</span>
                           <span className="font-semibold text-blue-600">
                             ₹
                             {(() => {
                               const weeklyRent =
-                                weeklyRentVars?.weeklyRent ?? 0;
+                                (weeklyRentVars?.workingDays ?? 0) * 700;
 
                               // 2. Deposit Cutting
                               const depositCutting =
@@ -1743,6 +1906,27 @@ export function UberAuditManager() {
                           </span>
                         </div>
 
+                        {/* Online cash: manual entry (used in Difference = Final Pay + Online cash - Cash at Bank) */}
+                        <div className="flex justify-between items-center gap-2">
+                          <span>Online cash:</span>
+                          <Input
+                            type="number"
+                            placeholder={(() => {
+                              const oc =
+                                (reportSummary.total_earnings || 0) +
+                                (reportSummary.total_toll || 0) -
+                                (reportSummary.total_cashcollect || 0) -
+                                (reportSummary.total_other_fee || 0);
+                              return `e.g. ${Math.round(oc)}`;
+                            })()}
+                            value={financialOnlineCash}
+                            onChange={(e) =>
+                              setFinancialOnlineCash(e.target.value)
+                            }
+                            className="w-28 h-8 text-right font-medium tabular-nums"
+                          />
+                        </div>
+
                         {/* Cash at Bank */}
                         <div className="flex justify-between">
                           <span>Cash at Bank:</span>
@@ -1758,13 +1942,13 @@ export function UberAuditManager() {
                           </span>
                         </div>
 
-                        {/* Difference: Final Pay - Cash at Bank */}
+                        {/* Difference: Final Pay + Online cash - Cash at Bank */}
                         <div className="flex justify-between border-t pt-2">
                           <span className="font-semibold">Difference:</span>
                           <span
                             className={`font-bold text-lg ${(() => {
                               const weeklyRent =
-                                weeklyRentVars?.weeklyRent ?? 0;
+                                (weeklyRentVars?.workingDays ?? 0) * 700;
                               const depositCutting =
                                 reportSummary.reports.reduce((acc, report) => {
                                   const amount =
@@ -1773,15 +1957,19 @@ export function UberAuditManager() {
                                 }, 0);
                               const totalAdjustments =
                                 reportServiceDayAdjustments.reduce(
-                                  (sum, adj) => {
-                                    return sum + Math.abs(adj.amount || 0);
-                                  },
+                                  (sum, adj) =>
+                                    sum + Math.abs(adj.amount || 0),
                                   0,
                                 );
-                              const finalPay =
-                                weeklyRent + depositCutting - totalAdjustments;
-
-                              // Calculate Cash at Bank
+                              const finalPay = Math.round(
+                                weeklyRent + depositCutting - totalAdjustments,
+                              );
+                              const manualCash = (() => {
+                                const v = financialOnlineCash.trim();
+                                if (v === "" || isNaN(Number(v)))
+                                  return 0;
+                                return Number(v);
+                              })();
                               const cashAtBank = reportSummary.reports.reduce(
                                 (acc, report) => {
                                   const amount =
@@ -1790,11 +1978,8 @@ export function UberAuditManager() {
                                 },
                                 0,
                               );
-
-                              // Calculate Difference
-                              const difference = finalPay - cashAtBank;
-
-                              // REVERSED: Negative (company owes) = RED, Positive (driver owes) = GREEN
+                              const difference =
+                                finalPay + manualCash - cashAtBank;
                               return difference < 0
                                 ? "text-red-600"
                                 : difference > 0
@@ -1804,7 +1989,7 @@ export function UberAuditManager() {
                           >
                             {(() => {
                               const weeklyRent =
-                                weeklyRentVars?.weeklyRent ?? 0;
+                                (weeklyRentVars?.workingDays ?? 0) * 700;
                               const depositCutting =
                                 reportSummary.reports.reduce((acc, report) => {
                                   const amount =
@@ -1813,15 +1998,19 @@ export function UberAuditManager() {
                                 }, 0);
                               const totalAdjustments =
                                 reportServiceDayAdjustments.reduce(
-                                  (sum, adj) => {
-                                    return sum + Math.abs(adj.amount || 0);
-                                  },
+                                  (sum, adj) =>
+                                    sum + Math.abs(adj.amount || 0),
                                   0,
                                 );
-                              const finalPay =
-                                weeklyRent + depositCutting - totalAdjustments;
-
-                              // Calculate Cash at Bank
+                              const finalPay = Math.round(
+                                weeklyRent + depositCutting - totalAdjustments,
+                              );
+                              const manualCash = (() => {
+                                const v = financialOnlineCash.trim();
+                                if (v === "" || isNaN(Number(v)))
+                                  return 0;
+                                return Number(v);
+                              })();
                               const cashAtBank = reportSummary.reports.reduce(
                                 (acc, report) => {
                                   const amount =
@@ -1830,11 +2019,8 @@ export function UberAuditManager() {
                                 },
                                 0,
                               );
-
-                              // Calculate Difference
-                              const difference = finalPay - cashAtBank;
-
-                              // Format with sign
+                              const difference =
+                                finalPay + manualCash - cashAtBank;
                               if (difference > 0) {
                                 return `+₹${Math.round(difference).toLocaleString()}`;
                               } else if (difference < 0) {
@@ -1896,15 +2082,30 @@ export function UberAuditManager() {
                         </div>
                         <div className="flex justify-between">
                           <span>Online cash:</span>
-                          <span className="font-medium text-green-600">
-                            ₹
-                            {Math.round(
-                              Math.max(
-                                0,
-                                (reportSummary.total_earnings || 0) -
-                                  (reportSummary.total_cashcollect || 0),
-                              ),
-                            ).toLocaleString()}
+                          <span
+                            className={`font-medium ${(() => {
+                              const onlineCash =
+                                (reportSummary.total_earnings || 0) +
+                                (reportSummary.total_toll || 0) -
+                                (reportSummary.total_cashcollect || 0) -
+                                (reportSummary.total_other_fee || 0);
+                              return onlineCash < 0
+                                ? "text-red-600"
+                                : "text-green-600";
+                            })()}`}
+                          >
+                            {(() => {
+                              const onlineCash =
+                                (reportSummary.total_earnings || 0) +
+                                (reportSummary.total_toll || 0) -
+                                (reportSummary.total_cashcollect || 0) -
+                                (reportSummary.total_other_fee || 0);
+                              const rounded = Math.round(onlineCash);
+                              if (rounded < 0) {
+                                return `-₹${Math.abs(rounded).toLocaleString()}`;
+                              }
+                              return `₹${rounded.toLocaleString()}`;
+                            })()}
                           </span>
                         </div>
                         <div className="flex justify-between border-t pt-2 mt-1">
@@ -1923,7 +2124,9 @@ export function UberAuditManager() {
                           <div className="flex justify-between text-xs text-gray-500 pl-2">
                             <span>
                               {weeklyRentVars.workingDays} day(s) @ ₹
-                              {weeklyRentVars.rentPerDay}
+                              {weeklyRentVars.rentPerDay} (
+                              {weeklyRentVars.totalTrips} trips vs{" "}
+                              {weeklyRentVars.requiredTrips} target)
                             </span>
                           </div>
                         )}
@@ -2096,8 +2299,7 @@ export function UberAuditManager() {
                           <span
                             className={`font-semibold ${(() => {
                               const totalEarningsWeek =
-                                (reportSummary.total_earnings || 0) +
-                                (reportSummary.total_toll || 0);
+                                reportSummary.total_earnings || 0;
                               const totalDriverPass =
                                 reportSummary.total_other_fee || 0;
                               const totalRent = weeklyRentVars?.weeklyRent ?? 0;
@@ -2115,15 +2317,18 @@ export function UberAuditManager() {
                                 totalAdjustments;
                               const gross = totalEarningsWeek - totalExpenses;
                               const perDay = wd > 0 ? gross / wd : 0;
-                              return perDay < 1000
-                                ? "text-orange-600"
-                                : "text-green-600";
+                              return perDay > 1000
+                                ? "text-green-600"
+                                : perDay >= 500 && perDay <= 1000
+                                  ? "text-slate-600"
+                                  : perDay >= 0
+                                    ? "text-orange-600"
+                                    : "text-red-700";
                             })()}`}
                           >
                             {(() => {
                               const totalEarningsWeek =
-                                (reportSummary.total_earnings || 0) +
-                                (reportSummary.total_toll || 0);
+                                reportSummary.total_earnings || 0;
                               const totalDriverPass =
                                 reportSummary.total_other_fee || 0;
                               const totalRent = weeklyRentVars?.weeklyRent ?? 0;
@@ -2141,12 +2346,50 @@ export function UberAuditManager() {
                                 totalAdjustments;
                               const gross = totalEarningsWeek - totalExpenses;
                               const perDay = wd > 0 ? gross / wd : 0;
-                              return perDay < 1000 ? "Unhappy" : "Happy";
+                              return perDay > 1000
+                                ? "Happy"
+                                : perDay >= 500 && perDay <= 1000
+                                  ? "Neutral"
+                                  : perDay >= 0
+                                    ? "Unhappy"
+                                    : "Very Unhappy";
+                            })()}
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="font-medium">Satisfaction score:</span>
+                          <span className="font-semibold text-blue-600">
+                            {(() => {
+                              const totalEarningsWeek =
+                                reportSummary.total_earnings || 0;
+                              const totalDriverPass =
+                                reportSummary.total_other_fee || 0;
+                              const totalRent = weeklyRentVars?.weeklyRent ?? 0;
+                              const wd = weeklyRentVars?.workingDays ?? 0;
+                              const foodCng = wd * 1000;
+                              const totalAdjustments =
+                                reportServiceDayAdjustments.reduce(
+                                  (sum, adj) => sum + Math.abs(adj.amount || 0),
+                                  0,
+                                );
+                              const totalExpenses =
+                                totalDriverPass +
+                                totalRent +
+                                foodCng -
+                                totalAdjustments;
+                              const gross = totalEarningsWeek - totalExpenses;
+                              const perDay = wd > 0 ? gross / wd : 0;
+                              const score = (perDay / 1000) * 100;
+                              return `${score % 1 === 0 ? Math.round(score) : score.toFixed(1)}%`;
                             })()}
                           </span>
                         </div>
                         <div className="text-xs text-gray-500 pl-2">
-                          Per day income &lt; ₹1,000 → Unhappy
+                          &gt;₹1,000 Happy · ₹500–₹1,000 Neutral · ₹0–₹500
+                          Unhappy · &lt;₹0 Very Unhappy
+                        </div>
+                        <div className="text-xs text-gray-500 pl-2">
+                          ₹1,000/day = 100% satisfaction
                         </div>
                       </div>
                     </div>
